@@ -1,0 +1,43 @@
+# Render Blueprint — https://render.com/docs/blueprint-spec
+#
+# Deploys the Next.js app as a web service. Cron jobs are commented out until
+# their route handlers exist (Phase 2+: quote-expiry, lead-release-sla,
+# dispatch-wave-escalation, document-expiry, daily-brief) — uncomment and
+# point each at its /api/cron/<name> route as those phases are built.
+
+services:
+  - type: web
+    name: global-transport-crm
+    runtime: node
+    plan: starter
+    branch: main
+    buildCommand: npm install && npm run build
+    startCommand: npm run start
+    healthCheckPath: /login
+    envVars:
+      - key: NEXT_PUBLIC_SUPABASE_URL
+        sync: false
+      - key: NEXT_PUBLIC_SUPABASE_ANON_KEY
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: CRON_SECRET
+        generateValue: true
+      - key: NEXT_PUBLIC_APP_URL
+        sync: false
+      - key: NODE_VERSION
+        value: 20.17.0
+
+  # - type: cron
+  #   name: quote-expiry-sweep
+  #   runtime: node
+  #   schedule: "*/15 * * * *"
+  #   buildCommand: npm install
+  #   startCommand: >
+  #     curl -sf -X POST "$NEXT_PUBLIC_APP_URL/api/cron/quote-expiry"
+  #     -H "Authorization: Bearer $CRON_SECRET"
+  #   envVars:
+  #     - key: NEXT_PUBLIC_APP_URL
+  #       sync: false
+  #     - key: CRON_SECRET
+  #       sync: false
