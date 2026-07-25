@@ -1,7 +1,11 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
-const PUBLIC_PATHS = ["/login", "/reset-password", "/accept-invite", "/auth/confirm"];
+// "/q" is the token-based customer quote page (Part 55) and
+// "/api/leads/website" is the public website lead webhook (Part 22) — both
+// authenticate on their own terms (an unguessable token / a per-brand
+// shared secret) rather than a Supabase session.
+const PUBLIC_PATHS = ["/login", "/reset-password", "/accept-invite", "/auth/confirm", "/q", "/api/leads/website"];
 
 export async function proxy(request: NextRequest) {
   let response = NextResponse.next({ request });
