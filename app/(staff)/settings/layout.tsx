@@ -1,5 +1,9 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { Users, ShieldCheck, Building2, History, Settings as SettingsIcon } from "lucide-react";
+import { requireProfile } from "@/lib/auth";
+import { getGrantedPermissions } from "@/lib/permissions";
+import { ADMIN_SURFACE_PERMISSIONS } from "@/lib/permissionKeys";
 
 const SETTINGS_NAV = [
   { label: "Overview", href: "/settings", icon: SettingsIcon },
@@ -9,7 +13,17 @@ const SETTINGS_NAV = [
   { label: "Audit Log", href: "/settings/audit-log", icon: History },
 ];
 
-export default function SettingsLayout({ children }: { children: React.ReactNode }) {
+export default async function SettingsLayout({ children }: { children: React.ReactNode }) {
+  // The nav link is hidden for non-admins in Sidebar.tsx, but hiding a link
+  // doesn't stop a direct URL visit — this is the actual authorization gate
+  // for the whole /settings surface (profiles/roles/brands are otherwise
+  // tenant-wide readable via RLS, by design, for assignment pickers).
+  const profile = await requireProfile();
+  const granted = await getGrantedPermissions(profile);
+  if (!ADMIN_SURFACE_PERMISSIONS.some((key) => granted.has(key))) {
+    redirect("/dashboard");
+  }
+
   return (
     <div>
       <div className="mb-6 flex flex-wrap gap-2">

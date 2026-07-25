@@ -15,7 +15,10 @@ async function requireUserManager() {
   return profile;
 }
 
-export async function inviteUserAction(_prevState: { error: string | null }, formData: FormData) {
+export async function inviteUserAction(
+  _prevState: { error: string | null; link: string | null },
+  formData: FormData,
+) {
   const actor = await requireUserManager();
 
   const fullName = String(formData.get("fullName") ?? "").trim();
@@ -24,16 +27,24 @@ export async function inviteUserAction(_prevState: { error: string | null }, for
   const jobTitle = String(formData.get("jobTitle") ?? "").trim() || null;
 
   if (!fullName || !email || !roleId) {
-    return { error: "Full name, email and role are required." };
+    return { error: "Full name, email and role are required.", link: null };
   }
 
   const admin = createAdminClient();
 
-  const { data: invited, error: inviteError } = await admin.auth.admin.inviteUserByEmail(email, {
-    redirectTo: `${process.env.NEXT_PUBLIC_APP_URL ?? ""}/accept-invite`,
+  // generateLink (rather than inviteUserByEmail) creates the auth user
+  // without sending a Supabase-hosted email — Supabase only lets you
+  // customise that email's template with custom SMTP configured, and real
+  // email delivery is a later phase (Part 41, Phase 7) anyway. We build the
+  // same /auth/confirm link ourselves from the raw token and hand it back
+  // to the admin to share directly, sidestepping both problems.
+  const { data: invited, error: inviteError } = await admin.auth.admin.generateLink({
+    type: "invite",
+    email,
+    options: { redirectTo: `${process.env.NEXT_PUBLIC_APP_URL ?? ""}/accept-invite` },
   });
   if (inviteError || !invited.user) {
-    return { error: inviteError?.message ?? "Could not send the invite." };
+    return { error: inviteError?.message ?? "Could not create the invite.", link: null };
   }
 
   const { error: profileError } = await admin.from("profiles").insert({
@@ -50,7 +61,7 @@ export async function inviteUserAction(_prevState: { error: string | null }, for
   });
 
   if (profileError) {
-    return { error: profileError.message };
+    return { error: profileError.message, link: null };
   }
 
   await recordAudit({
@@ -63,7 +74,9 @@ export async function inviteUserAction(_prevState: { error: string | null }, for
   });
 
   revalidatePath("/settings/users");
-  return { error: null };
+
+  const inviteLink = `${process.env.NEXT_PUBLIC_APP_URL ?? ""}/auth/confirm?token_hash=${invited.properties.hashed_token}&type=invite&next=/accept-invite`;
+  return { error: null, link: inviteLink };
 }
 
 export async function updateUserStatusAction(userId: string, status: ProfileStatus) {

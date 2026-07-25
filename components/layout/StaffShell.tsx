@@ -12,12 +12,16 @@ export function StaffShell({
   roleName,
   brands,
   activeBrandId,
+  visibleHrefs,
+  canSeeSettings,
   children,
 }: {
   userName: string;
   roleName: string;
   brands: Brand[];
   activeBrandId: string | null;
+  visibleHrefs: string[];
+  canSeeSettings: boolean;
   children: React.ReactNode;
 }) {
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -31,6 +35,8 @@ export function StaffShell({
             onCloseMobile={() => setMobileOpen(false)}
             userName={userName}
             roleName={roleName}
+            visibleHrefs={visibleHrefs}
+            canSeeSettings={canSeeSettings}
           />
           <main className="lg:pl-72">
             <Header

@@ -9,19 +9,51 @@ export function InviteUserForm({ roles }: { roles: { id: string; name: string }[
   const notify = useToast();
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [link, setLink] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
   function handleSubmit(formData: FormData) {
     setError(null);
     startTransition(async () => {
-      const result = await inviteUserAction({ error: null }, formData);
+      const result = await inviteUserAction({ error: null, link: null }, formData);
       if (result?.error) {
         setError(result.error);
         return;
       }
-      notify("Invitation sent");
-      setOpen(false);
+      setLink(result.link);
+      notify("User created — share the link below");
     });
+  }
+
+  if (link) {
+    return (
+      <div className="w-full max-w-xl rounded-2xl border p-5">
+        <h3 className="font-black">Share this invite link</h3>
+        <p className="mt-1 text-sm text-slate-500">
+          Send it to the new user directly (email, WhatsApp, Slack) — it lets them set their password and sign in.
+        </p>
+        <div className="mt-4 flex items-center gap-2 rounded-xl border bg-slate-50 p-3">
+          <code className="flex-1 truncate text-sm">{link}</code>
+          <button
+            type="button"
+            onClick={() => navigator.clipboard.writeText(link).then(() => notify("Link copied"))}
+            className="rounded-lg bg-primary-500 px-3 py-2 text-xs font-bold text-white"
+          >
+            Copy
+          </button>
+        </div>
+        <button
+          type="button"
+          onClick={() => {
+            setLink(null);
+            setOpen(false);
+          }}
+          className="mt-4 rounded-xl border px-4 py-2.5 text-sm font-bold"
+        >
+          Done
+        </button>
+      </div>
+    );
   }
 
   if (!open) {
@@ -71,7 +103,7 @@ export function InviteUserForm({ roles }: { roles: { id: string; name: string }[
           disabled={pending}
           className="rounded-xl bg-primary-500 px-4 py-2.5 text-sm font-bold text-white disabled:opacity-60"
         >
-          {pending ? "Sending invite…" : "Send invite"}
+          {pending ? "Creating…" : "Create invite"}
         </button>
         <button
           type="button"

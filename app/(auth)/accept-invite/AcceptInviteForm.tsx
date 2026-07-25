@@ -26,21 +26,31 @@ export function AcceptInviteForm() {
     }
 
     startTransition(async () => {
-      const supabase = createClient();
-      const { error: updateError } = await supabase.auth.updateUser({ password });
-      if (updateError) {
-        setError(updateError.message);
-        return;
-      }
+      try {
+        const supabase = createClient();
+        const { data: sessionData } = await supabase.auth.getSession();
+        if (!sessionData.session) {
+          setError("Your invite link has expired or was already used. Ask an administrator to send a new one.");
+          return;
+        }
 
-      const result = await activateAccount();
-      if (result?.error) {
-        setError(result.error);
-        return;
-      }
+        const { error: updateError } = await supabase.auth.updateUser({ password });
+        if (updateError) {
+          setError(updateError.message);
+          return;
+        }
 
-      router.push("/dashboard");
-      router.refresh();
+        const result = await activateAccount();
+        if (result?.error) {
+          setError(result.error);
+          return;
+        }
+
+        router.push("/dashboard");
+        router.refresh();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Something went wrong setting up your account.");
+      }
     });
   }
 

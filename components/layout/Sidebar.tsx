@@ -11,11 +11,15 @@ export function Sidebar({
   onCloseMobile,
   userName,
   roleName,
+  visibleHrefs,
+  canSeeSettings,
 }: {
   mobileOpen: boolean;
   onCloseMobile: () => void;
   userName: string;
   roleName: string;
+  visibleHrefs: string[];
+  canSeeSettings: boolean;
 }) {
   const pathname = usePathname();
   const initials = userName
@@ -59,7 +63,7 @@ export function Sidebar({
           <div className="mb-2 px-3 text-[10px] font-bold uppercase tracking-[.2em] text-slate-500">
             Workspace
           </div>
-          {NAV.map(({ label, href, icon: Icon }) => {
+          {NAV.filter((item) => visibleHrefs.includes(item.href)).map(({ label, href, icon: Icon }) => {
             const active = pathname === href || pathname.startsWith(`${href}/`);
             return (
               <Link
@@ -80,14 +84,16 @@ export function Sidebar({
           })}
         </div>
         <div className="border-t border-white/10 p-4">
-          <Link
-            href="/settings"
-            onClick={onCloseMobile}
-            className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-slate-300 hover:bg-white/5"
-          >
-            <Settings size={18} />
-            Settings
-          </Link>
+          {canSeeSettings && (
+            <Link
+              href="/settings"
+              onClick={onCloseMobile}
+              className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-slate-300 hover:bg-white/5"
+            >
+              <Settings size={18} />
+              Settings
+            </Link>
+          )}
           <div className="mt-3 flex items-center gap-3 rounded-2xl bg-white/5 p-3">
             <div className="grid h-10 w-10 place-items-center rounded-full bg-primary-500 font-bold">
               {initials}
