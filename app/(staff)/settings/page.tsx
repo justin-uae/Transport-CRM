@@ -6,7 +6,7 @@ import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 
 const CARDS = [
-  { label: "Users", href: "/settings/users", icon: Users, text: "Invite, suspend and reassign users, teams and territories." },
+  { label: "Users", href: "/settings/users", icon: Users, text: "Invite users, assign a brand and region, and manage account status." },
   { label: "Roles & Permissions", href: "/settings/roles", icon: ShieldCheck, text: "Create custom roles and control granular permissions." },
   { label: "Companies & Brands", href: "/settings/brands", icon: Building2, text: "Manage legal companies, trading brands and numbering." },
   { label: "Audit Log", href: "/settings/audit-log", icon: History, text: "Review every financial, pricing and user change." },

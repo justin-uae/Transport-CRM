@@ -60,7 +60,16 @@ export const NAV: NavItem[] = [
     label: "Dispatch",
     href: "/dispatch",
     icon: Bus,
-    anyOf: [PERMISSIONS.DISPATCH_SEND_MANUAL, PERMISSIONS.DISPATCH_USE_ASSISTED, PERMISSIONS.DISPATCH_USE_AUTOMATIC],
+    // Sales roles can also always dispatch a job they personally created
+    // (see canDispatch() in app/(staff)/dispatch/actions.ts) — quotes.create
+    // is the marker for "this role can end up owning a paid job", so it
+    // keeps the nav item consistent with that ownership bypass.
+    anyOf: [
+      PERMISSIONS.DISPATCH_SEND_MANUAL,
+      PERMISSIONS.DISPATCH_USE_ASSISTED,
+      PERMISSIONS.DISPATCH_USE_AUTOMATIC,
+      PERMISSIONS.QUOTES_CREATE,
+    ],
   },
   {
     label: "Customers",

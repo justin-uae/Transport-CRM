@@ -88,3 +88,50 @@ export async function createBrandAction(_prevState: { error: string | null }, fo
   revalidatePath("/settings/brands");
   return { error: null };
 }
+
+export async function createBankAccountAction(_prevState: { error: string | null }, formData: FormData) {
+  const actor = await requireBrandManager();
+  const brandId = String(formData.get("brandId") ?? "");
+  const accountName = String(formData.get("accountName") ?? "").trim();
+  const bankName = String(formData.get("bankName") ?? "").trim();
+  const accountNumber = String(formData.get("accountNumber") ?? "").trim() || null;
+  const iban = String(formData.get("iban") ?? "").trim() || null;
+  const sortCode = String(formData.get("sortCode") ?? "").trim() || null;
+  const swiftBic = String(formData.get("swiftBic") ?? "").trim() || null;
+  const currency = String(formData.get("currency") ?? "EUR").trim() || "EUR";
+
+  if (!brandId || !accountName || !bankName) {
+    return { error: "Brand, account name and bank name are required." };
+  }
+
+  const supabase = await createClient();
+  const { data: bankAccount, error } = await supabase
+    .from("bank_accounts")
+    .insert({
+      tenant_id: actor.tenant_id,
+      brand_id: brandId,
+      account_name: accountName,
+      bank_name: bankName,
+      account_number: accountNumber,
+      iban,
+      sort_code: sortCode,
+      swift_bic: swiftBic,
+      currency,
+    })
+    .select()
+    .single();
+
+  if (error) return { error: error.message };
+
+  await recordAudit({
+    tenantId: actor.tenant_id,
+    actorId: actor.id,
+    action: "bank_account_created",
+    entityType: "bank_account",
+    entityId: bankAccount.id,
+    newValue: { brandId, accountName, bankName },
+  });
+
+  revalidatePath("/settings/brands");
+  return { error: null };
+}

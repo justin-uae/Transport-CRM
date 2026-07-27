@@ -130,6 +130,7 @@ export interface Profile {
   access_expires_at: string | null;
   avatar_url: string | null;
   preferred_language: string;
+  region: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -230,7 +231,8 @@ export type QuoteStatus =
   | "rejected"
   | "expired"
   | "cancelled"
-  | "converted";
+  | "converted"
+  | "paid";
 
 export type QuoteDecisionType = "accepted" | "rejected";
 
@@ -351,6 +353,8 @@ export interface Quote {
   sent_at: string | null;
   viewed_at: string | null;
   decided_at: string | null;
+  invoice_number: string | null;
+  invoiced_at: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -396,6 +400,120 @@ export interface NumberSequence {
   next_value: number;
 }
 
+// -----------------------------------------------------------------------------
+// Phase 2.5 — Payments/invoice, suppliers, job dispatch (0003_operations.sql)
+// -----------------------------------------------------------------------------
+
+export type SupplierType = "company" | "individual";
+export type SupplierStatus = "invited" | "submitted" | "approved" | "rejected" | "suspended";
+export type JobStatus =
+  | "unassigned"
+  | "offered"
+  | "accepted_by_supplier"
+  | "rejected_by_supplier"
+  | "confirmed"
+  | "completed"
+  | "cancelled";
+
+export interface BankAccount {
+  id: string;
+  tenant_id: string;
+  brand_id: string;
+  account_name: string;
+  bank_name: string;
+  account_number: string | null;
+  iban: string | null;
+  sort_code: string | null;
+  swift_bic: string | null;
+  currency: string;
+  is_default: boolean;
+  created_at: string;
+}
+
+export interface Supplier {
+  id: string;
+  tenant_id: string;
+  name: string;
+  type: SupplierType;
+  contact_name: string | null;
+  email: string;
+  phone: string | null;
+  whatsapp: string | null;
+  region: string | null;
+  status: SupplierStatus;
+  registration_number: string | null;
+  vat_number: string | null;
+  insurance_details: string | null;
+  license_number: string | null;
+  notes: string | null;
+  created_by: string | null;
+  approved_by: string | null;
+  approved_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SupplierVehicle {
+  id: string;
+  supplier_id: string;
+  vehicle_type: string;
+  seat_capacity: number | null;
+  plate_number: string | null;
+  notes: string | null;
+  created_at: string;
+}
+
+export interface SupplierDocument {
+  id: string;
+  supplier_id: string;
+  label: string;
+  storage_path: string;
+  file_name: string;
+  uploaded_at: string;
+}
+
+export interface Job {
+  id: string;
+  tenant_id: string;
+  quote_id: string;
+  brand_id: string | null;
+  customer_id: string | null;
+  region: string | null;
+  status: JobStatus;
+  assigned_supplier_id: string | null;
+  offered_at: string | null;
+  responded_at: string | null;
+  confirmed_at: string | null;
+  completed_at: string | null;
+  supplier_invoice_note: string | null;
+  supplier_invoice_url: string | null;
+  created_by: string | null;
+  created_at: string;
+}
+
+/** Supplier-safe read of a job — full address/customer contact only once confirmed. */
+export interface JobOfferView {
+  id: string;
+  tenant_id: string;
+  assigned_supplier_id: string | null;
+  status: JobStatus;
+  region: string | null;
+  offered_at: string | null;
+  responded_at: string | null;
+  confirmed_at: string | null;
+  completed_at: string | null;
+  supplier_invoice_note: string | null;
+  supplier_invoice_url: string | null;
+  pickup_date: string | null;
+  pickup_time: string | null;
+  passenger_count: number | null;
+  vehicle_type_id: string | null;
+  pickup_address: string | null;
+  destination_address: string | null;
+  customer_name: string | null;
+  customer_phone: string | null;
+}
+
 // Minimal shape of a table entry as @supabase/postgrest-js's generics expect
 // it (Row/Insert/Update plus an empty Relationships tuple — we don't encode
 // foreign-key relationship metadata by hand, so embedded-resource selects
@@ -431,8 +549,15 @@ export interface Database {
       quote_decisions: Table<QuoteDecision>;
       quote_events: Table<QuoteEvent>;
       number_sequences: Table<NumberSequence>;
+      bank_accounts: Table<BankAccount>;
+      suppliers: Table<Supplier>;
+      supplier_vehicles: Table<SupplierVehicle>;
+      supplier_documents: Table<SupplierDocument>;
+      jobs: Table<Job>;
     };
-    Views: Record<string, never>;
+    Views: {
+      job_offer_view: { Row: JobOfferView; Relationships: [] };
+    };
     Functions: {
       current_tenant_id: { Args: Record<string, never>; Returns: string };
       is_master_admin: { Args: Record<string, never>; Returns: boolean };

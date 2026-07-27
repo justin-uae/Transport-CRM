@@ -27,6 +27,16 @@ interface LegRow {
   passenger_count: number | null;
 }
 
+interface BankAccountRow {
+  account_name: string;
+  bank_name: string;
+  account_number: string | null;
+  iban: string | null;
+  sort_code: string | null;
+  swift_bic: string | null;
+  currency: string;
+}
+
 const DECIDABLE = new Set(["sent", "viewed"]);
 
 export default async function PublicQuotePage({ params }: { params: Promise<{ token: string }> }) {
@@ -36,12 +46,19 @@ export default async function PublicQuotePage({ params }: { params: Promise<{ to
   const { data: quote } = await admin
     .from("quotes")
     .select(
-      "id, quote_number, status, currency, expiry_at, customers(company_name, contact_name), enquiries(enquiry_legs(pickup_address, destination_address, pickup_date, pickup_time, passenger_count)), quote_versions!quotes_current_version_id_fkey(vehicle_description, selling_price, deposit_options, payment_methods, customer_notes, terms_snapshot, brand_snapshot)",
+      "id, quote_number, status, currency, expiry_at, brand_id, invoice_number, invoiced_at, customers(company_name, contact_name), enquiries(enquiry_legs(pickup_address, destination_address, pickup_date, pickup_time, passenger_count)), quote_versions!quotes_current_version_id_fkey(vehicle_description, selling_price, deposit_options, payment_methods, customer_notes, terms_snapshot, brand_snapshot)",
     )
     .eq("public_token", token)
     .single();
 
   if (!quote) notFound();
+
+  const { data: bankAccount } = await admin
+    .from("bank_accounts")
+    .select("account_name, bank_name, account_number, iban, sort_code, swift_bic, currency")
+    .eq("brand_id", quote.brand_id)
+    .eq("is_default", true)
+    .maybeSingle();
 
   let status = quote.status;
   if (status === "sent") {
@@ -118,9 +135,17 @@ export default async function PublicQuotePage({ params }: { params: Promise<{ to
             {DECIDABLE.has(status) ? (
               <QuoteDecisionButtons token={token} />
             ) : status === "accepted" ? (
-              <div className="rounded-2xl bg-emerald-50 p-5 text-center font-bold text-emerald-700">
-                Thank you — this quote has been accepted. We'll be in touch shortly to confirm payment.
-              </div>
+              <BankTransferInstructions
+                reference={quote.quote_number}
+                amount={version ? money(version.selling_price) : "—"}
+                bankAccount={bankAccount as BankAccountRow | null}
+              />
+            ) : status === "paid" ? (
+              <InvoiceView
+                invoiceNumber={quote.invoice_number}
+                invoicedAt={quote.invoiced_at}
+                amount={version ? money(version.selling_price) : "—"}
+              />
             ) : status === "rejected" ? (
               <div className="rounded-2xl bg-slate-100 p-5 text-center font-bold text-slate-600">
                 This quote has been marked as rejected.
@@ -131,6 +156,105 @@ export default async function PublicQuotePage({ params }: { params: Promise<{ to
               </div>
             )}
           </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function BankTransferInstructions({
+  reference,
+  amount,
+  bankAccount,
+}: {
+  reference: string;
+  amount: string;
+  bankAccount: BankAccountRow | null;
+}) {
+  return (
+    <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5">
+      <p className="text-center font-bold text-emerald-700">
+        Quote accepted — please complete payment by bank transfer to confirm your booking.
+      </p>
+      {bankAccount ? (
+        <div className="mt-4 space-y-2 rounded-xl bg-white p-4 text-sm">
+          <div className="flex justify-between border-b py-1.5">
+            <span className="text-slate-500">Account name</span>
+            <b>{bankAccount.account_name}</b>
+          </div>
+          <div className="flex justify-between border-b py-1.5">
+            <span className="text-slate-500">Bank</span>
+            <b>{bankAccount.bank_name}</b>
+          </div>
+          {bankAccount.iban && (
+            <div className="flex justify-between border-b py-1.5">
+              <span className="text-slate-500">IBAN</span>
+              <b>{bankAccount.iban}</b>
+            </div>
+          )}
+          {bankAccount.account_number && (
+            <div className="flex justify-between border-b py-1.5">
+              <span className="text-slate-500">Account number</span>
+              <b>{bankAccount.account_number}</b>
+            </div>
+          )}
+          {bankAccount.sort_code && (
+            <div className="flex justify-between border-b py-1.5">
+              <span className="text-slate-500">Sort code</span>
+              <b>{bankAccount.sort_code}</b>
+            </div>
+          )}
+          {bankAccount.swift_bic && (
+            <div className="flex justify-between border-b py-1.5">
+              <span className="text-slate-500">SWIFT / BIC</span>
+              <b>{bankAccount.swift_bic}</b>
+            </div>
+          )}
+          <div className="flex justify-between border-b py-1.5">
+            <span className="text-slate-500">Payment reference</span>
+            <b>{reference}</b>
+          </div>
+          <div className="flex justify-between py-1.5">
+            <span className="text-slate-500">Amount due</span>
+            <b className="text-primary-600">{amount}</b>
+          </div>
+        </div>
+      ) : (
+        <p className="mt-4 text-center text-sm text-emerald-700">
+          Your account manager will send bank transfer details shortly.
+        </p>
+      )}
+      <p className="mt-4 text-center text-xs text-emerald-700">
+        Please use <b>{reference}</b> as your payment reference so we can match your transfer quickly.
+      </p>
+    </div>
+  );
+}
+
+function InvoiceView({
+  invoiceNumber,
+  invoicedAt,
+  amount,
+}: {
+  invoiceNumber: string | null;
+  invoicedAt: string | null;
+  amount: string;
+}) {
+  return (
+    <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5 text-center">
+      <p className="font-bold text-emerald-700">Payment received — thank you.</p>
+      <div className="mx-auto mt-4 max-w-xs space-y-2 rounded-xl bg-white p-4 text-left text-sm">
+        <div className="flex justify-between border-b py-1.5">
+          <span className="text-slate-500">Invoice number</span>
+          <b>{invoiceNumber ?? "—"}</b>
+        </div>
+        <div className="flex justify-between border-b py-1.5">
+          <span className="text-slate-500">Date</span>
+          <b>{invoicedAt ? new Date(invoicedAt).toLocaleDateString() : "—"}</b>
+        </div>
+        <div className="flex justify-between py-1.5">
+          <span className="text-slate-500">Amount paid</span>
+          <b className="text-emerald-700">{amount}</b>
         </div>
       </div>
     </div>

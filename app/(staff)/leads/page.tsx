@@ -11,7 +11,7 @@ export default async function Page() {
     supabase
       .from("leads")
       .select(
-        "id, source, status, priority, pickup_text, destination_text, travel_date, passenger_count, assigned_user_id, created_at, customers(company_name, contact_name), profiles(full_name), territories(label)",
+        "id, source, status, priority, pickup_text, destination_text, travel_date, passenger_count, assigned_user_id, created_at, customers(company_name, contact_name), profiles(full_name)",
       )
       .order("created_at", { ascending: false }),
     supabase

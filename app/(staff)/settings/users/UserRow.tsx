@@ -13,20 +13,24 @@ const STATUS_STYLES: Record<ProfileStatus, string> = {
   archived: "bg-slate-100 text-slate-600",
 };
 
+export interface UserListRow {
+  id: string;
+  full_name: string;
+  email: string;
+  job_title: string | null;
+  status: ProfileStatus;
+  role_id: string | null;
+  is_master_admin: boolean;
+  region: string | null;
+  brands: { name: string } | null;
+}
+
 export function UserRow({
   user,
   roles,
   canManage,
 }: {
-  user: {
-    id: string;
-    full_name: string;
-    email: string;
-    job_title: string | null;
-    status: ProfileStatus;
-    role_id: string | null;
-    is_master_admin: boolean;
-  };
+  user: UserListRow;
   roles: { id: string; name: string }[];
   canManage: boolean;
 }) {
@@ -62,6 +66,10 @@ export function UserRow({
         <div className="text-xs text-slate-400">{user.email}</div>
       </td>
       <td className="text-sm text-slate-600">{user.job_title ?? "—"}</td>
+      <td className="text-sm">
+        {user.brands?.name ?? <span className="text-red-500">No brand</span>}
+      </td>
+      <td className="text-sm text-slate-600">{user.region ?? "—"}</td>
       <td>
         {user.is_master_admin ? (
           <span className="text-sm font-bold">Master Admin</span>

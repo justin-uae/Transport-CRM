@@ -40,7 +40,23 @@ export async function signInAction(_prevState: { error: string | null }, formDat
       await supabase.auth.signOut();
       return { error: "This account has been suspended. Contact your administrator." };
     }
+
+    redirect(next || "/dashboard");
   }
 
-  redirect(next || "/dashboard");
+  // No staff profile — this login might belong to the separate supplier
+  // identity space instead (0003_operations.sql), which shares this same
+  // login page and /accept-invite flow.
+  const { data: supplier } = await supabase.from("suppliers").select("status").eq("id", data.user.id).single();
+
+  if (supplier) {
+    if (supplier.status === "suspended" || supplier.status === "rejected") {
+      await supabase.auth.signOut();
+      return { error: "This account is no longer active. Contact your administrator." };
+    }
+    redirect(next && next.startsWith("/supplier") ? next : "/supplier/dashboard");
+  }
+
+  await supabase.auth.signOut();
+  return { error: "No account found for this login." };
 }

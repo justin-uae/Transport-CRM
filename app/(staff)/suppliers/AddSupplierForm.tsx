@@ -1,17 +1,11 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { UserPlus } from "lucide-react";
+import { Plus } from "lucide-react";
 import { useToast } from "@/components/ui/Toast";
-import { inviteUserAction } from "./actions";
+import { createSupplierAction } from "./actions";
 
-export function InviteUserForm({
-  roles,
-  brands,
-}: {
-  roles: { id: string; name: string }[];
-  brands: { id: string; name: string }[];
-}) {
+export function AddSupplierForm() {
   const notify = useToast();
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -21,13 +15,13 @@ export function InviteUserForm({
   function handleSubmit(formData: FormData) {
     setError(null);
     startTransition(async () => {
-      const result = await inviteUserAction({ error: null, link: null }, formData);
+      const result = await createSupplierAction({ error: null, link: null }, formData);
       if (result?.error) {
         setError(result.error);
         return;
       }
       setLink(result.link);
-      notify("User created — share the link below");
+      notify("Supplier created — share the invite link below");
     });
   }
 
@@ -36,7 +30,7 @@ export function InviteUserForm({
       <div className="w-full max-w-xl rounded-2xl border p-5">
         <h3 className="font-black">Share this invite link</h3>
         <p className="mt-1 text-sm text-slate-500">
-          Send it to the new user directly (email, WhatsApp, Slack) — it lets them set their password and sign in.
+          Send it to the supplier — it lets them set a password and complete their verification.
         </p>
         <div className="mt-4 flex items-center gap-2 rounded-xl border bg-slate-50 p-3">
           <code className="flex-1 truncate text-sm">{link}</code>
@@ -68,8 +62,8 @@ export function InviteUserForm({
         onClick={() => setOpen(true)}
         className="flex items-center gap-2 self-start rounded-xl bg-primary-500 px-4 py-3 text-sm font-bold text-white"
       >
-        <UserPlus size={17} />
-        Invite User
+        <Plus size={17} />
+        Add Supplier
       </button>
     );
   }
@@ -78,69 +72,51 @@ export function InviteUserForm({
     <form action={handleSubmit} className="w-full max-w-xl rounded-2xl border p-5">
       <div className="grid gap-4 sm:grid-cols-2">
         <label className="text-sm font-bold">
-          Full name
-          <input name="fullName" required className="mt-2 w-full rounded-xl border px-3 py-2.5 font-normal" />
+          Supplier / company name
+          <input name="name" required className="mt-2 w-full rounded-xl border px-3 py-2.5 font-normal" />
+        </label>
+        <label className="text-sm font-bold">
+          Type
+          <select name="type" className="mt-2 w-full rounded-xl border px-3 py-2.5 font-normal">
+            <option value="company">Company / travel agency</option>
+            <option value="individual">Individual driver</option>
+          </select>
+        </label>
+        <label className="text-sm font-bold">
+          Contact name
+          <input name="contactName" className="mt-2 w-full rounded-xl border px-3 py-2.5 font-normal" />
         </label>
         <label className="text-sm font-bold">
           Email
           <input name="email" type="email" required className="mt-2 w-full rounded-xl border px-3 py-2.5 font-normal" />
         </label>
         <label className="text-sm font-bold">
-          Job title
-          <input name="jobTitle" className="mt-2 w-full rounded-xl border px-3 py-2.5 font-normal" />
+          Phone
+          <input name="phone" className="mt-2 w-full rounded-xl border px-3 py-2.5 font-normal" />
         </label>
         <label className="text-sm font-bold">
-          Role
-          <select name="roleId" required className="mt-2 w-full rounded-xl border px-3 py-2.5 font-normal">
-            {roles.map((r) => (
-              <option key={r.id} value={r.id}>
-                {r.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="text-sm font-bold">
-          Brand / Branch
-          <select name="brandId" required disabled={brands.length === 0} className="mt-2 w-full rounded-xl border px-3 py-2.5 font-normal">
-            {brands.length === 0 && <option value="">Create a brand first</option>}
-            {brands.map((b) => (
-              <option key={b.id} value={b.id}>
-                {b.name}
-              </option>
-            ))}
-          </select>
-          <span className="mt-1 block text-xs font-normal text-slate-400">
-            Every user belongs to exactly one brand/branch — it drives quote and invoice identity.
-          </span>
+          WhatsApp
+          <input name="whatsapp" className="mt-2 w-full rounded-xl border px-3 py-2.5 font-normal" />
         </label>
         <label className="text-sm font-bold">
           Region / location covered
-          <input
-            name="region"
-            placeholder="e.g. Dubai"
-            className="mt-2 w-full rounded-xl border px-3 py-2.5 font-normal"
-          />
-          <span className="mt-1 block text-xs font-normal text-slate-400">
-            Incoming leads whose pickup location matches this text auto-assign to this user.
-          </span>
+          <input name="region" placeholder="e.g. Dubai" className="mt-2 w-full rounded-xl border px-3 py-2.5 font-normal" />
+        </label>
+        <label className="text-sm font-bold sm:col-span-2">
+          Notes
+          <textarea name="notes" className="mt-2 min-h-20 w-full rounded-xl border px-3 py-2.5 font-normal" />
         </label>
       </div>
-      {error && (
-        <div className="mt-3 rounded-xl bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">{error}</div>
-      )}
+      {error && <div className="mt-3 rounded-xl bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">{error}</div>}
       <div className="mt-4 flex gap-2">
         <button
           type="submit"
           disabled={pending}
           className="rounded-xl bg-primary-500 px-4 py-2.5 text-sm font-bold text-white disabled:opacity-60"
         >
-          {pending ? "Creating…" : "Create invite"}
+          {pending ? "Creating…" : "Create supplier"}
         </button>
-        <button
-          type="button"
-          onClick={() => setOpen(false)}
-          className="rounded-xl border px-4 py-2.5 text-sm font-bold"
-        >
+        <button type="button" onClick={() => setOpen(false)} className="rounded-xl border px-4 py-2.5 text-sm font-bold">
           Cancel
         </button>
       </div>

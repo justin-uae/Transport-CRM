@@ -25,12 +25,23 @@ export async function inviteUserAction(
   const email = String(formData.get("email") ?? "").trim();
   const roleId = String(formData.get("roleId") ?? "");
   const jobTitle = String(formData.get("jobTitle") ?? "").trim() || null;
+  const brandId = String(formData.get("brandId") ?? "").trim() || null;
+  const region = String(formData.get("region") ?? "").trim() || null;
 
   if (!fullName || !email || !roleId) {
     return { error: "Full name, email and role are required.", link: null };
   }
+  if (!brandId) {
+    return { error: "Every user belongs to a brand/branch — select one.", link: null };
+  }
 
   const admin = createAdminClient();
+
+  const { data: brand } = await admin.from("brands").select("company_id").eq("id", brandId).single();
+  if (!brand) {
+    return { error: "Selected brand not found.", link: null };
+  }
+  const companyId = brand.company_id;
 
   // generateLink (rather than inviteUserByEmail) creates the auth user
   // without sending a Supabase-hosted email — Supabase only lets you
@@ -54,8 +65,9 @@ export async function inviteUserAction(
     email,
     job_title: jobTitle,
     role_id: roleId,
-    default_company_id: actor.default_company_id,
-    default_brand_id: actor.default_brand_id,
+    default_company_id: companyId,
+    default_brand_id: brandId,
+    region,
     status: "invited",
     requires_password_reset: true,
   });
@@ -64,13 +76,15 @@ export async function inviteUserAction(
     return { error: profileError.message, link: null };
   }
 
+  await admin.from("user_brands").insert({ user_id: invited.user.id, brand_id: brandId });
+
   await recordAudit({
     tenantId: actor.tenant_id,
     actorId: actor.id,
     action: "user_invited",
     entityType: "profile",
     entityId: invited.user.id,
-    newValue: { email, fullName, roleId },
+    newValue: { email, fullName, roleId, brandId, region },
   });
 
   revalidatePath("/settings/users");

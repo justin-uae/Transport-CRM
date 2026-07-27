@@ -43,6 +43,16 @@ export async function proxy(request: NextRequest) {
   }
 
   if (user && path === "/login") {
+    // Staff (profiles) and suppliers are separate identity spaces sharing
+    // this one login page (0003_operations.sql) — figure out which one this
+    // session belongs to so we don't bounce a supplier into /dashboard
+    // (which would just redirect them straight back here).
+    const { data: profile } = await supabase.from("profiles").select("id").eq("id", user.id).maybeSingle();
+    if (profile) return NextResponse.redirect(new URL("/dashboard", request.url));
+
+    const { data: supplier } = await supabase.from("suppliers").select("id").eq("id", user.id).maybeSingle();
+    if (supplier) return NextResponse.redirect(new URL("/supplier/dashboard", request.url));
+
     return NextResponse.redirect(new URL("/dashboard", request.url));
   }
 
