@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { requireProfile } from "@/lib/auth";
+import { hasPermission, PERMISSIONS } from "@/lib/permissions";
 import { recordAudit } from "@/lib/audit";
 
 /**
@@ -13,6 +14,10 @@ import { recordAudit } from "@/lib/audit";
  */
 export async function markQuotePaidAction(quoteId: string) {
   const actor = await requireProfile();
+  const allowed = await hasPermission(actor, PERMISSIONS.FINANCE_RECORD_PAYMENTS);
+  if (!allowed) {
+    return { error: "You do not have permission to record a customer payment." };
+  }
   const supabase = await createClient();
 
   const { data: quote } = await supabase

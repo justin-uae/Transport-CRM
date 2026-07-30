@@ -130,7 +130,6 @@ export interface Profile {
   access_expires_at: string | null;
   avatar_url: string | null;
   preferred_language: string;
-  region: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -138,6 +137,14 @@ export interface Profile {
 export interface UserBrand {
   user_id: string;
   brand_id: string;
+}
+
+/** A user can cover several regions — matched against lead pickup/destination text for routing. */
+export interface UserRegion {
+  id: string;
+  user_id: string;
+  region: string;
+  created_at: string;
 }
 
 export interface Territory {
@@ -472,6 +479,8 @@ export interface SupplierDocument {
   uploaded_at: string;
 }
 
+export type SupplierPaymentStatus = "unpaid" | "partially_paid" | "paid";
+
 export interface Job {
   id: string;
   tenant_id: string;
@@ -487,18 +496,76 @@ export interface Job {
   completed_at: string | null;
   supplier_invoice_note: string | null;
   supplier_invoice_url: string | null;
+  supplier_payment_status: SupplierPaymentStatus;
   created_by: string | null;
   created_at: string;
 }
 
-/** Supplier-safe read of a job — full address/customer contact only once confirmed. */
-export interface JobOfferView {
+export interface SupplierPayment {
   id: string;
   tenant_id: string;
-  assigned_supplier_id: string | null;
-  status: JobStatus;
+  job_id: string;
+  amount: number;
+  currency: string;
+  bank_reference: string | null;
+  notes: string | null;
+  paid_by: string | null;
+  paid_at: string;
+  created_at: string;
+}
+
+// -----------------------------------------------------------------------------
+// Multi-supplier dispatch (0007_multisupplier_dispatch.sql) — a job can be
+// offered to several suppliers at once; job_offers tracks each supplier's
+// own response, jobs.assigned_supplier_id only populates once one accepts.
+// -----------------------------------------------------------------------------
+
+export type JobOfferStatus = "sent" | "accepted" | "rejected" | "withdrawn";
+
+export interface JobOffer {
+  id: string;
+  tenant_id: string;
+  job_id: string;
+  supplier_id: string;
+  status: JobOfferStatus;
+  offered_at: string;
+  responded_at: string | null;
+}
+
+// -----------------------------------------------------------------------------
+// Supplier invoice upload (0008_supplier_invoice_upload.sql) — a supplier
+// uploads their own invoice once a job is confirmed/completed; a staff
+// member with dispatch.transfer_supplier_invoice forwards it to accounting.
+// -----------------------------------------------------------------------------
+
+export type SupplierInvoiceStatus = "submitted" | "forwarded_to_accounting";
+
+export interface JobSupplierInvoice {
+  id: string;
+  tenant_id: string;
+  job_id: string;
+  supplier_id: string;
+  amount: number;
+  currency: string;
+  notes: string | null;
+  storage_path: string;
+  file_name: string;
+  status: SupplierInvoiceStatus;
+  forwarded_by: string | null;
+  forwarded_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Supplier-safe read of a job offer — full address/customer contact only once confirmed. */
+export interface JobOfferView {
+  offer_id: string;
+  job_id: string;
+  offer_status: JobOfferStatus;
+  job_status: JobStatus;
   region: string | null;
-  offered_at: string | null;
+  supplier_payment_status: SupplierPaymentStatus;
+  offered_at: string;
   responded_at: string | null;
   confirmed_at: string | null;
   completed_at: string | null;
@@ -535,6 +602,7 @@ export interface Database {
       user_permission_overrides: Table<UserPermissionOverride>;
       profiles: Table<Profile>;
       user_brands: Table<UserBrand>;
+      user_regions: Table<UserRegion>;
       territories: Table<Territory>;
       user_territories: Table<UserTerritory>;
       audit_log: Table<AuditLogEntry>;
@@ -554,6 +622,9 @@ export interface Database {
       supplier_vehicles: Table<SupplierVehicle>;
       supplier_documents: Table<SupplierDocument>;
       jobs: Table<Job>;
+      job_offers: Table<JobOffer>;
+      job_supplier_invoices: Table<JobSupplierInvoice>;
+      supplier_payments: Table<SupplierPayment>;
     };
     Views: {
       job_offer_view: { Row: JobOfferView; Relationships: [] };
@@ -564,6 +635,9 @@ export interface Database {
       has_permission: { Args: { permission_key: string }; Returns: boolean };
       can_view_assignment: { Args: { p_assigned_user_id: string | null }; Returns: boolean };
       claim_lead: { Args: { p_lead_id: string }; Returns: Lead };
+      release_lead: { Args: { p_lead_id: string }; Returns: Lead };
+      accept_job_offer: { Args: { p_job_id: string }; Returns: Job };
+      reject_job_offer: { Args: { p_job_id: string }; Returns: JobOffer };
       next_document_number: {
         Args: { p_brand_id: string; p_doc_type: string; p_prefix: string };
         Returns: string;

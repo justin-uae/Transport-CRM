@@ -21,7 +21,7 @@ export async function createQuoteAction(
   const enquiryId = String(formData.get("enquiryId") ?? "");
   const { data: enquiry } = await supabase
     .from("enquiries")
-    .select("id, brand_id, customer_id")
+    .select("id, brand_id, customer_id, lead_id")
     .eq("id", enquiryId)
     .single();
 
@@ -110,6 +110,13 @@ export async function createQuoteAction(
 
   await supabase.from("quotes").update({ current_version_id: version.id }).eq("id", quote.id);
 
+  // A quote now genuinely exists for this enquiry — this is the point the
+  // originating lead (if any) should read as "converted", not merely when
+  // the enquiry was started.
+  if (enquiry.lead_id) {
+    await supabase.from("leads").update({ status: "converted" }).eq("id", enquiry.lead_id);
+  }
+
   const canSend = await hasPermission(actor, PERMISSIONS.QUOTES_SEND);
   let publicLink: string | null = null;
 
@@ -132,5 +139,6 @@ export async function createQuoteAction(
   });
 
   revalidatePath("/quotes");
+  if (enquiry.lead_id) revalidatePath("/leads");
   return { error: null, link: publicLink };
 }

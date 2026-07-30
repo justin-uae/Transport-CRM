@@ -1,12 +1,15 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useState, useTransition } from "react";
 import Link from "next/link";
-import { Search, Send, CheckCircle2, Timer, FileText } from "lucide-react";
+import { Send, CheckCircle2, Timer, FileText } from "lucide-react";
 import { Panel } from "@/components/ui/Panel";
 import { Kpi } from "@/components/ui/Kpi";
 import { PageHead } from "@/components/ui/PageHead";
+import { SearchInput } from "@/components/ui/SearchInput";
+import { Pagination } from "@/components/ui/Pagination";
 import { useToast } from "@/components/ui/Toast";
+import { ConfirmDetailModal } from "@/components/ui/ConfirmDetailModal";
 import { markQuotePaidAction } from "@/app/(staff)/quotes/actions";
 import type { QuoteStatus } from "@/lib/supabase/database.types";
 
@@ -41,19 +44,54 @@ function money(amount: number | undefined, currency: string) {
   return new Intl.NumberFormat("en-GB", { style: "currency", currency, maximumFractionDigits: 0 }).format(amount);
 }
 
-export function QuotesPage({ quotes }: { quotes: QuoteRow[] }) {
+type QuoteAction = { type: "markPaid" | "resend"; quote: QuoteRow };
+
+export function QuotesPage({
+  quotes,
+  canMarkPaid,
+  page,
+  pageSize,
+  total,
+  draftCount,
+  sentCount,
+  acceptedCount,
+  totalCount,
+  pipelineValue,
+  pipelineCurrency,
+}: {
+  quotes: QuoteRow[];
+  canMarkPaid: boolean;
+  page: number;
+  pageSize: number;
+  total: number;
+  draftCount: number;
+  sentCount: number;
+  acceptedCount: number;
+  totalCount: number;
+  pipelineValue: number;
+  pipelineCurrency: string;
+}) {
   const notify = useToast();
-  const [search, setSearch] = useState("");
   const [pending, startTransition] = useTransition();
+  const [action, setAction] = useState<QuoteAction | null>(null);
+  const [modalError, setModalError] = useState<string | null>(null);
+
+  function closeAction() {
+    if (pending) return;
+    setAction(null);
+    setModalError(null);
+  }
 
   function markPaid(quoteId: string) {
     startTransition(async () => {
       const result = await markQuotePaidAction(quoteId);
       if (result?.error) {
+        setModalError(result.error);
         notify(result.error);
         return;
       }
       notify("Quote marked as paid — invoice generated and job sent to Dispatch");
+      setAction(null);
     });
   }
 
@@ -62,17 +100,15 @@ export function QuotesPage({ quotes }: { quotes: QuoteRow[] }) {
     navigator.clipboard.writeText(link).then(() => notify(`${label} link copied`));
   }
 
-  const filtered = useMemo(
-    () => quotes.filter((q) => JSON.stringify(q).toLowerCase().includes(search.toLowerCase())),
-    [quotes, search],
-  );
-
-  const sentCount = quotes.filter((q) => q.status === "sent" || q.status === "viewed").length;
-  const acceptedCount = quotes.filter((q) => q.status === "accepted" || q.status === "converted").length;
-  const draftCount = quotes.filter((q) => q.status === "draft").length;
-  const pipelineValue = quotes
-    .filter((q) => q.status === "sent" || q.status === "viewed")
-    .reduce((sum, q) => sum + (q.quote_versions?.selling_price ?? 0), 0);
+  function confirmAction() {
+    if (!action) return;
+    if (action.type === "markPaid") {
+      markPaid(action.quote.id);
+    } else {
+      copyLink(action.quote.public_token, "Invoice");
+      setAction(null);
+    }
+  }
 
   return (
     <div>
@@ -92,21 +128,13 @@ export function QuotesPage({ quotes }: { quotes: QuoteRow[] }) {
       />
       <div className="grid gap-4 md:grid-cols-4">
         <Kpi title="Draft" value={String(draftCount)} icon={FileText} />
-        <Kpi title="Awaiting response" value={String(sentCount)} delta={money(pipelineValue, quotes[0]?.currency ?? "EUR") + " pipeline"} icon={Send} />
+        <Kpi title="Awaiting response" value={String(sentCount)} delta={money(pipelineValue, pipelineCurrency) + " pipeline"} icon={Send} />
         <Kpi title="Accepted" value={String(acceptedCount)} icon={CheckCircle2} />
-        <Kpi title="Total quotes" value={String(quotes.length)} icon={Timer} />
+        <Kpi title="Total quotes" value={String(totalCount)} icon={Timer} />
       </div>
       <Panel className="mt-6">
         <div className="flex flex-col gap-3 border-b pb-4 md:flex-row md:items-center">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={17} />
-            <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search quotes"
-              className="w-full rounded-xl border bg-slate-50 py-2.5 pl-10 pr-3 outline-none"
-            />
-          </div>
+          <SearchInput placeholder="Search quotes (number or invoice)" />
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
@@ -121,12 +149,14 @@ export function QuotesPage({ quotes }: { quotes: QuoteRow[] }) {
               </tr>
             </thead>
             <tbody>
-              {filtered.map((q) => {
+              {quotes.map((q) => {
                 const leg = q.enquiries?.enquiry_legs?.[0];
                 return (
                   <tr key={q.id} className="border-b last:border-0">
                     <td className="px-3 py-4 font-black text-primary-600">
-                      {q.quote_number}
+                      <Link href={`/quotes/${q.id}`} className="hover:underline">
+                        {q.quote_number}
+                      </Link>
                       {q.invoice_number && <div className="text-xs font-normal text-slate-400">Inv {q.invoice_number}</div>}
                     </td>
                     <td className="px-3 py-4 font-semibold">{q.customers?.company_name || q.customers?.contact_name || "—"}</td>
@@ -140,10 +170,19 @@ export function QuotesPage({ quotes }: { quotes: QuoteRow[] }) {
                       </span>
                     </td>
                     <td className="px-3 py-4 text-right">
-                      {q.status === "accepted" && (
+                      <Link
+                        href={`/quotes/${q.id}`}
+                        className="mr-2 inline-block rounded-lg border border-primary-300 px-3 py-2 text-xs font-bold text-primary-700"
+                      >
+                        View
+                      </Link>
+                      {q.status === "accepted" && canMarkPaid && (
                         <button
                           disabled={pending}
-                          onClick={() => markPaid(q.id)}
+                          onClick={() => {
+                            setModalError(null);
+                            setAction({ type: "markPaid", quote: q });
+                          }}
                           className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-bold text-white disabled:opacity-60"
                         >
                           Mark as Paid
@@ -151,7 +190,10 @@ export function QuotesPage({ quotes }: { quotes: QuoteRow[] }) {
                       )}
                       {q.status === "paid" && (
                         <button
-                          onClick={() => copyLink(q.public_token, "Invoice")}
+                          onClick={() => {
+                            setModalError(null);
+                            setAction({ type: "resend", quote: q });
+                          }}
                           className="rounded-lg border px-3 py-2 text-xs font-bold"
                         >
                           Resend Invoice
@@ -169,7 +211,7 @@ export function QuotesPage({ quotes }: { quotes: QuoteRow[] }) {
                   </tr>
                 );
               })}
-              {filtered.length === 0 && (
+              {quotes.length === 0 && (
                 <tr>
                   <td colSpan={6} className="py-8 text-center text-sm text-slate-500">
                     No quotes yet — build one from an enquiry.
@@ -179,7 +221,31 @@ export function QuotesPage({ quotes }: { quotes: QuoteRow[] }) {
             </tbody>
           </table>
         </div>
+        <Pagination page={page} pageSize={pageSize} total={total} />
       </Panel>
+
+      {action && (
+        <ConfirmDetailModal
+          open
+          onClose={closeAction}
+          title={action.type === "markPaid" ? "Mark this quote as paid?" : "Resend the invoice link?"}
+          description={
+            action.type === "markPaid"
+              ? "This generates an invoice number and sends the job to Dispatch — only do this once the customer's bank transfer has arrived."
+              : "This copies the customer's invoice link to your clipboard so you can share it again."
+          }
+          pending={pending}
+          error={modalError}
+          details={[
+            { label: "Quote", value: action.quote.quote_number },
+            { label: "Customer", value: action.quote.customers?.company_name || action.quote.customers?.contact_name || "—" },
+            { label: "Value", value: money(action.quote.quote_versions?.selling_price, action.quote.currency) },
+            ...(action.type === "resend" ? [{ label: "Invoice", value: action.quote.invoice_number ?? "—" }] : []),
+          ]}
+          confirmLabel={action.type === "markPaid" ? "Mark as paid" : "Copy link"}
+          onConfirm={confirmAction}
+        />
+      )}
     </div>
   );
 }

@@ -94,6 +94,18 @@ export const NAV: NavItem[] = [
   { label: "Calls", href: "/calls", icon: Phone },
   { label: "Live Chat", href: "/live-chat", icon: Headphones },
   { label: "Accounting", href: "/accounting", icon: WalletCards, anyOf: [PERMISSIONS.FINANCE_VIEW_INVOICES] },
+  {
+    label: "Customer Payments",
+    href: "/accounting/customer-payments",
+    icon: WalletCards,
+    anyOf: [PERMISSIONS.FINANCE_RECORD_PAYMENTS],
+  },
+  {
+    label: "Supplier Payments",
+    href: "/accounting/supplier-payments",
+    icon: WalletCards,
+    anyOf: [PERMISSIONS.FINANCE_PAY_SUPPLIERS],
+  },
   { label: "Commissions", href: "/commissions", icon: BadgeDollarSign, anyOf: [PERMISSIONS.FINANCE_VIEW_COMMISSIONS] },
   { label: "Attendance", href: "/attendance", icon: Clock3 },
   { label: "Business Intelligence", href: "/business-intelligence", icon: BarChart3, anyOf: [PERMISSIONS.FINANCE_VIEW_PROFIT] },

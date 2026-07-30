@@ -26,7 +26,10 @@ export async function inviteUserAction(
   const roleId = String(formData.get("roleId") ?? "");
   const jobTitle = String(formData.get("jobTitle") ?? "").trim() || null;
   const brandId = String(formData.get("brandId") ?? "").trim() || null;
-  const region = String(formData.get("region") ?? "").trim() || null;
+  const regions = formData
+    .getAll("regions")
+    .map((r) => String(r).trim())
+    .filter(Boolean);
 
   if (!fullName || !email || !roleId) {
     return { error: "Full name, email and role are required.", link: null };
@@ -67,7 +70,6 @@ export async function inviteUserAction(
     role_id: roleId,
     default_company_id: companyId,
     default_brand_id: brandId,
-    region,
     status: "invited",
     requires_password_reset: true,
   });
@@ -78,13 +80,17 @@ export async function inviteUserAction(
 
   await admin.from("user_brands").insert({ user_id: invited.user.id, brand_id: brandId });
 
+  if (regions.length > 0) {
+    await admin.from("user_regions").insert(regions.map((region) => ({ user_id: invited.user.id, region })));
+  }
+
   await recordAudit({
     tenantId: actor.tenant_id,
     actorId: actor.id,
     action: "user_invited",
     entityType: "profile",
     entityId: invited.user.id,
-    newValue: { email, fullName, roleId, brandId, region },
+    newValue: { email, fullName, roleId, brandId, regions },
   });
 
   revalidatePath("/settings/users");
@@ -121,6 +127,60 @@ export async function updateUserStatusAction(userId: string, status: ProfileStat
     entityId: userId,
     previousValue: { status: target.status },
     newValue: { status },
+  });
+
+  revalidatePath("/settings/users");
+}
+
+export async function addUserRegionAction(userId: string, region: string) {
+  const actor = await requireUserManager();
+  const supabase = await createClient();
+
+  const trimmed = region.trim();
+  if (!trimmed) return { error: "Enter a region name." };
+
+  const { data: target } = await supabase.from("profiles").select("tenant_id").eq("id", userId).single();
+  if (!target || target.tenant_id !== actor.tenant_id) {
+    return { error: "User not found." };
+  }
+
+  const { error } = await supabase.from("user_regions").insert({ user_id: userId, region: trimmed });
+  if (error) {
+    return { error: error.message.includes("duplicate") ? "That region is already assigned." : error.message };
+  }
+
+  await recordAudit({
+    tenantId: actor.tenant_id,
+    actorId: actor.id,
+    action: "user_region_added",
+    entityType: "profile",
+    entityId: userId,
+    newValue: { region: trimmed },
+  });
+
+  revalidatePath("/settings/users");
+  return { error: null };
+}
+
+export async function removeUserRegionAction(userId: string, regionId: string) {
+  const actor = await requireUserManager();
+  const supabase = await createClient();
+
+  const { data: target } = await supabase.from("profiles").select("tenant_id").eq("id", userId).single();
+  if (!target || target.tenant_id !== actor.tenant_id) {
+    throw new Error("User not found.");
+  }
+
+  const { error } = await supabase.from("user_regions").delete().eq("id", regionId).eq("user_id", userId);
+  if (error) throw new Error(error.message);
+
+  await recordAudit({
+    tenantId: actor.tenant_id,
+    actorId: actor.id,
+    action: "user_region_removed",
+    entityType: "profile",
+    entityId: userId,
+    previousValue: { regionId },
   });
 
   revalidatePath("/settings/users");

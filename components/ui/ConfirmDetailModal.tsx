@@ -1,0 +1,113 @@
+"use client";
+
+import { useEffect } from "react";
+import { createPortal } from "react-dom";
+import clsx from "clsx";
+
+export interface ConfirmDetailModalProps {
+  open: boolean;
+  onClose: () => void;
+  title: string;
+  description?: string;
+  /** Simple label/value rows — covers most cases (lead detail, quote detail, job detail). */
+  details?: { label: string; value: React.ReactNode }[];
+  /** Free-form body content, rendered below `details` if both are given. */
+  children?: React.ReactNode;
+  confirmLabel?: string;
+  cancelLabel?: string;
+  /** Red confirm button, for actions like unclaim/reject/cancel. */
+  destructive?: boolean;
+  /** Caller's own useTransition pending state. */
+  pending?: boolean;
+  error?: string | null;
+  onConfirm?: () => void;
+}
+
+/**
+ * The single shared confirmation/detail dialog used across the app: shows
+ * full relevant detail plus one deliberate Confirm click. Every
+ * state-changing action (claim, create quote, resend invoice, assign
+ * supplier, ...) reuses this instead of a bespoke modal.
+ */
+export function ConfirmDetailModal({
+  open,
+  onClose,
+  title,
+  description,
+  details,
+  children,
+  confirmLabel = "Confirm",
+  cancelLabel = "Cancel",
+  destructive = false,
+  pending = false,
+  error,
+  onConfirm,
+}: ConfirmDetailModalProps) {
+  useEffect(() => {
+    if (!open) return;
+    function handleKey(e: KeyboardEvent) {
+      if (e.key === "Escape" && !pending) onClose();
+    }
+    document.addEventListener("keydown", handleKey);
+    return () => document.removeEventListener("keydown", handleKey);
+  }, [open, pending, onClose]);
+
+  if (!open || typeof document === "undefined") return null;
+
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-900/40 p-4"
+      onClick={() => !pending && onClose()}
+    >
+      <div
+        className="max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-3xl border border-slate-200 bg-white p-6 shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h3 className="text-lg font-black text-slate-900">{title}</h3>
+        {description && <p className="mt-1 text-sm text-slate-500">{description}</p>}
+
+        {details && details.length > 0 && (
+          <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-3 rounded-2xl bg-slate-50 p-4">
+            {details.map((d, i) => (
+              <div key={i}>
+                <dt className="text-xs font-bold uppercase text-slate-400">{d.label}</dt>
+                <dd className="mt-0.5 text-sm font-semibold text-slate-800">{d.value}</dd>
+              </div>
+            ))}
+          </dl>
+        )}
+
+        {children && <div className="mt-4">{children}</div>}
+
+        {error && (
+          <div className="mt-4 rounded-xl bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">{error}</div>
+        )}
+
+        <div className="mt-6 flex justify-end gap-2">
+          <button
+            type="button"
+            disabled={pending}
+            onClick={onClose}
+            className="rounded-xl border px-4 py-2.5 text-sm font-bold disabled:opacity-60"
+          >
+            {cancelLabel}
+          </button>
+          {onConfirm && (
+            <button
+              type="button"
+              disabled={pending}
+              onClick={onConfirm}
+              className={clsx(
+                "rounded-xl px-4 py-2.5 text-sm font-bold text-white disabled:opacity-60",
+                destructive ? "bg-red-600" : "bg-primary-500",
+              )}
+            >
+              {pending ? "Please wait…" : confirmLabel}
+            </button>
+          )}
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
+}

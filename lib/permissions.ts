@@ -1,4 +1,5 @@
 import "server-only";
+import { cache } from "react";
 import { createClient } from "./supabase/server";
 import type { Profile } from "./supabase/database.types";
 
@@ -9,11 +10,12 @@ import { PERMISSIONS, type PermissionKey } from "./permissionKeys";
  * Checks a single permission for the current session via the database
  * `has_permission()` function (role grant minus/plus per-user overrides).
  * Master Admins always pass without a round trip.
+ *
+ * Cached per (profile, key) for the lifetime of the request — the same
+ * permission is often checked from both a layout (nav gating) and the page
+ * it wraps.
  */
-export async function hasPermission(
-  profile: Profile,
-  key: PermissionKey,
-): Promise<boolean> {
+export const hasPermission = cache(async (profile: Profile, key: PermissionKey): Promise<boolean> => {
   if (profile.is_master_admin) return true;
 
   const supabase = await createClient();
@@ -23,15 +25,18 @@ export async function hasPermission(
 
   if (error) return false;
   return Boolean(data);
-}
+});
 
 /**
  * Every permission key currently granted to the signed-in user — role
  * grants plus/minus per-user overrides, mirroring has_permission()'s SQL in
  * a single round trip instead of one RPC call per key. Used to filter the
  * sidebar and gate whole route groups (e.g. /settings) without N+1 checks.
+ *
+ * Cached per profile for the request — the staff layout and the settings
+ * layout both call this today and previously paid for it twice.
  */
-export async function getGrantedPermissions(profile: Profile): Promise<Set<PermissionKey>> {
+export const getGrantedPermissions = cache(async (profile: Profile): Promise<Set<PermissionKey>> => {
   if (profile.is_master_admin) return new Set(Object.values(PERMISSIONS));
 
   const supabase = await createClient();
@@ -55,4 +60,4 @@ export async function getGrantedPermissions(profile: Profile): Promise<Set<Permi
   }
 
   return granted as Set<PermissionKey>;
-}
+});

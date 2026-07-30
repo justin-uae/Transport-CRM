@@ -1,11 +1,13 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import Link from "next/link";
 import { Panel } from "@/components/ui/Panel";
 import { PageHead } from "@/components/ui/PageHead";
+import { Pagination } from "@/components/ui/Pagination";
 import { useToast } from "@/components/ui/Toast";
-import { assignSupplierAction, attachSupplierInvoiceAction } from "@/app/(staff)/dispatch/actions";
-import type { JobStatus } from "@/lib/supabase/database.types";
+import { attachSupplierInvoiceAction } from "@/app/(staff)/dispatch/actions";
+import type { JobOfferStatus, JobStatus } from "@/lib/supabase/database.types";
 
 export interface JobRow {
   id: string;
@@ -19,6 +21,7 @@ export interface JobRow {
   supplier_invoice_url: string | null;
   quotes: { quote_number: string; customers: { company_name: string | null; contact_name: string } | null } | null;
   suppliers: { name: string } | null;
+  job_offers: { id: string; status: JobOfferStatus; suppliers: { name: string } | null }[];
 }
 
 export interface SupplierOption {
@@ -37,26 +40,19 @@ const STATUS_STYLE: Record<JobStatus, string> = {
   cancelled: "bg-slate-100 text-slate-500",
 };
 
-function JobCard({ job, suppliers }: { job: JobRow; suppliers: SupplierOption[] }) {
+function offersSummary(job: JobRow) {
+  if (job.suppliers) return `Assigned to ${job.suppliers.name}`;
+  const live = job.job_offers.filter((o) => o.status === "sent");
+  if (live.length > 0) return `${live.length} offer${live.length === 1 ? "" : "s"} pending`;
+  if (job.status === "unassigned") return "Not yet offered";
+  return null;
+}
+
+function JobCard({ job }: { job: JobRow }) {
   const notify = useToast();
   const [pending, startTransition] = useTransition();
-  const [supplierId, setSupplierId] = useState(
-    suppliers.find((s) => s.region && job.region?.toLowerCase().includes(s.region.toLowerCase()))?.id ?? suppliers[0]?.id ?? "",
-  );
   const [note, setNote] = useState(job.supplier_invoice_note ?? "");
   const [url, setUrl] = useState(job.supplier_invoice_url ?? "");
-
-  function assign() {
-    if (!supplierId) return;
-    startTransition(async () => {
-      try {
-        await assignSupplierAction(job.id, supplierId);
-        notify("Job offered to supplier");
-      } catch (err) {
-        notify(err instanceof Error ? err.message : "Could not assign the supplier.");
-      }
-    });
-  }
 
   function saveInvoice() {
     startTransition(async () => {
@@ -70,6 +66,7 @@ function JobCard({ job, suppliers }: { job: JobRow; suppliers: SupplierOption[] 
   }
 
   const customer = job.quotes?.customers;
+  const summary = offersSummary(job);
 
   return (
     <div className="rounded-2xl border p-4">
@@ -80,38 +77,20 @@ function JobCard({ job, suppliers }: { job: JobRow; suppliers: SupplierOption[] 
             {job.quotes?.quote_number} · {job.region ?? "No region"}
           </div>
         </div>
-        <span className={`rounded-full px-2.5 py-1 text-xs font-bold capitalize ${STATUS_STYLE[job.status]}`}>
-          {job.status.replaceAll("_", " ")}
-        </span>
+        <div className="flex items-center gap-2">
+          <span className={`rounded-full px-2.5 py-1 text-xs font-bold capitalize ${STATUS_STYLE[job.status]}`}>
+            {job.status.replaceAll("_", " ")}
+          </span>
+          <Link
+            href={`/dispatch/${job.id}`}
+            className="rounded-lg border border-primary-300 px-3 py-2 text-xs font-bold text-primary-700"
+          >
+            View
+          </Link>
+        </div>
       </div>
 
-      {(job.status === "unassigned" || job.status === "rejected_by_supplier") && (
-        <div className="mt-3 flex flex-wrap items-center gap-2">
-          <select
-            value={supplierId}
-            onChange={(e) => setSupplierId(e.target.value)}
-            className="rounded-lg border px-3 py-2 text-sm"
-          >
-            {suppliers.length === 0 && <option value="">No approved suppliers</option>}
-            {suppliers.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name} {s.region ? `(${s.region})` : ""}
-              </option>
-            ))}
-          </select>
-          <button
-            disabled={pending || !supplierId}
-            onClick={assign}
-            className="rounded-lg bg-primary-500 px-3 py-2 text-xs font-bold text-white disabled:opacity-60"
-          >
-            Offer job
-          </button>
-        </div>
-      )}
-
-      {job.suppliers && job.status !== "unassigned" && (
-        <p className="mt-2 text-xs text-slate-500">Assigned to: {job.suppliers.name}</p>
-      )}
+      {summary && <p className="mt-2 text-xs text-slate-500">{summary}</p>}
 
       {job.status === "completed" && (
         <div className="mt-3 space-y-2 border-t pt-3">
@@ -143,21 +122,32 @@ function JobCard({ job, suppliers }: { job: JobRow; suppliers: SupplierOption[] 
   );
 }
 
-export function DispatchBoard({ jobs, suppliers }: { jobs: JobRow[]; suppliers: SupplierOption[] }) {
+export function DispatchBoard({
+  jobs,
+  page,
+  pageSize,
+  total,
+}: {
+  jobs: JobRow[];
+  page: number;
+  pageSize: number;
+  total: number;
+}) {
   return (
     <div>
       <PageHead
         eyebrow="Operations"
         title="Dispatch"
-        text="Assign paid bookings to an approved supplier, manually and region-suggested."
+        text="Assign paid bookings to one or more approved suppliers — whoever accepts first gets the job. Open a job to search suppliers and offer it."
       />
       <Panel>
         <div className="space-y-3">
           {jobs.map((job) => (
-            <JobCard key={job.id} job={job} suppliers={suppliers} />
+            <JobCard key={job.id} job={job} />
           ))}
           {jobs.length === 0 && <p className="py-8 text-center text-sm text-slate-500">No jobs yet — they appear once a quote is marked as paid.</p>}
         </div>
+        <Pagination page={page} pageSize={pageSize} total={total} />
       </Panel>
     </div>
   );

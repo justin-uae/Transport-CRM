@@ -1,10 +1,11 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
 import clsx from "clsx";
 import { Panel } from "@/components/ui/Panel";
 import { SectionTitle } from "@/components/ui/SectionTitle";
 import { useToast } from "@/components/ui/Toast";
+import { ConfirmDetailModal } from "@/components/ui/ConfirmDetailModal";
 import { createQuoteAction } from "./actions";
 
 const STEPS = ["Enquiry", "Vehicle", "Pricing", "Review & Send"];
@@ -41,6 +42,9 @@ export function NewQuoteForm({
   const [error, setError] = useState<string | null>(null);
   const [link, setLink] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  const formRef = useRef<HTMLFormElement>(null);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [reviewSnapshot, setReviewSnapshot] = useState<{ price: string; sendNow: boolean } | null>(null);
 
   function handleSubmit(formData: FormData) {
     setError(null);
@@ -50,6 +54,7 @@ export function NewQuoteForm({
         setError(result.error);
         return;
       }
+      setConfirmOpen(false);
       if (result?.link) {
         setLink(result.link);
         notify("Quote sent — share the link below");
@@ -57,6 +62,25 @@ export function NewQuoteForm({
         notify("Quote saved as a draft");
       }
     });
+  }
+
+  function openConfirm() {
+    const form = formRef.current;
+    if (!form) return;
+    const data = new FormData(form);
+    const price = Number(data.get("sellingPrice") ?? 0);
+    const currency = String(data.get("currency") ?? defaultCurrency);
+    setReviewSnapshot({
+      price: price ? new Intl.NumberFormat("en-GB", { style: "currency", currency, maximumFractionDigits: 0 }).format(price) : "—",
+      sendNow: canSend && data.get("sendNow") === "on",
+    });
+    setError(null);
+    setConfirmOpen(true);
+  }
+
+  function confirmSubmit() {
+    if (!formRef.current) return;
+    handleSubmit(new FormData(formRef.current));
   }
 
   if (link) {
@@ -81,7 +105,7 @@ export function NewQuoteForm({
   }
 
   return (
-    <form action={handleSubmit}>
+    <form ref={formRef} onSubmit={(e) => e.preventDefault()}>
       <input type="hidden" name="enquiryId" value={enquiryId} />
       <Panel>
         <div className="grid grid-cols-4 gap-2">
@@ -224,8 +248,6 @@ export function NewQuoteForm({
             )}
           </div>
 
-          {error && <div className="mt-4 rounded-xl bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">{error}</div>}
-
           <div className="mt-6 flex justify-between border-t pt-5">
             <button
               type="button"
@@ -244,13 +266,38 @@ export function NewQuoteForm({
                 Next Step →
               </button>
             ) : (
-              <button type="submit" disabled={pending} className="rounded-xl bg-primary-500 px-5 py-2.5 text-sm font-bold text-white disabled:opacity-60">
-                {pending ? "Saving…" : "Save Quote"}
+              <button
+                type="button"
+                onClick={openConfirm}
+                disabled={pending}
+                className="rounded-xl bg-primary-500 px-5 py-2.5 text-sm font-bold text-white disabled:opacity-60"
+              >
+                Review & Save
               </button>
             )}
           </div>
         </Panel>
       </div>
+
+      <ConfirmDetailModal
+        open={confirmOpen}
+        onClose={() => !pending && setConfirmOpen(false)}
+        title={reviewSnapshot?.sendNow ? "Send this quote to the customer?" : "Save this quote as a draft?"}
+        description={
+          reviewSnapshot?.sendNow
+            ? "The customer will receive a link to view, accept or reject this quote."
+            : "This quote will be saved as a draft — a manager can send it later."
+        }
+        pending={pending}
+        error={error}
+        details={[
+          { label: "Customer", value: customerName },
+          { label: "Journey", value: `${pickup} → ${destination}` },
+          { label: "Price", value: reviewSnapshot?.price ?? "—" },
+        ]}
+        confirmLabel={reviewSnapshot?.sendNow ? "Send quote" : "Save draft"}
+        onConfirm={confirmSubmit}
+      />
     </form>
   );
 }

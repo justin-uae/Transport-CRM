@@ -142,6 +142,7 @@ export default async function PublicQuotePage({ params }: { params: Promise<{ to
               />
             ) : status === "paid" ? (
               <InvoiceView
+                token={token}
                 invoiceNumber={quote.invoice_number}
                 invoicedAt={quote.invoiced_at}
                 amount={version ? money(version.selling_price) : "—"}
@@ -232,10 +233,12 @@ function BankTransferInstructions({
 }
 
 function InvoiceView({
+  token,
   invoiceNumber,
   invoicedAt,
   amount,
 }: {
+  token: string;
   invoiceNumber: string | null;
   invoicedAt: string | null;
   amount: string;
@@ -257,6 +260,14 @@ function InvoiceView({
           <b className="text-emerald-700">{amount}</b>
         </div>
       </div>
+      <a
+        href={`/q/${token}/invoice`}
+        target="_blank"
+        rel="noreferrer"
+        className="mt-4 inline-block rounded-xl bg-emerald-600 px-5 py-3 text-sm font-bold text-white"
+      >
+        Download Invoice
+      </a>
     </div>
   );
 }

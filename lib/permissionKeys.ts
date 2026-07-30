@@ -46,6 +46,7 @@ export const PERMISSIONS = {
   DISPATCH_REASSIGN_SUPPLIER: "dispatch.reassign_supplier",
   DISPATCH_REASSIGN_DRIVER: "dispatch.reassign_driver",
   DISPATCH_CONFIRM_COMPLETION: "dispatch.confirm_completion",
+  DISPATCH_TRANSFER_SUPPLIER_INVOICE: "dispatch.transfer_supplier_invoice",
 
   FINANCE_VIEW_INVOICES: "finance.view_invoices",
   FINANCE_CREATE_INVOICES: "finance.create_invoices",
@@ -53,6 +54,7 @@ export const PERMISSIONS = {
   FINANCE_APPROVE_INVOICES: "finance.approve_invoices",
   FINANCE_VERIFY_BANK_TRANSFERS: "finance.verify_bank_transfers",
   FINANCE_RECORD_PAYMENTS: "finance.record_payments",
+  FINANCE_PAY_SUPPLIERS: "finance.pay_suppliers",
   FINANCE_PROCESS_REFUNDS: "finance.process_refunds",
   FINANCE_ISSUE_CREDIT_NOTES: "finance.issue_credit_notes",
   FINANCE_VIEW_BANK_DETAILS: "finance.view_bank_details",

@@ -124,7 +124,12 @@ export function VerificationForm({
     });
   }
 
-  const canEdit = supplier.status === "invited" || supplier.status === "rejected";
+  // Business details, vehicles and documents stay editable at any status —
+  // suppliers need to be able to update contact info, add vehicles, etc.
+  // after approval too. Only the "submit for review" step is restricted to
+  // pre-approval statuses, since an approved supplier has nothing to resubmit.
+  const canEdit = true;
+  const canSubmit = supplier.status === "invited" || supplier.status === "rejected";
 
   return (
     <div className="space-y-5">
@@ -237,7 +242,7 @@ export function VerificationForm({
         )}
       </Panel>
 
-      {canEdit && (
+      {canSubmit && (
         <button onClick={submit} disabled={pending} className="w-full rounded-xl bg-primary-500 py-3 text-sm font-black text-white disabled:opacity-60">
           {pending ? "Submitting…" : "Submit for review"}
         </button>

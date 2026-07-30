@@ -29,6 +29,28 @@ export async function claimLeadAction(leadId: string) {
   return { error: null };
 }
 
+export async function releaseLeadAction(leadId: string) {
+  const actor = await requireProfile();
+  const supabase = await createClient();
+
+  const { data: lead, error } = await supabase.rpc("release_lead", { p_lead_id: leadId });
+
+  if (error || !lead) {
+    return { error: error?.message ?? "This lead cannot be released right now." };
+  }
+
+  await recordAudit({
+    tenantId: actor.tenant_id,
+    actorId: actor.id,
+    action: "lead_released",
+    entityType: "lead",
+    entityId: leadId,
+  });
+
+  revalidatePath("/leads");
+  return { error: null };
+}
+
 /**
  * Fast path from an already-assigned lead straight into the quote builder —
  * creates the enquiry + first journey leg pre-filled from the lead's
@@ -36,6 +58,12 @@ export async function claimLeadAction(leadId: string) {
  * website webhook) and redirects into /quotes/new. The manual 4-step
  * enquiry wizard at /leads/new stays for phone/walk-in enquiries with no
  * originating lead.
+ *
+ * A lead only flips to "converted" once a real quote exists for it (see
+ * createQuoteAction) — not just because an enquiry was started. If the
+ * enquiry was already created on a previous click (e.g. the user left the
+ * quote builder without saving), this resumes that same enquiry instead of
+ * creating a duplicate.
  */
 export async function createEnquiryFromLeadAction(leadId: string) {
   const actor = await requireProfile();
@@ -52,6 +80,18 @@ export async function createEnquiryFromLeadAction(leadId: string) {
   }
   if (!lead.customer_id) {
     return { error: "This lead has no linked customer yet." };
+  }
+
+  const { data: existingEnquiry } = await supabase
+    .from("enquiries")
+    .select("id")
+    .eq("lead_id", lead.id)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (existingEnquiry) {
+    redirect(`/quotes/new?enquiryId=${existingEnquiry.id}`);
   }
 
   const { data: enquiry, error: enquiryError } = await supabase
@@ -89,8 +129,6 @@ export async function createEnquiryFromLeadAction(leadId: string) {
   if (legError) {
     return { error: legError.message };
   }
-
-  await supabase.from("leads").update({ status: "converted" }).eq("id", lead.id);
 
   await recordAudit({
     tenantId: actor.tenant_id,

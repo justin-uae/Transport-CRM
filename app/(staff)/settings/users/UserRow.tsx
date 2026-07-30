@@ -1,8 +1,14 @@
 "use client";
 
-import { useTransition } from "react";
+import { useState, useTransition } from "react";
+import { X, Plus } from "lucide-react";
 import { useToast } from "@/components/ui/Toast";
-import { updateUserStatusAction, updateUserRoleAction } from "./actions";
+import {
+  updateUserStatusAction,
+  updateUserRoleAction,
+  addUserRegionAction,
+  removeUserRegionAction,
+} from "./actions";
 import type { ProfileStatus } from "@/lib/supabase/database.types";
 
 const STATUS_STYLES: Record<ProfileStatus, string> = {
@@ -21,8 +27,8 @@ export interface UserListRow {
   status: ProfileStatus;
   role_id: string | null;
   is_master_admin: boolean;
-  region: string | null;
   brands: { name: string } | null;
+  user_regions: { id: string; region: string }[];
 }
 
 export function UserRow({
@@ -36,6 +42,37 @@ export function UserRow({
 }) {
   const notify = useToast();
   const [pending, startTransition] = useTransition();
+  const [regionInput, setRegionInput] = useState("");
+  const [addingRegion, setAddingRegion] = useState(false);
+
+  function addRegion() {
+    const value = regionInput.trim();
+    if (!value) {
+      setAddingRegion(false);
+      return;
+    }
+    startTransition(async () => {
+      const result = await addUserRegionAction(user.id, value);
+      if (result?.error) {
+        notify(result.error);
+        return;
+      }
+      setRegionInput("");
+      setAddingRegion(false);
+      notify(`Region added for ${user.full_name}`);
+    });
+  }
+
+  function removeRegion(regionId: string) {
+    startTransition(async () => {
+      try {
+        await removeUserRegionAction(user.id, regionId);
+        notify(`Region removed for ${user.full_name}`);
+      } catch (err) {
+        notify(err instanceof Error ? err.message : "Could not remove region");
+      }
+    });
+  }
 
   function changeStatus(status: ProfileStatus) {
     startTransition(async () => {
@@ -69,7 +106,61 @@ export function UserRow({
       <td className="text-sm">
         {user.brands?.name ?? <span className="text-red-500">No brand</span>}
       </td>
-      <td className="text-sm text-slate-600">{user.region ?? "—"}</td>
+      <td className="max-w-[220px] text-sm text-slate-600">
+        <div className="flex flex-wrap items-center gap-1">
+          {user.user_regions.map((r) => (
+            <span
+              key={r.id}
+              className="flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-bold text-slate-600"
+            >
+              {r.region}
+              {canManage && (
+                <button
+                  type="button"
+                  disabled={pending}
+                  onClick={() => removeRegion(r.id)}
+                  className="rounded-full hover:bg-slate-200 disabled:opacity-60"
+                  aria-label={`Remove ${r.region}`}
+                >
+                  <X size={10} />
+                </button>
+              )}
+            </span>
+          ))}
+          {user.user_regions.length === 0 && !addingRegion && <span>—</span>}
+          {canManage &&
+            (addingRegion ? (
+              <input
+                autoFocus
+                value={regionInput}
+                onChange={(e) => setRegionInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    addRegion();
+                  }
+                  if (e.key === "Escape") {
+                    setAddingRegion(false);
+                    setRegionInput("");
+                  }
+                }}
+                onBlur={addRegion}
+                placeholder="Region name"
+                className="w-24 rounded-lg border px-1.5 py-0.5 text-xs outline-none"
+              />
+            ) : (
+              <button
+                type="button"
+                disabled={pending}
+                onClick={() => setAddingRegion(true)}
+                className="rounded-full border border-dashed border-slate-300 p-0.5 text-slate-400 hover:text-slate-600 disabled:opacity-60"
+                aria-label="Add region"
+              >
+                <Plus size={10} />
+              </button>
+            ))}
+        </div>
+      </td>
       <td>
         {user.is_master_admin ? (
           <span className="text-sm font-bold">Master Admin</span>

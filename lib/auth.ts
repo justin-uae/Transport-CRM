@@ -1,4 +1,5 @@
 import "server-only";
+import { cache } from "react";
 import { redirect } from "next/navigation";
 import { createClient } from "./supabase/server";
 import type { Profile, Supplier } from "./supabase/database.types";
@@ -7,8 +8,14 @@ import type { Profile, Supplier } from "./supabase/database.types";
  * Loads the signed-in user's profile (role, tenant, brand defaults, flags).
  * Redirects to /login if there is no session — call this at the top of any
  * (staff) Server Component/layout that requires auth.
+ *
+ * Wrapped in React.cache() so the several places that all need the profile
+ * within one request (staff layout, settings layout, the page itself) share
+ * a single Supabase round trip instead of repeating it per call — this is
+ * request-scoped memoization, not a cross-request cache, so nothing needs
+ * explicit invalidation when a profile changes.
  */
-export async function requireProfile(): Promise<Profile> {
+export const requireProfile = cache(async (): Promise<Profile> => {
   const supabase = await createClient();
   const {
     data: { user },
@@ -34,7 +41,7 @@ export async function requireProfile(): Promise<Profile> {
   }
 
   return profile;
-}
+});
 
 /**
  * Loads the signed-in supplier's row — the supplier-portal equivalent of
@@ -42,7 +49,7 @@ export async function requireProfile(): Promise<Profile> {
  * separate identity space, see 0003_operations.sql); redirects to /login if
  * there's no session or no matching supplier.
  */
-export async function requireSupplier(): Promise<Supplier> {
+export const requireSupplier = cache(async (): Promise<Supplier> => {
   const supabase = await createClient();
   const {
     data: { user },
@@ -64,10 +71,10 @@ export async function requireSupplier(): Promise<Supplier> {
   }
 
   return supplier;
-}
+});
 
 /** Non-redirecting variant for places that can render a fallback instead. */
-export async function getProfile(): Promise<Profile | null> {
+export const getProfile = cache(async (): Promise<Profile | null> => {
   const supabase = await createClient();
   const {
     data: { user },
@@ -81,4 +88,4 @@ export async function getProfile(): Promise<Profile | null> {
     .single();
 
   return profile ?? null;
-}
+});

@@ -12,31 +12,98 @@ import { recordAudit } from "@/lib/audit";
 // the supplier's own session, same reasoning as the public /q/[token] flow.
 const admin = () => createAdminClient();
 
-export async function respondToJobAction(jobId: string, decision: "accepted_by_supplier" | "rejected_by_supplier") {
+export async function acceptJobOfferAction(jobId: string) {
+  const supplier = await requireSupplier();
+  const supabase = await createClient();
+
+  const { data: job, error } = await supabase.rpc("accept_job_offer", { p_job_id: jobId });
+  if (error || !job) {
+    throw new Error(error?.message ?? "This job offer is no longer available.");
+  }
+
+  await recordAudit({
+    client: admin(),
+    tenantId: supplier.tenant_id,
+    actorId: null,
+    action: "job_accepted_by_supplier",
+    entityType: "job",
+    entityId: jobId,
+  });
+
+  revalidatePath("/supplier/dashboard");
+  revalidatePath("/dispatch");
+}
+
+export async function rejectJobOfferAction(jobId: string) {
+  const supplier = await requireSupplier();
+  const supabase = await createClient();
+
+  const { data: offer, error } = await supabase.rpc("reject_job_offer", { p_job_id: jobId });
+  if (error || !offer) {
+    throw new Error(error?.message ?? "This job offer is no longer available.");
+  }
+
+  await recordAudit({
+    client: admin(),
+    tenantId: supplier.tenant_id,
+    actorId: null,
+    action: "job_rejected_by_supplier",
+    entityType: "job",
+    entityId: jobId,
+  });
+
+  revalidatePath("/supplier/dashboard");
+  revalidatePath("/dispatch");
+}
+
+export async function uploadSupplierInvoiceAction(
+  jobId: string,
+  data: { amount: number; currency: string; notes: string; storagePath: string; fileName: string },
+) {
   const supplier = await requireSupplier();
   const supabase = await createClient();
 
   const { data: job } = await supabase.from("jobs").select("status, assigned_supplier_id, tenant_id").eq("id", jobId).single();
-  if (!job || job.assigned_supplier_id !== supplier.id || job.status !== "offered") {
-    throw new Error("This job is no longer available to respond to.");
+  if (!job || job.assigned_supplier_id !== supplier.id || !["confirmed", "completed"].includes(job.status)) {
+    throw new Error("You can only upload an invoice once this job is confirmed.");
   }
 
-  const { error } = await supabase
-    .from("jobs")
-    .update({ status: decision, responded_at: new Date().toISOString() })
-    .eq("id", jobId);
+  const { data: existing } = await supabase
+    .from("job_supplier_invoices")
+    .select("id, status")
+    .eq("job_id", jobId)
+    .maybeSingle();
+  if (existing?.status === "forwarded_to_accounting") {
+    throw new Error("This invoice has already been forwarded to accounting and can no longer be edited.");
+  }
+
+  const { error } = await supabase.from("job_supplier_invoices").upsert(
+    {
+      tenant_id: job.tenant_id,
+      job_id: jobId,
+      supplier_id: supplier.id,
+      amount: data.amount,
+      currency: data.currency || "EUR",
+      notes: data.notes.trim() || null,
+      storage_path: data.storagePath,
+      file_name: data.fileName,
+      status: "submitted",
+    },
+    { onConflict: "job_id" },
+  );
   if (error) throw new Error(error.message);
 
   await recordAudit({
     client: admin(),
     tenantId: job.tenant_id,
     actorId: null,
-    action: decision === "accepted_by_supplier" ? "job_accepted_by_supplier" : "job_rejected_by_supplier",
+    action: existing ? "supplier_invoice_updated" : "supplier_invoice_uploaded",
     entityType: "job",
     entityId: jobId,
   });
 
   revalidatePath("/supplier/dashboard");
+  revalidatePath("/dispatch");
 }
 
 export async function confirmJobAction(jobId: string) {

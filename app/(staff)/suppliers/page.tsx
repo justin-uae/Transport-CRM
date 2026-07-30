@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { PageHead } from "@/components/ui/PageHead";
 import { Panel } from "@/components/ui/Panel";
+import { SearchInput } from "@/components/ui/SearchInput";
+import { Pagination } from "@/components/ui/Pagination";
 import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { AddSupplierForm } from "./AddSupplierForm";
@@ -16,14 +18,26 @@ const STATUS_STYLE: Record<SupplierStatus, string> = {
 
 type SupplierListRow = Pick<Supplier, "id" | "name" | "type" | "region" | "status" | "email" | "phone" | "created_at">;
 
-export default async function SuppliersPage() {
+const PAGE_SIZE = 25;
+
+export default async function SuppliersPage({ searchParams }: { searchParams: Promise<{ q?: string; page?: string }> }) {
+  const params = await searchParams;
   await requireProfile();
   const supabase = await createClient();
 
-  const { data } = await supabase
+  const q = params.q?.trim() || "";
+  const page = Math.max(1, Number(params.page) || 1);
+  const from = (page - 1) * PAGE_SIZE;
+  const to = from + PAGE_SIZE - 1;
+
+  let query = supabase
     .from("suppliers")
-    .select("id, name, type, region, status, email, phone, created_at")
-    .order("created_at", { ascending: false });
+    .select("id, name, type, region, status, email, phone, created_at", { count: "exact" });
+  if (q) {
+    query = query.or(`name.ilike.%${q}%,region.ilike.%${q}%,email.ilike.%${q}%`);
+  }
+
+  const { data, count } = await query.order("created_at", { ascending: false }).range(from, to);
   const suppliers = (data ?? []) as unknown as SupplierListRow[];
 
   return (
@@ -35,6 +49,9 @@ export default async function SuppliersPage() {
         action={<AddSupplierForm />}
       />
       <Panel>
+        <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center">
+          <SearchInput placeholder="Search suppliers by name, region or email…" />
+        </div>
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
             <thead className="text-xs uppercase text-slate-400">
@@ -77,6 +94,7 @@ export default async function SuppliersPage() {
             </tbody>
           </table>
         </div>
+        <Pagination page={page} pageSize={PAGE_SIZE} total={count ?? 0} />
       </Panel>
     </div>
   );

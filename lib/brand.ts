@@ -1,4 +1,5 @@
 import "server-only";
+import { cache } from "react";
 import { cookies } from "next/headers";
 import { createClient } from "./supabase/server";
 import type { Brand, Profile } from "./supabase/database.types";
@@ -10,11 +11,15 @@ const ACTIVE_BRAND_COOKIE = "gtc_active_brand";
  * is authorised for, and which one is currently active. The active brand
  * drives quote/invoice identity, templates and reporting scope (Part 14) —
  * it is never implicit.
+ *
+ * Cached per profile for the request, same reasoning as requireProfile().
  */
-export async function getBrandContext(profile: Profile): Promise<{
+export const getBrandContext = cache(async (
+  profile: Profile,
+): Promise<{
   brands: Brand[];
   activeBrandId: string | null;
-}> {
+}> => {
   const supabase = await createClient();
 
   const { data: brandLinks } = await supabase
@@ -35,6 +40,6 @@ export async function getBrandContext(profile: Profile): Promise<{
     null;
 
   return { brands, activeBrandId };
-}
+});
 
 export { ACTIVE_BRAND_COOKIE };

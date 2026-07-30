@@ -47,11 +47,43 @@ export async function createEnquiryAction(_prevState: { error: string | null }, 
     return { error: "Pickup and destination are required." };
   }
 
+  const pickupDate = String(formData.get("pickupDate") ?? "").trim() || null;
+  const passengerCount = Number(formData.get("passengerCount") ?? 0) || null;
+  const specialRequirements = String(formData.get("specialRequirements") ?? "").trim() || null;
+
+  // Manual/walk-in entries create a real lead — assigned directly to the
+  // creator (status "assigned" rather than "new" skips route_lead()'s
+  // auto-routing) — so it shows up on the Leads page like any other lead,
+  // instead of only existing as an enquiry reachable nowhere else.
+  const { data: lead, error: leadError } = await supabase
+    .from("leads")
+    .insert({
+      tenant_id: actor.tenant_id,
+      brand_id: actor.default_brand_id,
+      source: "manual",
+      status: "assigned",
+      customer_id: customerId,
+      assigned_user_id: actor.id,
+      claimed_at: new Date().toISOString(),
+      pickup_text: pickupAddress,
+      destination_text: destinationAddress,
+      travel_date: pickupDate,
+      passenger_count: passengerCount,
+      notes: specialRequirements,
+    })
+    .select()
+    .single();
+
+  if (leadError || !lead) {
+    return { error: leadError?.message ?? "Could not create the lead." };
+  }
+
   const { data: enquiry, error: enquiryError } = await supabase
     .from("enquiries")
     .insert({
       tenant_id: actor.tenant_id,
       brand_id: actor.default_brand_id,
+      lead_id: lead.id,
       customer_id: customerId,
       assigned_user_id: actor.id,
       status: "new",
@@ -65,7 +97,6 @@ export async function createEnquiryAction(_prevState: { error: string | null }, 
     return { error: enquiryError?.message ?? "Could not create the enquiry." };
   }
 
-  const passengerCount = Number(formData.get("passengerCount") ?? 0) || null;
   const luggageCount = Number(formData.get("luggageCount") ?? 0) || null;
   const childSeats = Number(formData.get("childSeats") ?? 0) || 0;
 
@@ -75,27 +106,30 @@ export async function createEnquiryAction(_prevState: { error: string | null }, 
     journey_type: String(formData.get("journeyType") ?? "one_way"),
     pickup_address: pickupAddress,
     destination_address: destinationAddress,
-    pickup_date: String(formData.get("pickupDate") ?? "").trim() || null,
+    pickup_date: pickupDate,
     pickup_time: String(formData.get("pickupTime") ?? "").trim() || null,
     passenger_count: passengerCount,
     luggage_count: luggageCount,
     vehicle_type_id: String(formData.get("vehicleTypeId") ?? "").trim() || null,
     wheelchair_required: formData.get("wheelchairRequired") === "on",
     child_seats: childSeats,
-    special_requirements: String(formData.get("specialRequirements") ?? "").trim() || null,
+    special_requirements: specialRequirements,
   });
 
   if (legError) {
     return { error: legError.message };
   }
 
+  // The lead flips to "converted" once a real quote exists for it (see
+  // createQuoteAction), not just because an enquiry was started — so if the
+  // quote builder is abandoned, "Create Quote" is still reachable from here.
   await recordAudit({
     tenantId: actor.tenant_id,
     actorId: actor.id,
-    action: "enquiry_created",
-    entityType: "enquiry",
-    entityId: enquiry.id,
-    newValue: { customerId, pickupAddress, destinationAddress },
+    action: "lead_created_manually",
+    entityType: "lead",
+    entityId: lead.id,
+    newValue: { customerId, pickupAddress, destinationAddress, enquiryId: enquiry.id },
   });
 
   revalidatePath("/leads");

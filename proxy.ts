@@ -8,6 +8,19 @@ import { NextResponse, type NextRequest } from "next/server";
 const PUBLIC_PATHS = ["/login", "/reset-password", "/accept-invite", "/auth/confirm", "/q", "/api/leads/website"];
 
 export async function proxy(request: NextRequest) {
+  const path = request.nextUrl.pathname;
+  const isPublic = PUBLIC_PATHS.some((p) => path.startsWith(p));
+
+  // Every other branch below only exists to decide (a) whether to bounce an
+  // unauthenticated visitor away from a protected path, or (b) whether to
+  // bounce an already-signed-in visitor away from /login — neither applies
+  // to a public path that isn't /login (the customer quote page, the
+  // website lead webhook, reset-password, etc.), so skip the session round
+  // trip entirely there instead of paying for it on every request.
+  if (isPublic && path !== "/login") {
+    return NextResponse.next({ request });
+  }
+
   let response = NextResponse.next({ request });
 
   const supabase = createServerClient(
@@ -32,9 +45,6 @@ export async function proxy(request: NextRequest) {
   const {
     data: { user },
   } = await supabase.auth.getUser();
-
-  const path = request.nextUrl.pathname;
-  const isPublic = PUBLIC_PATHS.some((p) => path.startsWith(p));
 
   if (!user && !isPublic) {
     const redirectUrl = new URL("/login", request.url);

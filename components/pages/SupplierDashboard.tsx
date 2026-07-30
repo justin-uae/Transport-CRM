@@ -1,33 +1,75 @@
 "use client";
 
-import { useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { useToast } from "@/components/ui/Toast";
 import { Panel } from "@/components/ui/Panel";
 import { PageHead } from "@/components/ui/PageHead";
-import { respondToJobAction, confirmJobAction, completeJobAction } from "@/app/supplier/dashboard/actions";
-import type { JobOfferView, JobStatus } from "@/lib/supabase/database.types";
+import { InvoiceUploadForm } from "@/app/supplier/dashboard/InvoiceUploadForm";
+import { acceptJobOfferAction, rejectJobOfferAction, confirmJobAction, completeJobAction } from "@/app/supplier/dashboard/actions";
+import type { JobOfferView, JobSupplierInvoice } from "@/lib/supabase/database.types";
 
-const STATUS_LABEL: Record<JobStatus, string> = {
-  unassigned: "Unassigned",
-  offered: "New offer",
-  accepted_by_supplier: "Accepted — confirm to see full details",
-  rejected_by_supplier: "Rejected",
-  confirmed: "Confirmed",
+function statusLabel(job: JobOfferView) {
+  if (job.offer_status === "withdrawn") return "Offer withdrawn — assigned to another supplier";
+  if (job.offer_status === "rejected") return "You rejected this job";
+  if (job.offer_status === "sent") return "New offer";
+  // offer_status === "accepted" — follow the job's own progress from here.
+  switch (job.job_status) {
+    case "accepted_by_supplier":
+      return "Accepted — confirm to see full details";
+    case "confirmed":
+      return "Confirmed";
+    case "completed":
+      return "Completed";
+    case "cancelled":
+      return "Cancelled";
+    default:
+      return job.job_status;
+  }
+}
+
+const TABS = ["active", "all", "completed", "rejected"] as const;
+type Tab = (typeof TABS)[number];
+
+const TAB_LABEL: Record<Tab, string> = {
+  active: "Active",
+  all: "All Jobs",
   completed: "Completed",
-  cancelled: "Cancelled",
+  rejected: "Rejected / Withdrawn",
 };
 
-function JobOfferCard({ job }: { job: JobOfferView }) {
+function isActive(job: JobOfferView) {
+  return (
+    job.offer_status === "sent" ||
+    (job.offer_status === "accepted" && (job.job_status === "accepted_by_supplier" || job.job_status === "confirmed"))
+  );
+}
+
+function isRejectedOrWithdrawn(job: JobOfferView) {
+  return job.offer_status === "rejected" || job.offer_status === "withdrawn";
+}
+
+function JobOfferCard({ job, supplierId, invoice }: { job: JobOfferView; supplierId: string; invoice: JobSupplierInvoice | null }) {
   const notify = useToast();
   const [pending, startTransition] = useTransition();
 
-  function respond(decision: "accepted_by_supplier" | "rejected_by_supplier") {
+  function accept() {
     startTransition(async () => {
       try {
-        await respondToJobAction(job.id, decision);
-        notify(decision === "accepted_by_supplier" ? "Accepted — please confirm to reveal full details" : "Job rejected");
+        await acceptJobOfferAction(job.job_id);
+        notify("Accepted — please confirm to reveal full details");
       } catch (err) {
-        notify(err instanceof Error ? err.message : "Could not update this job.");
+        notify(err instanceof Error ? err.message : "Could not accept this job.");
+      }
+    });
+  }
+
+  function reject() {
+    startTransition(async () => {
+      try {
+        await rejectJobOfferAction(job.job_id);
+        notify("Job rejected");
+      } catch (err) {
+        notify(err instanceof Error ? err.message : "Could not reject this job.");
       }
     });
   }
@@ -35,7 +77,7 @@ function JobOfferCard({ job }: { job: JobOfferView }) {
   function confirm() {
     startTransition(async () => {
       try {
-        await confirmJobAction(job.id);
+        await confirmJobAction(job.job_id);
         notify("Job confirmed — full details below");
       } catch (err) {
         notify(err instanceof Error ? err.message : "Could not confirm this job.");
@@ -46,7 +88,7 @@ function JobOfferCard({ job }: { job: JobOfferView }) {
   function complete() {
     startTransition(async () => {
       try {
-        await completeJobAction(job.id);
+        await completeJobAction(job.job_id);
         notify("Job marked as completed");
       } catch (err) {
         notify(err instanceof Error ? err.message : "Could not complete this job.");
@@ -63,10 +105,10 @@ function JobOfferCard({ job }: { job: JobOfferView }) {
             {job.pickup_date ?? "Date TBC"} {job.pickup_time ?? ""} · {job.passenger_count ?? "?"} passengers
           </div>
         </div>
-        <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold">{STATUS_LABEL[job.status]}</span>
+        <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold">{statusLabel(job)}</span>
       </div>
 
-      {(job.status === "confirmed" || job.status === "completed") && (
+      {(job.job_status === "confirmed" || job.job_status === "completed") && (
         <div className="mt-3 space-y-1 border-t pt-3 text-sm">
           <div>
             <span className="text-slate-500">Pickup: </span>
@@ -89,18 +131,18 @@ function JobOfferCard({ job }: { job: JobOfferView }) {
         </div>
       )}
 
-      {job.status === "offered" && (
+      {job.offer_status === "sent" && (
         <div className="mt-3 flex gap-2">
           <button
             disabled={pending}
-            onClick={() => respond("accepted_by_supplier")}
+            onClick={accept}
             className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-bold text-white disabled:opacity-60"
           >
             Accept
           </button>
           <button
             disabled={pending}
-            onClick={() => respond("rejected_by_supplier")}
+            onClick={reject}
             className="rounded-lg border px-3 py-2 text-xs font-bold disabled:opacity-60"
           >
             Reject
@@ -108,7 +150,7 @@ function JobOfferCard({ job }: { job: JobOfferView }) {
         </div>
       )}
 
-      {job.status === "accepted_by_supplier" && (
+      {job.offer_status === "accepted" && job.job_status === "accepted_by_supplier" && (
         <div className="mt-3">
           <button
             disabled={pending}
@@ -120,7 +162,7 @@ function JobOfferCard({ job }: { job: JobOfferView }) {
         </div>
       )}
 
-      {job.status === "confirmed" && (
+      {job.job_status === "confirmed" && (
         <div className="mt-3">
           <button
             disabled={pending}
@@ -132,7 +174,7 @@ function JobOfferCard({ job }: { job: JobOfferView }) {
         </div>
       )}
 
-      {job.status === "completed" && (job.supplier_invoice_note || job.supplier_invoice_url) && (
+      {job.job_status === "completed" && (job.supplier_invoice_note || job.supplier_invoice_url) && (
         <div className="mt-3 rounded-xl bg-slate-50 p-3 text-xs">
           <div className="font-bold text-slate-600">Payment reference from admin</div>
           {job.supplier_invoice_note && <p className="mt-1">{job.supplier_invoice_note}</p>}
@@ -143,20 +185,67 @@ function JobOfferCard({ job }: { job: JobOfferView }) {
           )}
         </div>
       )}
+
+      {(job.job_status === "confirmed" || job.job_status === "completed") && (
+        <InvoiceUploadForm jobId={job.job_id} supplierId={supplierId} invoice={invoice} />
+      )}
     </div>
   );
 }
 
-export function SupplierDashboard({ jobs }: { jobs: JobOfferView[] }) {
+export function SupplierDashboard({
+  jobs,
+  invoices,
+  supplierId,
+}: {
+  jobs: JobOfferView[];
+  invoices: JobSupplierInvoice[];
+  supplierId: string;
+}) {
+  const [tab, setTab] = useState<Tab>("active");
+
+  const invoiceByJobId = useMemo(() => {
+    const map = new Map<string, JobSupplierInvoice>();
+    for (const inv of invoices) map.set(inv.job_id, inv);
+    return map;
+  }, [invoices]);
+
+  const visible = useMemo(() => {
+    switch (tab) {
+      case "active":
+        return jobs.filter(isActive);
+      case "completed":
+        return jobs.filter((j) => j.job_status === "completed");
+      case "rejected":
+        return jobs.filter(isRejectedOrWithdrawn);
+      default:
+        return jobs;
+    }
+  }, [jobs, tab]);
+
   return (
     <div>
-      <PageHead eyebrow="Supplier Portal" title="Your jobs" text="Jobs offered to you — accept, confirm and complete." />
+      <PageHead eyebrow="Supplier Portal" title="Your jobs" text="Jobs offered to you — accept, confirm, complete and invoice." />
+      <div className="mb-4 flex gap-2">
+        {TABS.map((t) => (
+          <button
+            key={t}
+            onClick={() => setTab(t)}
+            className={
+              "rounded-xl px-3 py-2 text-sm font-bold " +
+              (tab === t ? "bg-primary-500 text-white" : "bg-slate-100 text-slate-600")
+            }
+          >
+            {TAB_LABEL[t]}
+          </button>
+        ))}
+      </div>
       <Panel>
         <div className="space-y-3">
-          {jobs.map((job) => (
-            <JobOfferCard key={job.id} job={job} />
+          {visible.map((job) => (
+            <JobOfferCard key={job.offer_id} job={job} supplierId={supplierId} invoice={invoiceByJobId.get(job.job_id) ?? null} />
           ))}
-          {jobs.length === 0 && <p className="py-8 text-center text-sm text-slate-500">No jobs offered yet.</p>}
+          {visible.length === 0 && <p className="py-8 text-center text-sm text-slate-500">No jobs here.</p>}
         </div>
       </Panel>
     </div>
