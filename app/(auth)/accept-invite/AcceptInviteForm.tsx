@@ -47,7 +47,6 @@ export function AcceptInviteForm() {
         }
 
         router.push(result.redirectTo ?? "/dashboard");
-        router.refresh();
       } catch (err) {
         setError(err instanceof Error ? err.message : "Something went wrong setting up your account.");
       }

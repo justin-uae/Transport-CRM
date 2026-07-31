@@ -55,7 +55,6 @@ export function ResetPasswordForm({ hasSession = false }: { hasSession?: boolean
         return;
       }
       router.push("/dashboard");
-      router.refresh();
     });
   }
 
