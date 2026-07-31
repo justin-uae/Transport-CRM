@@ -1,3 +1,5 @@
+import Link from "next/link";
+import { ChevronRight } from "lucide-react";
 import { PageHead } from "@/components/ui/PageHead";
 import { Panel } from "@/components/ui/Panel";
 import { requireProfile } from "@/lib/auth";
@@ -23,7 +25,7 @@ export default async function CustomersPage() {
       />
       <Panel>
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
+          <table className="w-full min-w-[720px] text-left text-sm">
             <thead className="text-xs uppercase text-slate-400">
               <tr>
                 <th className="pb-3">Customer</th>
@@ -31,19 +33,38 @@ export default async function CustomersPage() {
                 <th>Phone</th>
                 <th>Country</th>
                 <th>Account manager</th>
+                <th></th>
               </tr>
             </thead>
             <tbody>
               {(customers ?? []).map((c) => (
-                <tr key={c.id} className="border-t">
-                  <td className="py-4">
-                    <div className="font-bold">{c.company_name || c.contact_name}</div>
-                    {c.company_name && <div className="text-xs text-slate-500">{c.contact_name}</div>}
+                <tr key={c.id} className="cursor-pointer border-t hover:bg-orange-50/30">
+                  <td className="whitespace-nowrap py-4">
+                    <Link href={`/customers/${c.id}`} className="block">
+                      <div className="font-bold">{c.company_name || c.contact_name}</div>
+                      {c.company_name && <div className="text-xs text-slate-500">{c.contact_name}</div>}
+                    </Link>
                   </td>
-                  <td>{c.email ?? "—"}</td>
-                  <td>{c.phone ?? "—"}</td>
-                  <td>{c.country ?? "—"}</td>
-                  <td>{(c.profiles as unknown as { full_name: string } | null)?.full_name ?? "—"}</td>
+                  <td className="whitespace-nowrap">
+                    <Link href={`/customers/${c.id}`} className="block">{c.email ?? "—"}</Link>
+                  </td>
+                  <td className="whitespace-nowrap">
+                    <Link href={`/customers/${c.id}`} className="block">{c.phone ?? "—"}</Link>
+                  </td>
+                  <td className="whitespace-nowrap">
+                    <Link href={`/customers/${c.id}`} className="block">{c.country ?? "—"}</Link>
+                  </td>
+                  <td className="whitespace-nowrap">
+                    <Link href={`/customers/${c.id}`} className="block">
+                      {(c.profiles as unknown as { full_name: string } | null)?.full_name ?? "—"}
+                    </Link>
+                  </td>
+                  <td className="whitespace-nowrap text-right">
+                    <Link href={`/customers/${c.id}`} className="inline-flex shrink-0 items-center gap-1 rounded-lg border px-3 py-2 text-xs font-bold text-slate-500">
+                      View
+                      <ChevronRight size={14} />
+                    </Link>
+                  </td>
                 </tr>
               ))}
             </tbody>

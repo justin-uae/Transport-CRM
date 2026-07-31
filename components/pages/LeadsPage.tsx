@@ -205,28 +205,28 @@ export function LeadsPage({
                   onClick={() => openDetail(l)}
                   className="cursor-pointer border-t hover:bg-orange-50/30"
                 >
-                  <td className="py-4 font-bold">
+                  <td className="whitespace-nowrap py-4 font-bold">
                     {l.customers?.company_name || l.customers?.contact_name || "Unassigned enquiry"}
                     {l.priority === "high" && (
                       <span className="ml-2 rounded-full bg-red-50 px-2 py-0.5 text-[10px] font-bold text-red-600">HIGH</span>
                     )}
                   </td>
-                  <td>
+                  <td className="whitespace-nowrap">
                     <b>{l.pickup_text ?? "—"} → {l.destination_text ?? "—"}</b>
                     <div className="text-xs text-slate-400">{l.travel_date ?? ""}</div>
                   </td>
-                  <td>
+                  <td className="whitespace-nowrap">
                     <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold capitalize">{l.source}</span>
                   </td>
-                  <td>{STATUS_LABEL[l.status]}</td>
-                  <td>{timeAgo(l.created_at)}</td>
-                  <td>{l.profiles?.full_name || <span className="font-bold text-primary-600">Open pool</span>}</td>
-                  <td onClick={(e) => e.stopPropagation()}>
+                  <td className="whitespace-nowrap">{STATUS_LABEL[l.status]}</td>
+                  <td className="whitespace-nowrap">{timeAgo(l.created_at)}</td>
+                  <td className="whitespace-nowrap">{l.profiles?.full_name || <span className="font-bold text-primary-600">Open pool</span>}</td>
+                  <td className="whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                     {l.status === "open_pool" ? (
                       <button
                         disabled={pending}
                         onClick={() => openDetail(l)}
-                        className="rounded-xl bg-primary-500 px-3 py-2 text-xs font-bold text-white disabled:opacity-60"
+                        className="whitespace-nowrap rounded-xl bg-primary-500 px-3 py-2 text-xs font-bold text-white disabled:opacity-60"
                       >
                         Accept
                       </button>
@@ -234,7 +234,7 @@ export function LeadsPage({
                       <button
                         disabled={pending}
                         onClick={() => openDetail(l)}
-                        className="rounded-xl border border-primary-300 px-3 py-2 text-xs font-bold text-primary-700 disabled:opacity-60"
+                        className="whitespace-nowrap rounded-xl border border-primary-300 px-3 py-2 text-xs font-bold text-primary-700 disabled:opacity-60"
                       >
                         View
                       </button>

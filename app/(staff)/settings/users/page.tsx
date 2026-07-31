@@ -51,7 +51,7 @@ export default async function UsersPage({ searchParams }: { searchParams: Promis
           <SearchInput placeholder="Search users by name or email…" />
         </div>
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
+          <table className="w-full min-w-[820px] text-left text-sm">
             <thead className="text-xs uppercase text-slate-400">
               <tr>
                 <th className="pb-3">User</th>

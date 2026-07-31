@@ -137,7 +137,7 @@ export function QuotesPage({
           <SearchInput placeholder="Search quotes (number or invoice)" />
         </div>
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
+          <table className="w-full min-w-[880px] text-left text-sm">
             <thead>
               <tr className="border-b text-slate-500">
                 <th className="px-3 py-4">Quote</th>
@@ -153,60 +153,62 @@ export function QuotesPage({
                 const leg = q.enquiries?.enquiry_legs?.[0];
                 return (
                   <tr key={q.id} className="border-b last:border-0">
-                    <td className="px-3 py-4 font-black text-primary-600">
+                    <td className="whitespace-nowrap px-3 py-4 font-black text-primary-600">
                       <Link href={`/quotes/${q.id}`} className="hover:underline">
                         {q.quote_number}
                       </Link>
                       {q.invoice_number && <div className="text-xs font-normal text-slate-400">Inv {q.invoice_number}</div>}
                     </td>
-                    <td className="px-3 py-4 font-semibold">{q.customers?.company_name || q.customers?.contact_name || "—"}</td>
-                    <td className="px-3 py-4 text-slate-600">
+                    <td className="whitespace-nowrap px-3 py-4 font-semibold">{q.customers?.company_name || q.customers?.contact_name || "—"}</td>
+                    <td className="whitespace-nowrap px-3 py-4 text-slate-600">
                       {leg ? `${leg.pickup_address} → ${leg.destination_address}` : "—"}
                     </td>
-                    <td className="px-3 py-4 font-black">{money(q.quote_versions?.selling_price, q.currency)}</td>
-                    <td className="px-3 py-4">
+                    <td className="whitespace-nowrap px-3 py-4 font-black">{money(q.quote_versions?.selling_price, q.currency)}</td>
+                    <td className="whitespace-nowrap px-3 py-4">
                       <span className={"rounded-full px-2.5 py-1 text-xs font-bold capitalize " + STATUS_STYLE[q.status]}>
                         {q.status}
                       </span>
                     </td>
-                    <td className="px-3 py-4 text-right">
-                      <Link
-                        href={`/quotes/${q.id}`}
-                        className="mr-2 inline-block rounded-lg border border-primary-300 px-3 py-2 text-xs font-bold text-primary-700"
-                      >
-                        View
-                      </Link>
-                      {q.status === "accepted" && canMarkPaid && (
-                        <button
-                          disabled={pending}
-                          onClick={() => {
-                            setModalError(null);
-                            setAction({ type: "markPaid", quote: q });
-                          }}
-                          className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-bold text-white disabled:opacity-60"
+                    <td className="whitespace-nowrap px-3 py-4 text-right">
+                      <div className="flex items-center justify-end gap-2">
+                        <Link
+                          href={`/quotes/${q.id}`}
+                          className="shrink-0 whitespace-nowrap rounded-lg border border-primary-300 px-3 py-2 text-xs font-bold text-primary-700"
                         >
-                          Mark as Paid
-                        </button>
-                      )}
-                      {q.status === "paid" && (
-                        <button
-                          onClick={() => {
-                            setModalError(null);
-                            setAction({ type: "resend", quote: q });
-                          }}
-                          className="rounded-lg border px-3 py-2 text-xs font-bold"
-                        >
-                          Resend Invoice
-                        </button>
-                      )}
-                      {(q.status === "sent" || q.status === "viewed") && (
-                        <button
-                          onClick={() => copyLink(q.public_token, "Quote")}
-                          className="rounded-lg border px-3 py-2 text-xs font-bold"
-                        >
-                          Copy Link
-                        </button>
-                      )}
+                          View
+                        </Link>
+                        {q.status === "accepted" && canMarkPaid && (
+                          <button
+                            disabled={pending}
+                            onClick={() => {
+                              setModalError(null);
+                              setAction({ type: "markPaid", quote: q });
+                            }}
+                            className="shrink-0 whitespace-nowrap rounded-lg bg-emerald-600 px-3 py-2 text-xs font-bold text-white disabled:opacity-60"
+                          >
+                            Mark as Paid
+                          </button>
+                        )}
+                        {q.status === "paid" && (
+                          <button
+                            onClick={() => {
+                              setModalError(null);
+                              setAction({ type: "resend", quote: q });
+                            }}
+                            className="shrink-0 whitespace-nowrap rounded-lg border px-3 py-2 text-xs font-bold"
+                          >
+                            Resend Invoice
+                          </button>
+                        )}
+                        {(q.status === "sent" || q.status === "viewed") && (
+                          <button
+                            onClick={() => copyLink(q.public_token, "Quote")}
+                            className="shrink-0 whitespace-nowrap rounded-lg border px-3 py-2 text-xs font-bold"
+                          >
+                            Copy Link
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 );

@@ -78,7 +78,7 @@ export function CustomerPaymentsPage({ quotes }: { quotes: AcceptedQuoteRow[] })
       </div>
       <Panel>
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
+          <table className="w-full min-w-[760px] text-left text-sm">
             <thead>
               <tr className="border-b text-slate-500">
                 <th className="px-3 py-4">Quote</th>
@@ -93,34 +93,36 @@ export function CustomerPaymentsPage({ quotes }: { quotes: AcceptedQuoteRow[] })
                 const leg = q.enquiries?.enquiry_legs?.[0];
                 return (
                   <tr key={q.id} className="border-b last:border-0">
-                    <td className="px-3 py-4 font-black text-primary-600">
+                    <td className="whitespace-nowrap px-3 py-4 font-black text-primary-600">
                       {q.quote_number}
                       {q.invoice_number && <div className="text-xs font-normal text-slate-400">Inv {q.invoice_number}</div>}
                     </td>
-                    <td className="px-3 py-4 font-semibold">{q.customers?.company_name || q.customers?.contact_name || "—"}</td>
-                    <td className="px-3 py-4 text-slate-600">
+                    <td className="whitespace-nowrap px-3 py-4 font-semibold">{q.customers?.company_name || q.customers?.contact_name || "—"}</td>
+                    <td className="whitespace-nowrap px-3 py-4 text-slate-600">
                       {leg ? `${leg.pickup_address} → ${leg.destination_address}` : "—"}
                     </td>
-                    <td className="px-3 py-4 font-black">{money(q.quote_versions?.selling_price, q.currency)}</td>
-                    <td className="px-3 py-4 text-right">
-                      <Link
-                        href={`/quotes/${q.id}`}
-                        className="mr-2 inline-block rounded-lg border border-primary-300 px-3 py-2 text-xs font-bold text-primary-700"
-                      >
-                        View
-                      </Link>
-                      {q.status === "accepted" && (
-                        <button
-                          disabled={pending}
-                          onClick={() => {
-                            setModalError(null);
-                            setTarget(q);
-                          }}
-                          className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-bold text-white disabled:opacity-60"
+                    <td className="whitespace-nowrap px-3 py-4 font-black">{money(q.quote_versions?.selling_price, q.currency)}</td>
+                    <td className="whitespace-nowrap px-3 py-4 text-right">
+                      <div className="flex items-center justify-end gap-2">
+                        <Link
+                          href={`/quotes/${q.id}`}
+                          className="shrink-0 whitespace-nowrap rounded-lg border border-primary-300 px-3 py-2 text-xs font-bold text-primary-700"
                         >
-                          Mark as Paid
-                        </button>
-                      )}
+                          View
+                        </Link>
+                        {q.status === "accepted" && (
+                          <button
+                            disabled={pending}
+                            onClick={() => {
+                              setModalError(null);
+                              setTarget(q);
+                            }}
+                            className="shrink-0 whitespace-nowrap rounded-lg bg-emerald-600 px-3 py-2 text-xs font-bold text-white disabled:opacity-60"
+                          >
+                            Mark as Paid
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 );

@@ -211,7 +211,7 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
             <Panel>
               <SectionTitle title="Version history" />
               <div className="mt-4 overflow-x-auto">
-                <table className="w-full text-left text-sm">
+                <table className="w-full min-w-[360px] text-left text-sm">
                   <thead className="text-xs uppercase text-slate-400">
                     <tr>
                       <th className="pb-2">Version</th>
@@ -222,9 +222,9 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
                   <tbody>
                     {versions.map((v) => (
                       <tr key={v.id} className="border-t">
-                        <td className="py-2 font-bold">v{v.version_number}</td>
-                        <td className="py-2">{money(v.selling_price, v.currency)}</td>
-                        <td className="py-2 text-slate-500">{new Date(v.created_at).toLocaleDateString()}</td>
+                        <td className="whitespace-nowrap py-2 font-bold">v{v.version_number}</td>
+                        <td className="whitespace-nowrap py-2">{money(v.selling_price, v.currency)}</td>
+                        <td className="whitespace-nowrap py-2 text-slate-500">{new Date(v.created_at).toLocaleDateString()}</td>
                       </tr>
                     ))}
                   </tbody>

@@ -183,7 +183,7 @@ export function ControlCentre({ firstName }: { firstName: string }) {
         <Panel>
           <SectionTitle title="Team performance" sub="Live sales activity" />
           <div className="mt-4 overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="w-full min-w-[560px] text-sm">
               <thead className="text-left text-xs uppercase text-slate-400">
                 <tr>
                   <th className="pb-3">User</th>
@@ -196,14 +196,14 @@ export function ControlCentre({ firstName }: { firstName: string }) {
               <tbody>
                 {teamPerformance.map((u) => (
                   <tr key={u.name} className="border-t">
-                    <td className="py-3">
+                    <td className="whitespace-nowrap py-3">
                       <b>{u.name}</b>
                       <div className="text-xs text-slate-400">{u.territory}</div>
                     </td>
-                    <td>{u.leads}</td>
-                    <td>{u.conversion}</td>
-                    <td className="font-bold">{u.revenue}</td>
-                    <td>
+                    <td className="whitespace-nowrap">{u.leads}</td>
+                    <td className="whitespace-nowrap">{u.conversion}</td>
+                    <td className="whitespace-nowrap font-bold">{u.revenue}</td>
+                    <td className="whitespace-nowrap">
                       <span
                         className={
                           "rounded-full px-2 py-1 text-xs font-bold " +

@@ -37,7 +37,7 @@ export default async function AuditLogPage() {
       />
       <Panel>
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
+          <table className="w-full min-w-[640px] text-left text-sm">
             <thead className="text-xs uppercase text-slate-400">
               <tr>
                 <th className="pb-3">When</th>
@@ -52,13 +52,13 @@ export default async function AuditLogPage() {
                   <td className="whitespace-nowrap py-3 text-slate-500">
                     {new Date(entry.created_at).toLocaleString()}
                   </td>
-                  <td className="font-semibold">
+                  <td className="whitespace-nowrap font-semibold">
                     {(entry.actor as unknown as { full_name: string } | null)?.full_name ?? "System"}
                   </td>
-                  <td>
+                  <td className="whitespace-nowrap">
                     <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold">{entry.action}</span>
                   </td>
-                  <td className="text-slate-500">
+                  <td className="whitespace-nowrap text-slate-500">
                     {entry.entity_type}
                     {entry.entity_id ? ` · ${entry.entity_id.slice(0, 8)}` : ""}
                   </td>

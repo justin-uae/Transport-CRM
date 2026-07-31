@@ -83,12 +83,12 @@ export function ConfirmDetailModal({
           <div className="mt-4 rounded-xl bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">{error}</div>
         )}
 
-        <div className="mt-6 flex justify-end gap-2">
+        <div className="mt-6 flex flex-wrap justify-end gap-2">
           <button
             type="button"
             disabled={pending}
             onClick={onClose}
-            className="rounded-xl border px-4 py-2.5 text-sm font-bold disabled:opacity-60"
+            className="shrink-0 whitespace-nowrap rounded-xl border px-4 py-2.5 text-sm font-bold disabled:opacity-60"
           >
             {cancelLabel}
           </button>
@@ -98,7 +98,7 @@ export function ConfirmDetailModal({
               disabled={pending}
               onClick={onConfirm}
               className={clsx(
-                "rounded-xl px-4 py-2.5 text-sm font-bold text-white disabled:opacity-60",
+                "shrink-0 whitespace-nowrap rounded-xl px-4 py-2.5 text-sm font-bold text-white disabled:opacity-60",
                 destructive ? "bg-red-600" : "bg-primary-500",
               )}
             >

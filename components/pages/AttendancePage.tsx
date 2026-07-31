@@ -67,7 +67,7 @@ export function AttendancePage() {
         <Panel>
           <SectionTitle title="Today's attendance overview" sub="Live team status" />
           <div className="mt-4 overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="w-full min-w-[480px] text-sm">
               <thead className="text-left text-xs uppercase text-slate-400">
                 <tr>
                   <th className="pb-3">User</th>
@@ -79,10 +79,10 @@ export function AttendancePage() {
               <tbody>
                 {teamPerformance.map((u, i) => (
                   <tr className="border-t" key={u.name}>
-                    <td className="py-4 font-bold">{u.name}</td>
-                    <td>{CLOCK_IN_TIMES[i]!}</td>
-                    <td>{ACTIVE_TIMES[i]!}</td>
-                    <td>
+                    <td className="whitespace-nowrap py-4 font-bold">{u.name}</td>
+                    <td className="whitespace-nowrap">{CLOCK_IN_TIMES[i]!}</td>
+                    <td className="whitespace-nowrap">{ACTIVE_TIMES[i]!}</td>
+                    <td className="whitespace-nowrap">
                       <span
                         className={
                           "rounded-full px-2 py-1 text-xs font-bold " +

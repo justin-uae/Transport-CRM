@@ -98,12 +98,12 @@ export function UserRow({
 
   return (
     <tr className="border-t">
-      <td className="py-4">
+      <td className="whitespace-nowrap py-4">
         <b>{user.full_name}</b>
         <div className="text-xs text-slate-400">{user.email}</div>
       </td>
-      <td className="text-sm text-slate-600">{user.job_title ?? "—"}</td>
-      <td className="text-sm">
+      <td className="whitespace-nowrap text-sm text-slate-600">{user.job_title ?? "—"}</td>
+      <td className="whitespace-nowrap text-sm">
         {user.brands?.name ?? <span className="text-red-500">No brand</span>}
       </td>
       <td className="max-w-[220px] text-sm text-slate-600">
@@ -161,7 +161,7 @@ export function UserRow({
             ))}
         </div>
       </td>
-      <td>
+      <td className="whitespace-nowrap">
         {user.is_master_admin ? (
           <span className="text-sm font-bold">Master Admin</span>
         ) : (
@@ -179,12 +179,12 @@ export function UserRow({
           </select>
         )}
       </td>
-      <td>
+      <td className="whitespace-nowrap">
         <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${STATUS_STYLES[user.status]}`}>
           {user.status}
         </span>
       </td>
-      <td className="text-right">
+      <td className="whitespace-nowrap text-right">
         {canManage && !user.is_master_admin && (
           <select
             disabled={pending}
