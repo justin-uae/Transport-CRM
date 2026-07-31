@@ -2,9 +2,8 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { FileText, Trash2 } from "lucide-react";
+import { FileText, Trash2, Upload } from "lucide-react";
 import { Panel } from "@/components/ui/Panel";
-import { SectionTitle } from "@/components/ui/SectionTitle";
 import { useToast } from "@/components/ui/Toast";
 import { createClient } from "@/lib/supabase/client";
 import {
@@ -22,6 +21,18 @@ const STATUS_TEXT: Record<Supplier["status"], string> = {
   rejected: "Rejected — update your details below and resubmit.",
   suspended: "Your account has been suspended.",
 };
+
+const STATUS_STYLE: Record<Supplier["status"], string> = {
+  invited: "bg-slate-100 text-slate-600",
+  submitted: "bg-blue-50 text-blue-700",
+  approved: "bg-emerald-50 text-emerald-700",
+  rejected: "bg-red-50 text-red-700",
+  suspended: "bg-amber-50 text-amber-700",
+};
+
+const inputClass =
+  "mt-1.5 w-full rounded-lg border px-3 py-2 text-sm font-normal outline-none focus:border-primary-300 focus:ring-2 focus:ring-primary-100 disabled:bg-slate-50";
+const labelClass = "text-xs font-bold uppercase tracking-wide text-slate-500";
 
 export function VerificationForm({
   supplier,
@@ -82,6 +93,7 @@ export function VerificationForm({
     }
 
     setUploading(true);
+    const label = uploadLabel.trim();
     const supabase = createClient();
     const path = `${supplier.id}/${crypto.randomUUID()}-${file.name}`;
 
@@ -95,21 +107,29 @@ export function VerificationForm({
 
     const { error: insertError } = await supabase.from("supplier_documents").insert({
       supplier_id: supplier.id,
-      label: uploadLabel.trim(),
+      label,
       storage_path: path,
       file_name: file.name,
     });
-    setUploading(false);
     e.target.value = "";
 
     if (insertError) {
       notify(insertError.message);
+      setUploading(false);
       return;
     }
 
     notify("Document uploaded");
     setUploadLabel("");
-    router.refresh();
+    setUploading(false);
+    // Wrapped in startTransition, same as every other mutating handler above —
+    // without it, this refresh runs as an urgent update, which makes React
+    // unmount this form while refetching and remount it fresh once the data
+    // arrives. That was wiping whatever was still typed (but not yet saved)
+    // in the uncontrolled "Business details" inputs below.
+    startTransition(() => {
+      router.refresh();
+    });
   }
 
   function submit() {
@@ -132,64 +152,61 @@ export function VerificationForm({
   const canSubmit = supplier.status === "invited" || supplier.status === "rejected";
 
   return (
-    <div className="space-y-5">
-      <Panel>
-        <div className="flex items-center justify-between">
-          <SectionTitle title="Verification status" />
-          <span className="rounded-full bg-slate-100 px-3 py-1.5 text-xs font-bold capitalize">{supplier.status}</span>
-        </div>
-        <p className="mt-2 text-sm text-slate-600">{STATUS_TEXT[supplier.status]}</p>
-      </Panel>
+    <div className="mx-auto max-w-3xl space-y-4">
+      <div className={`flex items-center justify-between rounded-xl px-4 py-3 text-sm ${STATUS_STYLE[supplier.status]}`}>
+        <span className="font-bold capitalize">{supplier.status}</span>
+        <span className="text-right">{STATUS_TEXT[supplier.status]}</span>
+      </div>
 
-      <Panel>
-        <SectionTitle title="Business details" />
-        <form action={saveDetails} className="mt-4 grid gap-4 sm:grid-cols-2">
-          <label className="text-sm font-bold">
+      <Panel className="p-4">
+        <h2 className="text-sm font-black">Business details</h2>
+        <form action={saveDetails} className="mt-3 grid gap-3 sm:grid-cols-2">
+          <label className={labelClass}>
             Contact name
-            <input name="contactName" defaultValue={supplier.contact_name ?? ""} disabled={!canEdit} className="mt-2 w-full rounded-xl border px-3 py-2.5 font-normal disabled:bg-slate-50" />
+            <input name="contactName" defaultValue={supplier.contact_name ?? ""} disabled={!canEdit} className={inputClass} />
           </label>
-          <label className="text-sm font-bold">
+          <label className={labelClass}>
             Phone
-            <input name="phone" defaultValue={supplier.phone ?? ""} disabled={!canEdit} className="mt-2 w-full rounded-xl border px-3 py-2.5 font-normal disabled:bg-slate-50" />
+            <input name="phone" defaultValue={supplier.phone ?? ""} disabled={!canEdit} className={inputClass} />
           </label>
-          <label className="text-sm font-bold">
+          <label className={labelClass}>
             WhatsApp
-            <input name="whatsapp" defaultValue={supplier.whatsapp ?? ""} disabled={!canEdit} className="mt-2 w-full rounded-xl border px-3 py-2.5 font-normal disabled:bg-slate-50" />
+            <input name="whatsapp" defaultValue={supplier.whatsapp ?? ""} disabled={!canEdit} className={inputClass} />
           </label>
-          <label className="text-sm font-bold">
+          <label className={labelClass}>
             Region / location covered
-            <input name="region" defaultValue={supplier.region ?? ""} disabled={!canEdit} className="mt-2 w-full rounded-xl border px-3 py-2.5 font-normal disabled:bg-slate-50" />
+            <input name="region" defaultValue={supplier.region ?? ""} disabled={!canEdit} className={inputClass} />
           </label>
-          <label className="text-sm font-bold">
+          <label className={labelClass}>
             Registration number
-            <input name="registrationNumber" defaultValue={supplier.registration_number ?? ""} disabled={!canEdit} className="mt-2 w-full rounded-xl border px-3 py-2.5 font-normal disabled:bg-slate-50" />
+            <input name="registrationNumber" defaultValue={supplier.registration_number ?? ""} disabled={!canEdit} className={inputClass} />
           </label>
-          <label className="text-sm font-bold">
+          <label className={labelClass}>
             VAT number
-            <input name="vatNumber" defaultValue={supplier.vat_number ?? ""} disabled={!canEdit} className="mt-2 w-full rounded-xl border px-3 py-2.5 font-normal disabled:bg-slate-50" />
+            <input name="vatNumber" defaultValue={supplier.vat_number ?? ""} disabled={!canEdit} className={inputClass} />
           </label>
-          <label className="text-sm font-bold sm:col-span-2">
+          <label className={`${labelClass} sm:col-span-2`}>
             Insurance details
-            <textarea name="insuranceDetails" defaultValue={supplier.insurance_details ?? ""} disabled={!canEdit} className="mt-2 min-h-16 w-full rounded-xl border px-3 py-2.5 font-normal disabled:bg-slate-50" />
+            <textarea name="insuranceDetails" defaultValue={supplier.insurance_details ?? ""} disabled={!canEdit} className={`${inputClass} min-h-12`} />
           </label>
-          <label className="text-sm font-bold">
+          <label className={labelClass}>
             Driver license number
-            <input name="licenseNumber" defaultValue={supplier.license_number ?? ""} disabled={!canEdit} className="mt-2 w-full rounded-xl border px-3 py-2.5 font-normal disabled:bg-slate-50" />
+            <input name="licenseNumber" defaultValue={supplier.license_number ?? ""} disabled={!canEdit} className={inputClass} />
           </label>
-          {detailsError && <div className="sm:col-span-2 rounded-xl bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">{detailsError}</div>}
+          {detailsError && <div className="sm:col-span-2 rounded-lg bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">{detailsError}</div>}
           {canEdit && (
-            <button type="submit" disabled={pending} className="sm:col-span-2 w-fit rounded-xl bg-primary-500 px-4 py-2.5 text-sm font-bold text-white disabled:opacity-60">
+            <button type="submit" disabled={pending} className="sm:col-span-2 w-fit rounded-lg bg-primary-500 px-4 py-2 text-sm font-bold text-white disabled:opacity-60">
               {pending ? "Saving…" : "Save details"}
             </button>
           )}
         </form>
       </Panel>
 
-      <Panel>
-        <SectionTitle title="Vehicles" sub={`${vehicles.length} added`} />
-        <div className="mt-4 space-y-2">
+      <Panel className="p-4">
+        <h2 className="text-sm font-black">Vehicles <span className="font-normal text-slate-400">· {vehicles.length} added</span></h2>
+        <div className="mt-3 space-y-1.5">
           {vehicles.map((v) => (
-            <div key={v.id} className="flex items-center justify-between rounded-xl border p-3 text-sm">
+            <div key={v.id} className="flex items-center justify-between rounded-lg border px-3 py-2 text-sm">
               <div>
                 <b>{v.vehicle_type}</b>
                 {v.seat_capacity && <span className="text-slate-500"> · {v.seat_capacity} seats</span>}
@@ -197,53 +214,57 @@ export function VerificationForm({
               </div>
               {canEdit && (
                 <button onClick={() => removeVehicle(v.id)} className="text-slate-400 hover:text-red-600" aria-label="Remove vehicle">
-                  <Trash2 size={16} />
+                  <Trash2 size={14} />
                 </button>
               )}
             </div>
           ))}
         </div>
         {canEdit && (
-          <form action={addVehicle} className="mt-4 grid gap-3 sm:grid-cols-4">
-            <input name="vehicleType" placeholder="Vehicle type" required className="rounded-xl border px-3 py-2.5 text-sm sm:col-span-2" />
-            <input name="seatCapacity" type="number" min={1} placeholder="Seats" className="rounded-xl border px-3 py-2.5 text-sm" />
-            <input name="plateNumber" placeholder="Plate number" className="rounded-xl border px-3 py-2.5 text-sm" />
-            {vehicleError && <div className="sm:col-span-4 rounded-xl bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">{vehicleError}</div>}
-            <button type="submit" disabled={pending} className="sm:col-span-4 w-fit rounded-xl border px-4 py-2.5 text-sm font-bold disabled:opacity-60">
+          <form action={addVehicle} className="mt-3 grid gap-2 sm:grid-cols-4">
+            <input name="vehicleType" placeholder="Vehicle type" required className="rounded-lg border px-3 py-2 text-sm sm:col-span-2" />
+            <input name="seatCapacity" type="number" min={1} placeholder="Seats" className="rounded-lg border px-3 py-2 text-sm" />
+            <input name="plateNumber" placeholder="Plate number" className="rounded-lg border px-3 py-2 text-sm" />
+            {vehicleError && <div className="sm:col-span-4 rounded-lg bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">{vehicleError}</div>}
+            <button type="submit" disabled={pending} className="sm:col-span-4 w-fit rounded-lg border px-4 py-2 text-sm font-bold disabled:opacity-60">
               Add vehicle
             </button>
           </form>
         )}
       </Panel>
 
-      <Panel>
-        <SectionTitle title="Documents" sub={`${documents.length} uploaded`} />
-        <div className="mt-4 space-y-2">
+      <Panel className="p-4">
+        <h2 className="text-sm font-black">Documents <span className="font-normal text-slate-400">· {documents.length} uploaded</span></h2>
+        <div className="mt-3 space-y-1.5">
           {documents.map((doc) => (
-            <div key={doc.id} className="flex items-center gap-3 rounded-xl border p-3 text-sm">
-              <FileText size={16} className="shrink-0 text-slate-400" />
-              <div>
-                <b>{doc.label}</b>
-                <div className="text-xs text-slate-500">{doc.file_name}</div>
+            <div key={doc.id} className="flex items-center gap-2.5 rounded-lg border px-3 py-2 text-sm">
+              <FileText size={14} className="shrink-0 text-slate-400" />
+              <div className="min-w-0">
+                <b className="truncate">{doc.label}</b>
+                <div className="truncate text-xs text-slate-500">{doc.file_name}</div>
               </div>
             </div>
           ))}
         </div>
         {canEdit && (
-          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+          <div className="mt-3 flex flex-col gap-2 sm:flex-row">
             <input
               value={uploadLabel}
               onChange={(e) => setUploadLabel(e.target.value)}
               placeholder="Document label (e.g. Insurance Certificate)"
-              className="rounded-xl border px-3 py-2.5 text-sm"
+              className="flex-1 rounded-lg border px-3 py-2 text-sm"
             />
-            <input type="file" disabled={uploading} onChange={uploadDocument} className="text-sm" />
+            <label className="flex shrink-0 cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed px-3 py-2 text-sm font-bold text-slate-500 hover:border-primary-300 hover:text-primary-700 has-[:disabled]:cursor-not-allowed has-[:disabled]:opacity-60">
+              <Upload size={14} />
+              {uploading ? "Uploading…" : "Choose file"}
+              <input type="file" disabled={uploading} onChange={uploadDocument} className="hidden" />
+            </label>
           </div>
         )}
       </Panel>
 
       {canSubmit && (
-        <button onClick={submit} disabled={pending} className="w-full rounded-xl bg-primary-500 py-3 text-sm font-black text-white disabled:opacity-60">
+        <button onClick={submit} disabled={pending} className="w-full rounded-xl bg-primary-500 py-2.5 text-sm font-black text-white disabled:opacity-60">
           {pending ? "Submitting…" : "Submit for review"}
         </button>
       )}

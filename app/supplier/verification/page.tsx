@@ -14,7 +14,9 @@ export default async function SupplierVerificationPage() {
 
   return (
     <div>
-      <PageHead eyebrow="Supplier Portal" title="Verification" text="Complete your business details and upload documents for review." />
+      <div className="mx-auto max-w-3xl">
+        <PageHead eyebrow="Supplier Portal" title="Verification" text="Complete your business details and upload documents for review." />
+      </div>
       <VerificationForm supplier={supplier} vehicles={vehicles ?? []} documents={documents ?? []} />
     </div>
   );

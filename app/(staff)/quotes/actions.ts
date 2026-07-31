@@ -30,6 +30,13 @@ export async function markQuotePaidAction(quoteId: string) {
     return { error: "Only an accepted quote can be marked as paid." };
   }
 
+  // jobs.quote_id is unique — a job can already exist here (e.g. this quote
+  // was marked paid once before and later reverted back to "accepted", or
+  // this request is a retry of one that partially succeeded). If so, the
+  // operational side is already handled; just record the payment/invoice
+  // below instead of trying to insert a second job for the same quote.
+  const { data: existingJob } = await supabase.from("jobs").select("id").eq("quote_id", quoteId).maybeSingle();
+
   const brand = quote.brands as unknown as { invoice_number_prefix: string } | null;
   const { data: invoiceNumber, error: numberError } = await supabase.rpc("next_document_number", {
     p_brand_id: quote.brand_id,
@@ -46,23 +53,28 @@ export async function markQuotePaidAction(quoteId: string) {
     .eq("id", quoteId);
   if (updateError) return { error: updateError.message };
 
-  const { data: leg } = await supabase
-    .from("enquiry_legs")
-    .select("pickup_address")
-    .eq("enquiry_id", quote.enquiry_id)
-    .eq("sequence", 1)
-    .single();
+  if (!existingJob) {
+    const { data: leg } = await supabase
+      .from("enquiry_legs")
+      .select("pickup_address")
+      .eq("enquiry_id", quote.enquiry_id)
+      .eq("sequence", 1)
+      .single();
 
-  const { error: jobError } = await supabase.from("jobs").insert({
-    tenant_id: quote.tenant_id,
-    quote_id: quote.id,
-    brand_id: quote.brand_id,
-    customer_id: quote.customer_id,
-    region: leg?.pickup_address ?? null,
-    status: "unassigned",
-    created_by: actor.id,
-  });
-  if (jobError) return { error: jobError.message };
+    const { error: jobError } = await supabase.from("jobs").insert({
+      tenant_id: quote.tenant_id,
+      quote_id: quote.id,
+      brand_id: quote.brand_id,
+      customer_id: quote.customer_id,
+      region: leg?.pickup_address ?? null,
+      status: "unassigned",
+      created_by: actor.id,
+    });
+    // 23505 = unique_violation — belt-and-suspenders against a genuine race
+    // (two near-simultaneous clicks both passing the existingJob check
+    // above); treat it the same as finding the job up front.
+    if (jobError && jobError.code !== "23505") return { error: jobError.message };
+  }
 
   await recordAudit({
     tenantId: actor.tenant_id,
