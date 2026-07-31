@@ -36,7 +36,7 @@ export default async function Page({
     listQuery = listQuery.or(`pickup_text.ilike.%${q}%,destination_text.ilike.%${q}%,notes.ilike.%${q}%`);
   }
 
-  const [{ data: leads, count }, { count: mineCount }, { count: poolCount }, { data: openEnquiries }, { data: openQuotes }, canAddEnquiry] =
+  const [{ data: leads, count }, { count: mineCount }, { count: poolCount }, { data: openEnquiries }, { count: openQuotesCount }, canAddEnquiry] =
     await Promise.all([
       listQuery.order("created_at", { ascending: false }).range(from, to),
       supabase
@@ -50,16 +50,18 @@ export default async function Page({
         .select("id, status")
         .eq("assigned_user_id", profile.id)
         .not("status", "in", "(completed,cancelled,declined,converted_to_booking)"),
+      // Pushed the assigned_user_id filter into the query (via the !inner
+      // join on enquiries) and made it a head:true count instead of pulling
+      // every sent/viewed quote in the tenant just to filter+count it in JS.
       supabase
         .from("quotes")
-        .select("id, status, enquiries(assigned_user_id)")
-        .in("status", ["sent", "viewed"]),
+        .select("id, enquiries!inner(assigned_user_id)", { count: "exact", head: true })
+        .in("status", ["sent", "viewed"])
+        .eq("enquiries.assigned_user_id", profile.id),
       hasPermission(profile, PERMISSIONS.ENQUIRIES_ADD),
     ]);
 
-  const quotesAwaitingResponse = (openQuotes ?? []).filter(
-    (q2) => (q2.enquiries as unknown as { assigned_user_id: string | null } | null)?.assigned_user_id === profile.id,
-  ).length;
+  const quotesAwaitingResponse = openQuotesCount ?? 0;
 
   return (
     <LeadsPage

@@ -1,9 +1,9 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { requireProfile } from "@/lib/auth";
-import { hasPermission, PERMISSIONS } from "@/lib/permissions";
+import { hasPermission, permissionsRoleTag, PERMISSIONS } from "@/lib/permissions";
 import { recordAudit } from "@/lib/audit";
 
 async function requireRoleManager() {
@@ -70,5 +70,9 @@ export async function togglePermissionAction(roleId: string, permissionId: strin
     newValue: { permission_id: permissionId, enabled },
   });
 
+  // { expire: 0 } forces immediate invalidation (Next 16 requires a second
+  // arg on revalidateTag; this is the non-deprecated equivalent of the old
+  // single-arg call) — a revoked permission must take effect right away.
+  revalidateTag(permissionsRoleTag(roleId), { expire: 0 });
   revalidatePath(`/settings/roles/${roleId}`);
 }

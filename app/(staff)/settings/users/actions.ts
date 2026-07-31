@@ -1,10 +1,11 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireProfile } from "@/lib/auth";
-import { hasPermission, PERMISSIONS } from "@/lib/permissions";
+import { hasPermission, permissionsUserTag, PERMISSIONS } from "@/lib/permissions";
+import { brandsUserTag } from "@/lib/brand";
 import { recordAudit } from "@/lib/audit";
 import type { ProfileStatus } from "@/lib/supabase/database.types";
 
@@ -79,6 +80,7 @@ export async function inviteUserAction(
   }
 
   await admin.from("user_brands").insert({ user_id: invited.user.id, brand_id: brandId });
+  revalidateTag(brandsUserTag(invited.user.id), { expire: 0 });
 
   if (regions.length > 0) {
     await admin.from("user_regions").insert(regions.map((region) => ({ user_id: invited.user.id, region })));
@@ -213,5 +215,6 @@ export async function updateUserRoleAction(userId: string, roleId: string) {
     newValue: { role_id: roleId },
   });
 
+  revalidateTag(permissionsUserTag(userId), { expire: 0 });
   revalidatePath("/settings/users");
 }

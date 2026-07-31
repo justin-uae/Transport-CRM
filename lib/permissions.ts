@@ -1,6 +1,8 @@
 import "server-only";
 import { cache } from "react";
+import { unstable_cache } from "next/cache";
 import { createClient } from "./supabase/server";
+import { createAdminClient } from "./supabase/admin";
 import type { Profile } from "./supabase/database.types";
 
 export { PERMISSIONS, ADMIN_SURFACE_PERMISSIONS, type PermissionKey } from "./permissionKeys";
@@ -27,19 +29,19 @@ export const hasPermission = cache(async (profile: Profile, key: PermissionKey):
   return Boolean(data);
 });
 
-/**
- * Every permission key currently granted to the signed-in user — role
- * grants plus/minus per-user overrides, mirroring has_permission()'s SQL in
- * a single round trip instead of one RPC call per key. Used to filter the
- * sidebar and gate whole route groups (e.g. /settings) without N+1 checks.
- *
- * Cached per profile for the request — the staff layout and the settings
- * layout both call this today and previously paid for it twice.
- */
-export const getGrantedPermissions = cache(async (profile: Profile): Promise<Set<PermissionKey>> => {
-  if (profile.is_master_admin) return new Set(Object.values(PERMISSIONS));
+/** Tag for the cached permission set of a single user — bust on role/override change for that user. */
+export const permissionsUserTag = (userId: string) => `permissions:user:${userId}`;
+/** Tag shared by every user on a role — bust once when the role's grants change instead of per-user. */
+export const permissionsRoleTag = (roleId: string) => `permissions:role:${roleId}`;
 
-  const supabase = await createClient();
+const fetchGrantedPermissions = async (profile: Profile): Promise<PermissionKey[]> => {
+  // Uses the service-role client rather than the cookie-scoped one: this
+  // function runs inside unstable_cache, which forbids reading request-only
+  // APIs like cookies() (createClient() reads cookies() to attach the
+  // session). The explicit .eq() filters below reproduce what RLS would
+  // have scoped anyway (a user's own role's grants, their own overrides),
+  // so bypassing RLS here doesn't widen what's returned.
+  const supabase = createAdminClient();
   const [{ data: roleGrants }, { data: overrides }] = await Promise.all([
     profile.role_id
       ? supabase.from("role_permissions").select("permissions(key)").eq("role_id", profile.role_id)
@@ -59,5 +61,32 @@ export const getGrantedPermissions = cache(async (profile: Profile): Promise<Set
     else granted.delete(key);
   }
 
-  return granted as Set<PermissionKey>;
+  return [...granted] as PermissionKey[];
+};
+
+/**
+ * Every permission key currently granted to the signed-in user — role
+ * grants plus/minus per-user overrides, mirroring has_permission()'s SQL in
+ * a single round trip instead of one RPC call per key. Used to filter the
+ * sidebar and gate whole route groups (e.g. /settings) without N+1 checks.
+ *
+ * The DB fetch is wrapped in unstable_cache so it survives across
+ * navigations (React's cache() alone only dedupes within one request, so
+ * every tab click was re-running these two queries). No time-based
+ * revalidate — every mutation path that can change a granted permission
+ * (settings/roles/actions.ts, settings/users/actions.ts) calls revalidateTag
+ * on write, so the cache never needs to expire on its own. If a permission
+ * is ever changed outside those two actions (a direct DB edit, a future
+ * admin feature that forgets to tag), it won't be picked up until the
+ * server restarts — the tradeoff for zero background refetching.
+ */
+export const getGrantedPermissions = cache(async (profile: Profile): Promise<Set<PermissionKey>> => {
+  if (profile.is_master_admin) return new Set(Object.values(PERMISSIONS));
+
+  const cached = unstable_cache(() => fetchGrantedPermissions(profile), ["granted-permissions", profile.id], {
+    tags: [permissionsUserTag(profile.id), ...(profile.role_id ? [permissionsRoleTag(profile.role_id)] : [])],
+    revalidate: false,
+  });
+
+  return new Set(await cached());
 });
