@@ -156,7 +156,7 @@ export default async function PublicQuotePage({ params }: { params: Promise<{ to
                   token={token}
                   amountDueLabel={money(amountDue)}
                   stripeAvailable={version.payment_methods.stripe}
-                  initialMethod={quote.payment_method_chosen}
+                  bankTransferAvailable={version.payment_methods.bank_transfer}
                   bankAccount={bankAccount}
                   reference={quote.quote_number}
                 />

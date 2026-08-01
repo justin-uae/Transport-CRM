@@ -9,10 +9,10 @@ import { ConfirmDetailModal } from "@/components/ui/ConfirmDetailModal";
 import { SearchableSelect } from "@/components/ui/SearchableSelect";
 import { JourneyLegDetail, type JourneyLeg } from "@/components/pages/JourneyLegDetail";
 import { CURRENCIES } from "@/lib/currencies";
+import { STRIPE_PRICE_THRESHOLD, paymentMethodsFor } from "@/lib/quoteMoney";
 import { createQuoteAction } from "./actions";
 
 const STEPS = ["Enquiry", "Pricing", "Review & Send"];
-const STRIPE_THRESHOLD = 1000;
 const DEPOSIT_CHOICES = [25, 50, 75] as const;
 
 interface CustomerInfo {
@@ -83,7 +83,7 @@ export function NewQuoteForm({
   const [sendNow, setSendNow] = useState(true);
 
   const sellingPriceNum = Number(sellingPrice) || 0;
-  const stripeEligible = sellingPriceNum > STRIPE_THRESHOLD;
+  const methods = paymentMethodsFor(sellingPriceNum);
   const fullPayment = depositPercentage === null;
 
   const money = (amount: number) =>
@@ -156,8 +156,10 @@ export function NewQuoteForm({
             </dd>
           </div>
           <div>
-            <dt className="text-xs font-bold uppercase text-slate-400">Online payment (Stripe)</dt>
-            <dd className="mt-0.5 font-semibold">{stripeEligible ? "Available" : "Not available (price ≤ 1000)"}</dd>
+            <dt className="text-xs font-bold uppercase text-slate-400">Payment method</dt>
+            <dd className="mt-0.5 font-semibold">
+              {methods.stripe ? `Online payment (Stripe) — price is below ${STRIPE_PRICE_THRESHOLD}` : `Bank transfer — price is ${STRIPE_PRICE_THRESHOLD} or above`}
+            </dd>
           </div>
           <div>
             <dt className="text-xs font-bold uppercase text-slate-400">Quote expiry</dt>
@@ -308,13 +310,13 @@ export function NewQuoteForm({
                 </div>
               </fieldset>
               <div className="rounded-xl bg-slate-50 p-3 text-sm font-normal md:col-span-2">
-                <span className="font-bold">Online payment (Stripe): </span>
-                {stripeEligible ? (
-                  <span className="font-semibold text-emerald-700">Available — selling price exceeds 1000</span>
+                <span className="font-bold">Payment method: </span>
+                {methods.stripe ? (
+                  <span className="font-semibold text-emerald-700">Online payment (Stripe) — price is below {STRIPE_PRICE_THRESHOLD}</span>
                 ) : (
-                  <span className="text-slate-500">Not available — selling price must exceed 1000</span>
+                  <span className="font-semibold text-emerald-700">Bank transfer — price is {STRIPE_PRICE_THRESHOLD} or above</span>
                 )}
-                <span className="ml-2 text-slate-400">Bank transfer is always offered.</span>
+                <span className="ml-2 text-slate-400">Stripe and bank transfer are never both offered on the same quote.</span>
               </div>
               <label className="text-sm font-bold md:col-span-2">
                 Notes to customer

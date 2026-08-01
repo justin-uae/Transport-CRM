@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { requireProfile } from "@/lib/auth";
 import { hasPermission, PERMISSIONS } from "@/lib/permissions";
 import { recordAudit } from "@/lib/audit";
+import { paymentMethodsFor } from "@/lib/quoteMoney";
 
 export async function createQuoteAction(
   _prevState: { error: string | null; link: string | null },
@@ -92,13 +93,9 @@ export async function createQuoteAction(
       selling_price: sellingPrice,
       currency,
       deposit_percentage: depositPercentage,
-      // Stripe is a system-computed eligibility rule (selling price above
-      // the threshold), never a manual staff toggle — bank transfer stays
-      // unconditionally available.
-      payment_methods: {
-        stripe: sellingPrice > 1000,
-        bank_transfer: true,
-      },
+      // System-computed, never a manual staff toggle — below the threshold
+      // is Stripe-only, at or above it is bank-transfer-only.
+      payment_methods: paymentMethodsFor(sellingPrice),
       customer_notes: String(formData.get("customerNotes") ?? "").trim() || null,
       terms_snapshot: String(formData.get("terms") ?? "").trim() || null,
       brand_snapshot: {

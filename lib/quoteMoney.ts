@@ -16,3 +16,15 @@ export function amountDueNow(version: VersionForDue, alreadyPaid: number): numbe
   const target = version.deposit_percentage ? round2((version.selling_price * version.deposit_percentage) / 100) : version.selling_price;
   return Math.max(0, round2(target - alreadyPaid));
 }
+
+/**
+ * Below this, the customer pays online (Stripe) only; at or above it, bank
+ * transfer only — the two are mutually exclusive, never both offered on the
+ * same quote.
+ */
+export const STRIPE_PRICE_THRESHOLD = 1000;
+
+export function paymentMethodsFor(sellingPrice: number): { stripe: boolean; bank_transfer: boolean } {
+  const stripeEligible = sellingPrice < STRIPE_PRICE_THRESHOLD;
+  return { stripe: stripeEligible, bank_transfer: !stripeEligible };
+}
