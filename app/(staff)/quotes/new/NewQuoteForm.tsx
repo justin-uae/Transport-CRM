@@ -259,12 +259,16 @@ export function NewQuoteForm({
                 <input
                   name="supplierEstimatedCost"
                   type="number"
-                  min={0}
+                  min={0.01}
                   step="0.01"
+                  required
                   value={supplierEstimatedCost}
                   onChange={(e) => setSupplierEstimatedCost(e.target.value)}
                   className="mt-2 w-full rounded-xl border px-3 py-3 font-normal"
                 />
+                <span className="mt-1 block text-xs font-normal text-slate-400">
+                  This is what the supplier will see and be invoiced for — required.
+                </span>
               </label>
               <label className="text-sm font-bold">
                 Selling price

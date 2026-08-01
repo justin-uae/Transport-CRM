@@ -17,39 +17,29 @@ export function InvoiceUploadForm({
   jobId: string;
   supplierId: string;
   invoice: JobSupplierInvoice | null;
-  /** The company's own supplier-cost estimate, captured at quote creation — a starting point only, still editable below. */
+  /** The company's own supplier-cost estimate, captured at quote creation — this is the amount that gets invoiced, not editable here. */
   prefillAmount?: number | null;
   prefillCurrency?: string | null;
 }) {
   const notify = useToast();
   const router = useRouter();
-  const [amount, setAmount] = useState(
-    invoice ? String(invoice.amount) : prefillAmount != null ? String(prefillAmount) : "",
-  );
-  const [currency, setCurrency] = useState(invoice?.currency ?? prefillCurrency ?? "EUR");
   const [notes, setNotes] = useState(invoice?.notes ?? "");
   const [file, setFile] = useState<File | null>(null);
   const [pending, startTransition] = useTransition();
-  const isPrefilled = !invoice && prefillAmount != null;
 
-  if (invoice?.status === "forwarded_to_accounting") {
+  const amount = invoice?.amount ?? prefillAmount;
+  const currency = invoice?.currency ?? prefillCurrency ?? "EUR";
+
+  if (amount == null) {
     return (
-      <div className="mt-3 rounded-xl bg-emerald-50 p-3 text-xs">
-        <div className="font-bold text-emerald-700">Invoice forwarded to accounting</div>
-        <p className="mt-1 text-emerald-700">
-          {invoice.currency} {invoice.amount.toFixed(2)} · {invoice.file_name}
-        </p>
+      <div className="mt-3 rounded-xl bg-amber-50 p-3 text-xs font-semibold text-amber-700">
+        No supplier cost has been set for this job yet — contact the office before invoicing.
       </div>
     );
   }
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
-    const amountNum = Number(amount);
-    if (!amountNum || amountNum <= 0) {
-      notify("Enter an invoice amount greater than zero.");
-      return;
-    }
     if (!invoice && !file) {
       notify("Attach your invoice file.");
       return;
@@ -72,7 +62,7 @@ export function InvoiceUploadForm({
       }
 
       try {
-        await uploadSupplierInvoiceAction(jobId, { amount: amountNum, currency, notes, storagePath, fileName });
+        await uploadSupplierInvoiceAction(jobId, { notes, storagePath, fileName });
         notify(invoice ? "Invoice updated" : "Invoice uploaded");
         setFile(null);
         router.refresh();
@@ -85,21 +75,10 @@ export function InvoiceUploadForm({
   return (
     <form onSubmit={submit} className="mt-3 space-y-2 border-t pt-3">
       <div className="text-xs font-bold text-slate-500">{invoice ? "Edit your invoice" : "Upload your invoice"}</div>
-      <div className="flex flex-wrap gap-2">
-        <input
-          value={amount}
-          onChange={(e) => setAmount(e.target.value)}
-          type="number"
-          min={0}
-          step="0.01"
-          placeholder="Amount"
-          className="w-28 rounded-lg border px-3 py-2 text-sm"
-        />
-        <input
-          value={currency}
-          onChange={(e) => setCurrency(e.target.value)}
-          className="w-20 rounded-lg border px-3 py-2 text-sm"
-        />
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="rounded-lg border bg-slate-50 px-3 py-2 text-sm font-bold">
+          {new Intl.NumberFormat("en-GB", { style: "currency", currency, maximumFractionDigits: 2 }).format(amount)}
+        </div>
         <input
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
@@ -107,9 +86,7 @@ export function InvoiceUploadForm({
           className="min-w-[8rem] flex-1 rounded-lg border px-3 py-2 text-sm"
         />
       </div>
-      {isPrefilled && (
-        <p className="text-xs text-slate-400">Suggested from quote estimate — adjust if your actual invoice differs.</p>
-      )}
+      <p className="text-xs text-slate-400">This is the agreed supplier cost for this job and can&apos;t be changed here.</p>
       <div className="flex flex-wrap items-center gap-2">
         <input type="file" onChange={(e) => setFile(e.target.files?.[0] ?? null)} className="text-xs" />
         {invoice && <span className="text-xs text-slate-400">Current file: {invoice.file_name}</span>}

@@ -16,13 +16,14 @@ import {
   transferSupplierInvoiceToAccountingAction,
 } from "@/app/(staff)/dispatch/actions";
 import { JourneyLegDetail, type JourneyLeg } from "@/components/pages/JourneyLegDetail";
-import type { JobOfferStatus, JobStatus, JobSupplierInvoice } from "@/lib/supabase/database.types";
+import type { JobOfferStatus, JobStatus, JobSupplierInvoice, SupplierPaymentStatus } from "@/lib/supabase/database.types";
 import type { SupplierOption } from "@/components/pages/DispatchBoard";
 
 export interface JobDetailRow {
   id: string;
   status: JobStatus;
   region: string | null;
+  supplier_payment_status: SupplierPaymentStatus;
   offered_at: string | null;
   responded_at: string | null;
   confirmed_at: string | null;
@@ -54,6 +55,20 @@ const OFFER_STATUS_STYLE: Record<JobOfferStatus, string> = {
   withdrawn: "bg-slate-100 text-slate-500",
 };
 
+const PAYMENT_STATUS_STYLE: Record<SupplierPaymentStatus, string> = {
+  unpaid: "bg-slate-100 text-slate-600",
+  partially_paid: "bg-amber-50 text-amber-700",
+  paid: "bg-emerald-50 text-emerald-700",
+};
+
+interface SupplierPaymentRow {
+  id: string;
+  amount: number;
+  currency: string;
+  bank_reference: string | null;
+  paid_at: string;
+}
+
 function money(amount: number | undefined, currency: string) {
   if (amount === undefined) return "—";
   return new Intl.NumberFormat("en-GB", { style: "currency", currency, maximumFractionDigits: 0 }).format(amount);
@@ -64,6 +79,7 @@ export function DispatchJobDetail({
   suppliers,
   invoice,
   invoiceUrl,
+  supplierPayments,
   canTransferInvoice,
   canDispatchJobs,
 }: {
@@ -71,6 +87,7 @@ export function DispatchJobDetail({
   suppliers: SupplierOption[];
   invoice: JobSupplierInvoice | null;
   invoiceUrl: string | null;
+  supplierPayments: SupplierPaymentRow[];
   canTransferInvoice: boolean;
   canDispatchJobs: boolean;
 }) {
@@ -249,8 +266,16 @@ export function DispatchJobDetail({
                 )}
               </div>
               {invoice.status === "forwarded_to_accounting" ? (
-                <div className="mt-3 rounded-xl bg-emerald-50 px-4 py-3 text-sm font-bold text-emerald-700">
-                  Forwarded to accounting
+                <div
+                  className={`mt-3 rounded-xl px-4 py-3 text-sm font-bold ${
+                    job.supplier_payment_status === "paid" ? "bg-emerald-50 text-emerald-700" : "bg-blue-50 text-blue-700"
+                  }`}
+                >
+                  {job.supplier_payment_status === "paid"
+                    ? "Paid in full"
+                    : job.supplier_payment_status === "partially_paid"
+                      ? "Forwarded to accounting — partially paid"
+                      : "Forwarded to accounting — awaiting payment"}
                 </div>
               ) : canTransferInvoice ? (
                 <button
@@ -264,6 +289,29 @@ export function DispatchJobDetail({
                   Transfer to Accountant
                 </button>
               ) : null}
+            </Panel>
+          )}
+
+          {invoice?.status === "forwarded_to_accounting" && (
+            <Panel>
+              <div className="flex items-start justify-between">
+                <SectionTitle title="Supplier Payment" sub="Recorded by Finance once paid by bank transfer" />
+                <span className={`rounded-full px-2.5 py-1 text-xs font-bold capitalize ${PAYMENT_STATUS_STYLE[job.supplier_payment_status]}`}>
+                  {job.supplier_payment_status.replaceAll("_", " ")}
+                </span>
+              </div>
+              <div className="mt-3 space-y-2 text-sm">
+                {supplierPayments.map((p) => (
+                  <div key={p.id} className="flex justify-between border-b py-1.5 last:border-0">
+                    <span className="text-slate-500">
+                      {new Date(p.paid_at).toLocaleDateString()}
+                      {p.bank_reference ? ` · ${p.bank_reference}` : ""}
+                    </span>
+                    <b>{money(p.amount, p.currency)}</b>
+                  </div>
+                ))}
+                {supplierPayments.length === 0 && <p className="text-slate-500">No payments recorded yet.</p>}
+              </div>
             </Panel>
           )}
 

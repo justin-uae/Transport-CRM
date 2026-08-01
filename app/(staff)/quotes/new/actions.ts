@@ -40,6 +40,13 @@ export async function createQuoteAction(
     return { error: "Enter a selling price greater than zero.", link: null };
   }
 
+  // Required — this is the exact figure the supplier sees and gets
+  // invoiced for once the job is offered to them (job_offer_view).
+  const supplierEstimatedCost = Number(formData.get("supplierEstimatedCost") ?? 0);
+  if (!supplierEstimatedCost || supplierEstimatedCost <= 0) {
+    return { error: "Enter the supplier cost — this is what the supplier will be invoiced for.", link: null };
+  }
+
   const currency = String(formData.get("currency") ?? brand.default_currency).trim() || brand.default_currency;
 
   const { data: quoteNumber, error: numberError } = await supabase.rpc("next_document_number", {
@@ -89,7 +96,7 @@ export async function createQuoteAction(
       version_number: 1,
       vehicle_type_id: firstLeg?.vehicle_type_id ?? null,
       vehicle_description: firstLeg?.vehicle_types?.name ?? null,
-      supplier_estimated_cost: Number(formData.get("supplierEstimatedCost") ?? 0) || null,
+      supplier_estimated_cost: supplierEstimatedCost,
       selling_price: sellingPrice,
       currency,
       deposit_percentage: depositPercentage,

@@ -58,15 +58,33 @@ export async function rejectJobOfferAction(jobId: string) {
 
 export async function uploadSupplierInvoiceAction(
   jobId: string,
-  data: { amount: number; currency: string; notes: string; storagePath: string; fileName: string },
+  data: { notes: string; storagePath: string; fileName: string },
 ) {
   const supplier = await requireSupplier();
   const supabase = await createClient();
 
-  const { data: job } = await supabase.from("jobs").select("status, assigned_supplier_id, tenant_id").eq("id", jobId).single();
+  const { data: job } = await supabase.from("jobs").select("status, assigned_supplier_id, tenant_id, quote_id").eq("id", jobId).single();
   if (!job || job.assigned_supplier_id !== supplier.id || !["confirmed", "completed"].includes(job.status)) {
     throw new Error("You can only upload an invoice once this job is confirmed.");
   }
+
+  // The invoice amount is never taken from the client — it's locked to the
+  // company's own supplier-cost estimate captured at quote creation time, so
+  // a supplier can't submit an inflated figure. Read via the admin client:
+  // a supplier session has no `profiles` row, so quotes/quote_versions RLS
+  // (tenant-scoped to a profile) would otherwise return nothing here —
+  // ownership was already verified against the job row above.
+  const { data: quote } = await admin()
+    .from("quotes")
+    .select("currency, quote_versions!quotes_current_version_id_fkey(supplier_estimated_cost)")
+    .eq("id", job.quote_id)
+    .single();
+  const version = quote?.quote_versions as unknown as { supplier_estimated_cost: number | null } | null;
+  const amount = version?.supplier_estimated_cost;
+  if (!amount || amount <= 0) {
+    throw new Error("No supplier cost has been set for this job yet — contact the office before invoicing.");
+  }
+  const currency = quote?.currency ?? "EUR";
 
   const { data: existing } = await supabase
     .from("job_supplier_invoices")
@@ -82,8 +100,8 @@ export async function uploadSupplierInvoiceAction(
       tenant_id: job.tenant_id,
       job_id: jobId,
       supplier_id: supplier.id,
-      amount: data.amount,
-      currency: data.currency || "EUR",
+      amount,
+      currency,
       notes: data.notes.trim() || null,
       storage_path: data.storagePath,
       file_name: data.fileName,

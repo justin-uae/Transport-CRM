@@ -32,7 +32,7 @@ export function NewEnquiryForm({
 
   const [customerMode, setCustomerMode] = useState<"existing" | "new">(customers.length > 0 ? "existing" : "new");
   const [existingCustomerId, setExistingCustomerId] = useState(customers[0]?.id ?? "");
-  const [newCustomer, setNewCustomer] = useState({ contactName: "", companyName: "", email: "", phone: "", country: "" });
+  const [newCustomer, setNewCustomer] = useState({ contactName: "", companyName: "", email: "", phone: "" });
 
   const [journey, setJourney] = useState({
     type: "one_way",
@@ -40,6 +40,8 @@ export function NewEnquiryForm({
     destination: "",
     date: "",
     time: "",
+    returnDate: "",
+    returnTime: "",
     passengers: 1,
     luggage: 0,
   });
@@ -64,13 +66,16 @@ export function NewEnquiryForm({
       formData.set("newCompanyName", newCustomer.companyName);
       formData.set("newEmail", newCustomer.email);
       formData.set("newPhone", newCustomer.phone);
-      formData.set("newCountry", newCustomer.country);
     }
     formData.set("journeyType", journey.type);
     formData.set("pickupAddress", journey.pickup);
     formData.set("destinationAddress", journey.destination);
     formData.set("pickupDate", journey.date);
     formData.set("pickupTime", journey.time);
+    if (journey.type === "return") {
+      formData.set("returnDate", journey.returnDate);
+      formData.set("returnTime", journey.returnTime);
+    }
     formData.set("passengerCount", String(journey.passengers));
     formData.set("luggageCount", String(journey.luggage));
     formData.set("vehicleTypeId", requirements.vehicleTypeId);
@@ -173,14 +178,6 @@ export function NewEnquiryForm({
                     className="mt-2 w-full rounded-xl border px-3 py-3 font-normal"
                   />
                 </label>
-                <label className="text-sm font-bold">
-                  Country
-                  <input
-                    value={newCustomer.country}
-                    onChange={(e) => setNewCustomer({ ...newCustomer, country: e.target.value })}
-                    className="mt-2 w-full rounded-xl border px-3 py-3 font-normal"
-                  />
-                </label>
               </div>
             )}
           </div>
@@ -237,6 +234,28 @@ export function NewEnquiryForm({
                   className="mt-2 w-full rounded-xl border px-3 py-3 font-normal"
                 />
               </label>
+              {journey.type === "return" && (
+                <>
+                  <label className="text-sm font-bold">
+                    Return date
+                    <input
+                      type="date"
+                      value={journey.returnDate}
+                      onChange={(e) => setJourney({ ...journey, returnDate: e.target.value })}
+                      className="mt-2 w-full rounded-xl border px-3 py-3 font-normal"
+                    />
+                  </label>
+                  <label className="text-sm font-bold">
+                    Return time
+                    <input
+                      type="time"
+                      value={journey.returnTime}
+                      onChange={(e) => setJourney({ ...journey, returnTime: e.target.value })}
+                      className="mt-2 w-full rounded-xl border px-3 py-3 font-normal"
+                    />
+                  </label>
+                </>
+              )}
               <label className="text-sm font-bold">
                 Passengers
                 <input
@@ -350,13 +369,9 @@ export function NewEnquiryForm({
                     <span className="text-slate-500">Email</span>
                     <b>{newCustomer.email || "—"}</b>
                   </div>
-                  <div className="flex justify-between border-b py-2">
+                  <div className="flex justify-between py-2">
                     <span className="text-slate-500">Phone</span>
                     <b>{newCustomer.phone || "—"}</b>
-                  </div>
-                  <div className="flex justify-between py-2">
-                    <span className="text-slate-500">Country</span>
-                    <b>{newCustomer.country || "—"}</b>
                   </div>
                 </>
               )}
@@ -380,6 +395,12 @@ export function NewEnquiryForm({
                 <span className="text-slate-500">Date &amp; time</span>
                 <b>{journey.date || "—"} {journey.time}</b>
               </div>
+              {journey.type === "return" && (
+                <div className="flex justify-between border-b py-2">
+                  <span className="text-slate-500">Return date &amp; time</span>
+                  <b>{journey.returnDate || "—"} {journey.returnTime}</b>
+                </div>
+              )}
               <div className="flex justify-between border-b py-2">
                 <span className="text-slate-500">Passengers</span>
                 <b>{journey.passengers}</b>

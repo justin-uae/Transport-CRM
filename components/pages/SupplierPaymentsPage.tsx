@@ -65,6 +65,7 @@ export function SupplierPaymentsPage({
   const router = useRouter();
   const notify = useToast();
   const [pending, startTransition] = useTransition();
+  const [tab, setTab] = useState<"outstanding" | "paid">("outstanding");
   const [target, setTarget] = useState<SupplierInvoiceRow | null>(null);
   const [amount, setAmount] = useState("");
   const [bankReference, setBankReference] = useState("");
@@ -73,6 +74,8 @@ export function SupplierPaymentsPage({
   const [modalError, setModalError] = useState<string | null>(null);
 
   const outstanding = invoices.filter((row) => row.jobs?.supplier_payment_status !== "paid");
+  const paidHistory = invoices.filter((row) => row.jobs?.supplier_payment_status === "paid");
+  const visible = tab === "outstanding" ? outstanding : paidHistory;
 
   function open(row: SupplierInvoiceRow) {
     const balance = row.amount - paidSoFar(row);
@@ -143,9 +146,23 @@ export function SupplierPaymentsPage({
         title="Supplier Payments"
         text="Invoices forwarded from Dispatch — pay the supplier by bank transfer outside the system, then record it here (partial payments supported)."
       />
+      <div className="mb-4 flex gap-2">
+        {(["outstanding", "paid"] as const).map((t) => (
+          <button
+            key={t}
+            onClick={() => setTab(t)}
+            className={
+              "rounded-xl px-3 py-2 text-sm font-bold " +
+              (tab === t ? "bg-primary-500 text-white" : "bg-slate-100 text-slate-600")
+            }
+          >
+            {t === "outstanding" ? `Outstanding (${outstanding.length})` : `Paid History (${paidHistory.length})`}
+          </button>
+        ))}
+      </div>
       <Panel>
         <div className="space-y-3">
-          {outstanding.map((row) => {
+          {visible.map((row) => {
             const paid = paidSoFar(row);
             const bal = row.amount - paid;
             const customer = row.jobs?.quotes?.customers;
@@ -200,18 +217,22 @@ export function SupplierPaymentsPage({
                       View invoice file
                     </a>
                   )}
-                  <button
-                    onClick={() => open(row)}
-                    className="ml-auto rounded-lg bg-primary-500 px-3 py-2 text-xs font-bold text-white"
-                  >
-                    Record Payment
-                  </button>
+                  {tab === "outstanding" && (
+                    <button
+                      onClick={() => open(row)}
+                      className="ml-auto rounded-lg bg-primary-500 px-3 py-2 text-xs font-bold text-white"
+                    >
+                      Record Payment
+                    </button>
+                  )}
                 </div>
               </div>
             );
           })}
-          {outstanding.length === 0 && (
-            <p className="py-8 text-center text-sm text-slate-500">No supplier invoices awaiting payment.</p>
+          {visible.length === 0 && (
+            <p className="py-8 text-center text-sm text-slate-500">
+              {tab === "outstanding" ? "No supplier invoices awaiting payment." : "No supplier payments recorded yet."}
+            </p>
           )}
         </div>
       </Panel>

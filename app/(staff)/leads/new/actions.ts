@@ -29,7 +29,6 @@ export async function createEnquiryAction(_prevState: { error: string | null }, 
         company_name: String(formData.get("newCompanyName") ?? "").trim() || null,
         email: String(formData.get("newEmail") ?? "").trim() || null,
         phone: String(formData.get("newPhone") ?? "").trim() || null,
-        country: String(formData.get("newCountry") ?? "").trim() || null,
         account_manager_id: actor.id,
       })
       .select()
@@ -100,14 +99,18 @@ export async function createEnquiryAction(_prevState: { error: string | null }, 
   const luggageCount = Number(formData.get("luggageCount") ?? 0) || null;
   const childSeats = Number(formData.get("childSeats") ?? 0) || 0;
 
+  const journeyType = String(formData.get("journeyType") ?? "one_way");
+
   const { error: legError } = await supabase.from("enquiry_legs").insert({
     enquiry_id: enquiry.id,
     sequence: 1,
-    journey_type: String(formData.get("journeyType") ?? "one_way"),
+    journey_type: journeyType,
     pickup_address: pickupAddress,
     destination_address: destinationAddress,
     pickup_date: pickupDate,
     pickup_time: String(formData.get("pickupTime") ?? "").trim() || null,
+    return_date: journeyType === "return" ? String(formData.get("returnDate") ?? "").trim() || null : null,
+    return_time: journeyType === "return" ? String(formData.get("returnTime") ?? "").trim() || null : null,
     passenger_count: passengerCount,
     luggage_count: luggageCount,
     vehicle_type_id: String(formData.get("vehicleTypeId") ?? "").trim() || null,
