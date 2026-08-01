@@ -4,6 +4,7 @@ import { Users, ShieldCheck, Building2, History, Settings as SettingsIcon } from
 import { requireProfile } from "@/lib/auth";
 import { getGrantedPermissions } from "@/lib/permissions";
 import { ADMIN_SURFACE_PERMISSIONS } from "@/lib/permissionKeys";
+import { landingHrefForProfile } from "@/lib/landing";
 
 const SETTINGS_NAV = [
   { label: "Overview", href: "/settings", icon: SettingsIcon },
@@ -21,7 +22,7 @@ export default async function SettingsLayout({ children }: { children: React.Rea
   const profile = await requireProfile();
   const granted = await getGrantedPermissions(profile);
   if (!ADMIN_SURFACE_PERMISSIONS.some((key) => granted.has(key))) {
-    redirect("/dashboard");
+    redirect(await landingHrefForProfile(profile));
   }
 
   return (

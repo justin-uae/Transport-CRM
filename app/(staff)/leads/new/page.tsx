@@ -1,11 +1,17 @@
+import { redirect } from "next/navigation";
 import { PageHead } from "@/components/ui/PageHead";
 import { Panel } from "@/components/ui/Panel";
 import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
+import { hasPermission, PERMISSIONS } from "@/lib/permissions";
+import { landingHrefForProfile } from "@/lib/landing";
 import { NewEnquiryForm } from "./NewEnquiryForm";
 
 export default async function NewEnquiryPage() {
-  await requireProfile();
+  const profile = await requireProfile();
+  if (!(await hasPermission(profile, PERMISSIONS.ENQUIRIES_ADD))) {
+    redirect(await landingHrefForProfile(profile));
+  }
   const supabase = await createClient();
 
   const [{ data: customers }, { data: vehicleTypes }] = await Promise.all([

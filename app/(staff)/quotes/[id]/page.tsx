@@ -3,11 +3,11 @@ import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
-import { hasPermission, PERMISSIONS } from "@/lib/permissions";
 import { Panel } from "@/components/ui/Panel";
 import { PageHead } from "@/components/ui/PageHead";
 import { SectionTitle } from "@/components/ui/SectionTitle";
 import { QuoteDetailActions } from "@/components/pages/QuoteDetailActions";
+import { JourneyLegDetail, type JourneyLeg } from "@/components/pages/JourneyLegDetail";
 import type { QuoteStatus, QuoteEventType, QuoteDecisionType } from "@/lib/supabase/database.types";
 
 interface VersionRow {
@@ -36,15 +36,7 @@ interface QuoteDetailRow {
   viewed_at: string | null;
   decided_at: string | null;
   customers: { company_name: string | null; contact_name: string; phone: string | null; email: string | null } | null;
-  enquiries: {
-    enquiry_legs: {
-      pickup_address: string;
-      destination_address: string;
-      pickup_date: string | null;
-      pickup_time: string | null;
-      passenger_count: number | null;
-    }[];
-  } | null;
+  enquiries: { enquiry_legs: JourneyLeg[] } | null;
   quote_versions: VersionRow[];
   quote_events: { event: QuoteEventType; created_at: string }[];
   quote_decisions: { decision: QuoteDecisionType; reason: string | null; free_text: string | null; decided_at: string }[];
@@ -78,14 +70,13 @@ function money(amount: number | undefined | null, currency: string) {
 
 export default async function QuoteDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const profile = await requireProfile();
+  await requireProfile();
   const supabase = await createClient();
-  const canMarkPaid = await hasPermission(profile, PERMISSIONS.FINANCE_RECORD_PAYMENTS);
 
   const { data: quoteRaw, error: quoteError } = await supabase
     .from("quotes")
     .select(
-      "id, quote_number, status, currency, expiry_at, invoice_number, invoiced_at, public_token, created_at, sent_at, viewed_at, decided_at, customers(company_name, contact_name, phone, email), enquiries(enquiry_legs(pickup_address, destination_address, pickup_date, pickup_time, passenger_count)), quote_versions!quote_versions_quote_id_fkey(id, version_number, vehicle_description, supplier_estimated_cost, selling_price, currency, customer_notes, terms_snapshot, created_at), quote_events(event, created_at), quote_decisions(decision, reason, free_text, decided_at)",
+      "id, quote_number, status, currency, expiry_at, invoice_number, invoiced_at, public_token, created_at, sent_at, viewed_at, decided_at, customers(company_name, contact_name, phone, email), enquiries(enquiry_legs(sequence, journey_type, pickup_address, destination_address, via_points, pickup_date, pickup_time, return_date, return_time, passenger_count, luggage_count, wheelchair_required, child_seats, special_requirements, vehicle_types(name))), quote_versions!quote_versions_quote_id_fkey(id, version_number, vehicle_description, supplier_estimated_cost, selling_price, currency, customer_notes, terms_snapshot, created_at), quote_events(event, created_at), quote_decisions(decision, reason, free_text, decided_at)",
     )
     .eq("id", id)
     .single();
@@ -101,7 +92,7 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
     .maybeSingle();
 
   const customer = quote.customers;
-  const leg = quote.enquiries?.enquiry_legs?.[0];
+  const legs = [...(quote.enquiries?.enquiry_legs ?? [])].sort((a, b) => a.sequence - b.sequence);
   const versions = [...(quote.quote_versions ?? [])].sort((a, b) => b.version_number - a.version_number);
   const currentVersion = versions[0] ?? null;
   const events = [...(quote.quote_events ?? [])].sort(
@@ -128,30 +119,22 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
         <div className="space-y-5 lg:col-span-2">
           <Panel>
             <div className="flex items-start justify-between">
-              <SectionTitle title="Journey & pricing" sub="Current version details" />
+              <SectionTitle title="Journey" sub={legs.length > 1 ? `${legs.length} legs` : "Pickup, destination and passenger details"} />
               <span className={"rounded-full px-2.5 py-1 text-xs font-bold capitalize " + STATUS_STYLE[quote.status]}>
                 {quote.status}
               </span>
             </div>
+            <div className="mt-4">
+              {legs.map((leg, i) => (
+                <JourneyLegDetail key={leg.sequence} leg={leg} index={i} total={legs.length} />
+              ))}
+              {legs.length === 0 && <p className="text-sm text-slate-500">No journey details recorded.</p>}
+            </div>
+          </Panel>
+
+          <Panel>
+            <SectionTitle title="Pricing" sub="Current version details" />
             <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-3 rounded-2xl bg-slate-50 p-4 text-sm">
-              <div>
-                <dt className="text-xs font-bold uppercase text-slate-400">Pickup</dt>
-                <dd className="mt-0.5 font-semibold">{leg?.pickup_address ?? "—"}</dd>
-              </div>
-              <div>
-                <dt className="text-xs font-bold uppercase text-slate-400">Destination</dt>
-                <dd className="mt-0.5 font-semibold">{leg?.destination_address ?? "—"}</dd>
-              </div>
-              <div>
-                <dt className="text-xs font-bold uppercase text-slate-400">Date</dt>
-                <dd className="mt-0.5 font-semibold">
-                  {leg?.pickup_date ?? "—"} {leg?.pickup_time ?? ""}
-                </dd>
-              </div>
-              <div>
-                <dt className="text-xs font-bold uppercase text-slate-400">Passengers</dt>
-                <dd className="mt-0.5 font-semibold">{leg?.passenger_count ?? "—"}</dd>
-              </div>
               <div>
                 <dt className="text-xs font-bold uppercase text-slate-400">Vehicle</dt>
                 <dd className="mt-0.5 font-semibold">{currentVersion?.vehicle_description ?? "—"}</dd>
@@ -259,7 +242,6 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
                   customerLabel: customer?.company_name || customer?.contact_name || "—",
                   sellingPrice: currentVersion?.selling_price ?? null,
                 }}
-                canMarkPaid={canMarkPaid}
               />
             </div>
           </Panel>

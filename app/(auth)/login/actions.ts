@@ -3,11 +3,12 @@
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { landingHrefForProfile } from "@/lib/landing";
 
 export async function signInAction(_prevState: { error: string | null }, formData: FormData) {
   const email = String(formData.get("email") ?? "").trim();
   const password = String(formData.get("password") ?? "");
-  const next = String(formData.get("next") ?? "/dashboard");
+  const next = String(formData.get("next") ?? "");
 
   if (!email || !password) {
     return { error: "Enter your email and password." };
@@ -20,11 +21,7 @@ export async function signInAction(_prevState: { error: string | null }, formDat
     return { error: "Incorrect email or password." };
   }
 
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("tenant_id, status, requires_password_reset")
-    .eq("id", data.user.id)
-    .single();
+  const { data: profile } = await supabase.from("profiles").select("*").eq("id", data.user.id).single();
 
   if (profile) {
     const headerList = await headers();
@@ -41,7 +38,7 @@ export async function signInAction(_prevState: { error: string | null }, formDat
       return { error: "This account has been suspended. Contact your administrator." };
     }
 
-    redirect(next || "/dashboard");
+    redirect(next || (await landingHrefForProfile(profile)));
   }
 
   // No staff profile — this login might belong to the separate supplier

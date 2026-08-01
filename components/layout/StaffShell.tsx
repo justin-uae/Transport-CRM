@@ -14,6 +14,8 @@ export function StaffShell({
   activeBrandId,
   visibleHrefs,
   canSeeSettings,
+  canCreateQuote,
+  canAddLead,
   children,
 }: {
   userName: string;
@@ -22,6 +24,8 @@ export function StaffShell({
   activeBrandId: string | null;
   visibleHrefs: string[];
   canSeeSettings: boolean;
+  canCreateQuote: boolean;
+  canAddLead: boolean;
   children: React.ReactNode;
 }) {
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -43,6 +47,8 @@ export function StaffShell({
               onOpenMobile={() => setMobileOpen(true)}
               brands={brands}
               activeBrandId={activeBrandId}
+              canCreateQuote={canCreateQuote}
+              canAddLead={canAddLead}
             />
             <div className="p-4 md:p-6 xl:p-8">{children}</div>
           </main>

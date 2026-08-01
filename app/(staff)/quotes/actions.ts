@@ -12,11 +12,17 @@ import { recordAudit } from "@/lib/audit";
  * Phase 2.5 plan). Also creates the job that Dispatch will assign to a
  * supplier once region-matched.
  */
-export async function markQuotePaidAction(quoteId: string) {
+export async function markQuotePaidAction(
+  quoteId: string,
+  proof: { proofStoragePath: string; proofFileName: string },
+) {
   const actor = await requireProfile();
   const allowed = await hasPermission(actor, PERMISSIONS.FINANCE_RECORD_PAYMENTS);
   if (!allowed) {
     return { error: "You do not have permission to record a customer payment." };
+  }
+  if (!proof.proofStoragePath || !proof.proofFileName) {
+    return { error: "Attach proof of payment before marking this quote as paid." };
   }
   const supabase = await createClient();
 
@@ -49,7 +55,13 @@ export async function markQuotePaidAction(quoteId: string) {
 
   const { error: updateError } = await supabase
     .from("quotes")
-    .update({ status: "paid", invoice_number: invoiceNumber, invoiced_at: new Date().toISOString() })
+    .update({
+      status: "paid",
+      invoice_number: invoiceNumber,
+      invoiced_at: new Date().toISOString(),
+      payment_proof_storage_path: proof.proofStoragePath,
+      payment_proof_file_name: proof.proofFileName,
+    })
     .eq("id", quoteId);
   if (updateError) return { error: updateError.message };
 
@@ -87,5 +99,6 @@ export async function markQuotePaidAction(quoteId: string) {
 
   revalidatePath("/quotes");
   revalidatePath("/dispatch");
+  revalidatePath("/bookings");
   return { error: null };
 }

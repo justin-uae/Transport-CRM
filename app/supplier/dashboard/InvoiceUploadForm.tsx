@@ -11,18 +11,26 @@ export function InvoiceUploadForm({
   jobId,
   supplierId,
   invoice,
+  prefillAmount = null,
+  prefillCurrency = null,
 }: {
   jobId: string;
   supplierId: string;
   invoice: JobSupplierInvoice | null;
+  /** The company's own supplier-cost estimate, captured at quote creation — a starting point only, still editable below. */
+  prefillAmount?: number | null;
+  prefillCurrency?: string | null;
 }) {
   const notify = useToast();
   const router = useRouter();
-  const [amount, setAmount] = useState(invoice ? String(invoice.amount) : "");
-  const [currency, setCurrency] = useState(invoice?.currency ?? "EUR");
+  const [amount, setAmount] = useState(
+    invoice ? String(invoice.amount) : prefillAmount != null ? String(prefillAmount) : "",
+  );
+  const [currency, setCurrency] = useState(invoice?.currency ?? prefillCurrency ?? "EUR");
   const [notes, setNotes] = useState(invoice?.notes ?? "");
   const [file, setFile] = useState<File | null>(null);
   const [pending, startTransition] = useTransition();
+  const isPrefilled = !invoice && prefillAmount != null;
 
   if (invoice?.status === "forwarded_to_accounting") {
     return (
@@ -99,6 +107,9 @@ export function InvoiceUploadForm({
           className="min-w-[8rem] flex-1 rounded-lg border px-3 py-2 text-sm"
         />
       </div>
+      {isPrefilled && (
+        <p className="text-xs text-slate-400">Suggested from quote estimate — adjust if your actual invoice differs.</p>
+      )}
       <div className="flex flex-wrap items-center gap-2">
         <input type="file" onChange={(e) => setFile(e.target.files?.[0] ?? null)} className="text-xs" />
         {invoice && <span className="text-xs text-slate-400">Current file: {invoice.file_name}</span>}

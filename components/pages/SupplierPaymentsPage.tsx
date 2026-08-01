@@ -6,6 +6,7 @@ import { Panel } from "@/components/ui/Panel";
 import { PageHead } from "@/components/ui/PageHead";
 import { useToast } from "@/components/ui/Toast";
 import { ConfirmDetailModal } from "@/components/ui/ConfirmDetailModal";
+import { createClient } from "@/lib/supabase/client";
 import { recordSupplierPaymentAction } from "@/app/(staff)/accounting/supplier-payments/actions";
 import type { SupplierPaymentStatus } from "@/lib/supabase/database.types";
 
@@ -25,7 +26,14 @@ export interface SupplierInvoiceRow {
     region: string | null;
     suppliers: { id: string; name: string; phone: string | null; email: string | null } | null;
     quotes: { quote_number: string; customers: { company_name: string | null; contact_name: string } | null } | null;
-    supplier_payments: { amount: number; bank_reference: string | null; notes: string | null; paid_at: string }[];
+    supplier_payments: {
+      id: string;
+      amount: number;
+      bank_reference: string | null;
+      notes: string | null;
+      paid_at: string;
+      proof_storage_path: string | null;
+    }[];
   } | null;
 }
 
@@ -46,9 +54,13 @@ function paidSoFar(row: SupplierInvoiceRow) {
 export function SupplierPaymentsPage({
   invoices,
   invoiceUrls,
+  proofUrls,
+  currentUserId,
 }: {
   invoices: SupplierInvoiceRow[];
   invoiceUrls: Record<string, string | null>;
+  proofUrls: Record<string, string | null>;
+  currentUserId: string;
 }) {
   const router = useRouter();
   const notify = useToast();
@@ -57,6 +69,7 @@ export function SupplierPaymentsPage({
   const [amount, setAmount] = useState("");
   const [bankReference, setBankReference] = useState("");
   const [notes, setNotes] = useState("");
+  const [proofFile, setProofFile] = useState<File | null>(null);
   const [modalError, setModalError] = useState<string | null>(null);
 
   const outstanding = invoices.filter((row) => row.jobs?.supplier_payment_status !== "paid");
@@ -67,6 +80,7 @@ export function SupplierPaymentsPage({
     setAmount(balance > 0 ? balance.toFixed(2) : "");
     setBankReference("");
     setNotes("");
+    setProofFile(null);
     setModalError(null);
   }
 
@@ -78,15 +92,38 @@ export function SupplierPaymentsPage({
   const enteredAmount = Number(amount) || 0;
   const balance = target ? target.amount - paidSoFar(target) : 0;
   const remainingAfter = balance - enteredAmount;
+  const willFullySettle = enteredAmount > 0 && remainingAfter <= 0;
 
   function confirm() {
     if (!target) return;
+    if (willFullySettle && !proofFile) {
+      setModalError("Attach proof of payment before marking this supplier as fully paid.");
+      return;
+    }
     startTransition(async () => {
+      let proofStoragePath: string | null = null;
+      let proofFileName: string | null = null;
+
+      if (proofFile) {
+        const supabase = createClient();
+        const path = `${currentUserId}/${crypto.randomUUID()}-${proofFile.name}`;
+        const { error: uploadError } = await supabase.storage.from("supplier-payment-proofs").upload(path, proofFile);
+        if (uploadError) {
+          setModalError(uploadError.message);
+          notify(uploadError.message);
+          return;
+        }
+        proofStoragePath = path;
+        proofFileName = proofFile.name;
+      }
+
       const result = await recordSupplierPaymentAction(target.job_id, {
         amount: enteredAmount,
         currency: target.currency,
         bankReference,
         notes,
+        proofStoragePath,
+        proofFileName,
       });
       if (result?.error) {
         setModalError(result.error);
@@ -140,6 +177,23 @@ export function SupplierPaymentsPage({
                     <b className="text-primary-600">{money(bal, row.currency)}</b>
                   </div>
                 </div>
+                {(row.jobs?.supplier_payments?.length ?? 0) > 0 && (
+                  <div className="mt-3 space-y-1 border-t pt-3 text-xs text-slate-500">
+                    {row.jobs!.supplier_payments.map((p) => (
+                      <div key={p.id} className="flex items-center justify-between gap-2">
+                        <span>
+                          {money(p.amount, row.currency)} · {new Date(p.paid_at).toLocaleDateString()}
+                          {p.bank_reference && ` · ${p.bank_reference}`}
+                        </span>
+                        {proofUrls[p.id] && (
+                          <a href={proofUrls[p.id] ?? undefined} target="_blank" rel="noreferrer" className="font-bold text-primary-600">
+                            View proof
+                          </a>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
                 <div className="mt-3 flex items-center gap-3">
                   {invoiceUrls[row.id] && (
                     <a href={invoiceUrls[row.id] ?? undefined} target="_blank" rel="noreferrer" className="text-xs font-bold text-primary-600">
@@ -176,7 +230,7 @@ export function SupplierPaymentsPage({
             { label: "Balance before", value: money(balance, target.currency) },
             { label: "Balance after this payment", value: money(Math.max(remainingAfter, 0), target.currency) },
           ]}
-          confirmLabel="Record payment"
+          confirmLabel={willFullySettle ? "Mark supplier as paid" : "Record partial payment"}
           onConfirm={confirm}
         >
           <div className="space-y-2">
@@ -208,9 +262,22 @@ export function SupplierPaymentsPage({
                 className="mt-1 w-full rounded-lg border px-3 py-2 text-sm font-normal"
               />
             </label>
+            <label className="block text-sm font-bold">
+              Proof of payment{willFullySettle ? " (required)" : " (optional)"}
+              <input
+                type="file"
+                onChange={(e) => setProofFile(e.target.files?.[0] ?? null)}
+                className="mt-1 w-full text-xs font-normal"
+              />
+            </label>
             {remainingAfter > 0 && enteredAmount > 0 && (
               <p className="text-xs font-semibold text-amber-600">
                 This leaves a balance of {money(remainingAfter, target.currency)} — you can pay the rest later.
+              </p>
+            )}
+            {willFullySettle && (
+              <p className="text-xs font-semibold text-emerald-600">
+                This settles the invoice in full — attach proof of payment to mark the supplier as paid.
               </p>
             )}
           </div>

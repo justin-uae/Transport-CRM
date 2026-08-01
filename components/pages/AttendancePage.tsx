@@ -64,7 +64,7 @@ export function AttendancePage() {
             </div>
           </div>
         </Panel>
-        <Panel>
+        <Panel className="min-w-0">
           <SectionTitle title="Today's attendance overview" sub="Live team status" />
           <div className="mt-4 overflow-x-auto">
             <table className="w-full min-w-[480px] text-sm">

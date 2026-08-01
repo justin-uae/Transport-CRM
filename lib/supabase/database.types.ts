@@ -362,6 +362,8 @@ export interface Quote {
   decided_at: string | null;
   invoice_number: string | null;
   invoiced_at: string | null;
+  payment_proof_storage_path: string | null;
+  payment_proof_file_name: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -511,6 +513,8 @@ export interface SupplierPayment {
   notes: string | null;
   paid_by: string | null;
   paid_at: string;
+  proof_storage_path: string | null;
+  proof_file_name: string | null;
   created_at: string;
 }
 
@@ -575,6 +579,8 @@ export interface JobOfferView {
   pickup_time: string | null;
   passenger_count: number | null;
   vehicle_type_id: string | null;
+  supplier_estimated_cost: number | null;
+  quote_currency: string;
   pickup_address: string | null;
   destination_address: string | null;
   customer_name: string | null;

@@ -2,6 +2,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { recordAudit } from "@/lib/audit";
+import { landingHrefForProfile } from "@/lib/landing";
 
 export async function activateAccount() {
   const supabase = await createClient();
@@ -13,11 +14,7 @@ export async function activateAccount() {
     return { error: "Your invite link has expired. Ask an administrator to resend it.", redirectTo: null };
   }
 
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("tenant_id, status")
-    .eq("id", user.id)
-    .single();
+  const { data: profile } = await supabase.from("profiles").select("*").eq("id", user.id).single();
 
   if (profile) {
     await supabase
@@ -35,7 +32,11 @@ export async function activateAccount() {
       newValue: { status: "active" },
     });
 
-    return { error: null, redirectTo: "/dashboard" };
+    // profile.status is still the pre-update value here (activation flips it
+    // to "active", but the granted-permissions computation only depends on
+    // role_id/is_master_admin, unaffected by status) — safe to compute the
+    // landing href from this same row.
+    return { error: null, redirectTo: await landingHrefForProfile(profile) };
   }
 
   // Not a staff profile — this invite might belong to the separate supplier

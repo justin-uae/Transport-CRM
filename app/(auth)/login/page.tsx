@@ -18,7 +18,7 @@ export default async function LoginPage({
         </div>
       )}
       <div className="mt-6">
-        <LoginForm next={params.next ?? "/dashboard"} />
+        <LoginForm next={params.next ?? ""} />
       </div>
     </div>
   );

@@ -11,6 +11,9 @@
  * in server-only code.
  */
 export const PERMISSIONS = {
+  /** Gate for nav items with no business-data meaning (Dashboard, Attendance, Documents, Email, ...) — every role holds this except Finance Manager, whose access is scoped to exactly the Accounting pages. */
+  GENERAL_WORKSPACE_ACCESS: "general.workspace_access",
+
   ENQUIRIES_VIEW_OWN: "enquiries.view_own",
   ENQUIRIES_VIEW_TEAM: "enquiries.view_team",
   ENQUIRIES_VIEW_ALL: "enquiries.view_all",

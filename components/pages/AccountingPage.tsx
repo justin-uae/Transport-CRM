@@ -1,7 +1,7 @@
 "use client";
 
 import { BarChart, Bar, CartesianGrid, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
-import { Landmark, ReceiptText, TrendingUp, Truck, FileText } from "lucide-react";
+import { Landmark, ReceiptText, TrendingUp, Truck } from "lucide-react";
 import { Panel } from "@/components/ui/Panel";
 import { Kpi } from "@/components/ui/Kpi";
 import { PageHead } from "@/components/ui/PageHead";
@@ -18,15 +18,6 @@ export function AccountingPage() {
         eyebrow="Finance Suite"
         title="Accounting & payment control"
         text="Invoices, bank transfers, supplier costs, reconciliation and group reporting."
-        action={
-          <button
-            onClick={() => notify("New invoice opened")}
-            className="flex items-center gap-2 self-start rounded-xl bg-primary-500 px-4 py-3 text-sm font-bold text-white"
-          >
-            <FileText size={17} />
-            New Invoice
-          </button>
-        }
       />
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <Kpi title="Collected revenue" value="AED 1.84m" delta="This month" icon={Landmark} />

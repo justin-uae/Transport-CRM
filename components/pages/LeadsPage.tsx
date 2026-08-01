@@ -59,6 +59,9 @@ export function LeadsPage({
   myOpenEnquiries,
   quotesAwaitingResponse,
   canAddEnquiry,
+  canClaim,
+  canRelease,
+  canViewAll,
   tab,
   mineCount,
   poolCount,
@@ -71,6 +74,9 @@ export function LeadsPage({
   myOpenEnquiries: number;
   quotesAwaitingResponse: number;
   canAddEnquiry: boolean;
+  canClaim: boolean;
+  canRelease: boolean;
+  canViewAll: boolean;
   tab: LeadTab;
   mineCount: number;
   poolCount: number;
@@ -170,22 +176,65 @@ export function LeadsPage({
       <Panel>
         <div className="flex flex-col gap-3 border-b pb-4 md:flex-row md:items-center">
           <div className="flex gap-2">
-            {(["mine", "pool", "all"] as const).map((t) => (
-              <Link
-                key={t}
-                href={tabHref(t)}
-                className={
-                  "rounded-xl px-3 py-2 text-sm font-bold " +
-                  (tab === t ? "bg-primary-500 text-white" : "bg-slate-100 text-slate-600")
-                }
-              >
-                {t === "mine" ? "My Leads" : t === "pool" ? "Open Pool" : "All"}
-              </Link>
-            ))}
+            {(["mine", "pool", "all"] as const)
+              .filter((t) => t !== "all" || canViewAll)
+              .map((t) => (
+                <Link
+                  key={t}
+                  href={tabHref(t)}
+                  className={
+                    "rounded-xl px-3 py-2 text-sm font-bold " +
+                    (tab === t ? "bg-primary-500 text-white" : "bg-slate-100 text-slate-600")
+                  }
+                >
+                  {t === "mine" ? "My Leads" : t === "pool" ? "Open Pool" : "All"}
+                </Link>
+              ))}
           </div>
           <SearchInput placeholder="Search leads…" />
         </div>
-        <div className="overflow-x-auto">
+        <div className="space-y-3 py-4 sm:hidden">
+          {leads.map((l) => (
+            <div key={l.id} onClick={() => openDetail(l)} className="cursor-pointer rounded-2xl border p-4 hover:bg-orange-50/30">
+              <div className="flex items-center justify-between gap-2">
+                <b>
+                  {l.customers?.company_name || l.customers?.contact_name || "Unassigned enquiry"}
+                  {l.priority === "high" && (
+                    <span className="ml-2 rounded-full bg-red-50 px-2 py-0.5 text-[10px] font-bold text-red-600">HIGH</span>
+                  )}
+                </b>
+                <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold capitalize">{l.source}</span>
+              </div>
+              <div className="mt-1 text-sm">
+                {l.pickup_text ?? "—"} → {l.destination_text ?? "—"}
+                <div className="text-xs text-slate-400">{l.travel_date ?? ""}</div>
+              </div>
+              <div className="mt-2 flex items-center justify-between text-xs text-slate-500">
+                <span>
+                  {STATUS_LABEL[l.status]} · {timeAgo(l.created_at)}
+                </span>
+                <span>{l.profiles?.full_name || <span className="font-bold text-primary-600">Open pool</span>}</span>
+              </div>
+              {((l.status === "open_pool" && canClaim) || isOwnActiveLead(l)) && (
+                <button
+                  disabled={pending}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    openDetail(l);
+                  }}
+                  className={
+                    "mt-3 w-full rounded-xl px-3 py-2 text-xs font-bold disabled:opacity-60 " +
+                    (l.status === "open_pool" ? "bg-primary-500 text-white" : "border border-primary-300 text-primary-700")
+                  }
+                >
+                  {l.status === "open_pool" ? "Accept" : "View"}
+                </button>
+              )}
+            </div>
+          ))}
+          {leads.length === 0 && <p className="py-8 text-center text-sm text-slate-500">No leads here yet.</p>}
+        </div>
+        <div className="hidden overflow-x-auto sm:block">
           <table className="w-full min-w-[900px] text-sm">
             <thead className="text-left text-xs uppercase text-slate-400">
               <tr>
@@ -222,7 +271,7 @@ export function LeadsPage({
                   <td className="whitespace-nowrap">{timeAgo(l.created_at)}</td>
                   <td className="whitespace-nowrap">{l.profiles?.full_name || <span className="font-bold text-primary-600">Open pool</span>}</td>
                   <td className="whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
-                    {l.status === "open_pool" ? (
+                    {l.status === "open_pool" && canClaim ? (
                       <button
                         disabled={pending}
                         onClick={() => openDetail(l)}
@@ -286,21 +335,21 @@ export function LeadsPage({
             { label: "Notes", value: detailLead.notes ?? "—" },
           ]}
           confirmLabel={
-            detailLead.status === "open_pool"
+            detailLead.status === "open_pool" && canClaim
               ? "Claim this lead"
-              : isOwnActiveLead(detailLead)
+              : isOwnActiveLead(detailLead) && canAddEnquiry
                 ? "Create Quote"
                 : undefined
           }
           onConfirm={
-            detailLead.status === "open_pool"
+            detailLead.status === "open_pool" && canClaim
               ? () => claim(detailLead.id)
-              : isOwnActiveLead(detailLead)
+              : isOwnActiveLead(detailLead) && canAddEnquiry
                 ? () => createQuote(detailLead.id)
                 : undefined
           }
         >
-          {isOwnActiveLead(detailLead) && (
+          {isOwnActiveLead(detailLead) && canRelease && (
             <button
               type="button"
               disabled={pending}

@@ -187,7 +187,13 @@ function JobOfferCard({ job, supplierId, invoice }: { job: JobOfferView; supplie
       )}
 
       {(job.job_status === "confirmed" || job.job_status === "completed") && (
-        <InvoiceUploadForm jobId={job.job_id} supplierId={supplierId} invoice={invoice} />
+        <InvoiceUploadForm
+          jobId={job.job_id}
+          supplierId={supplierId}
+          invoice={invoice}
+          prefillAmount={job.supplier_estimated_cost}
+          prefillCurrency={job.quote_currency}
+        />
       )}
     </div>
   );

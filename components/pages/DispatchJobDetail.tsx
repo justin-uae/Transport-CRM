@@ -15,6 +15,7 @@ import {
   attachSupplierInvoiceAction,
   transferSupplierInvoiceToAccountingAction,
 } from "@/app/(staff)/dispatch/actions";
+import { JourneyLegDetail, type JourneyLeg } from "@/components/pages/JourneyLegDetail";
 import type { JobOfferStatus, JobStatus, JobSupplierInvoice } from "@/lib/supabase/database.types";
 import type { SupplierOption } from "@/components/pages/DispatchBoard";
 
@@ -33,15 +34,7 @@ export interface JobDetailRow {
     quote_number: string;
     currency: string;
     customers: { company_name: string | null; contact_name: string; phone: string | null; email: string | null } | null;
-    enquiries: {
-      enquiry_legs: {
-        pickup_address: string;
-        destination_address: string;
-        pickup_date: string | null;
-        pickup_time: string | null;
-        passenger_count: number | null;
-      }[];
-    } | null;
+    enquiries: { enquiry_legs: JourneyLeg[] } | null;
     quote_versions: { selling_price: number } | null;
   } | null;
   suppliers: { id: string; name: string; region: string | null; phone: string | null; email: string | null } | null;
@@ -72,12 +65,14 @@ export function DispatchJobDetail({
   invoice,
   invoiceUrl,
   canTransferInvoice,
+  canDispatchJobs,
 }: {
   job: JobDetailRow;
   suppliers: SupplierOption[];
   invoice: JobSupplierInvoice | null;
   invoiceUrl: string | null;
   canTransferInvoice: boolean;
+  canDispatchJobs: boolean;
 }) {
   const router = useRouter();
   const notify = useToast();
@@ -93,10 +88,11 @@ export function DispatchJobDetail({
   const [note, setNote] = useState(job.supplier_invoice_note ?? "");
   const [url, setUrl] = useState(job.supplier_invoice_url ?? "");
 
-  const leg = job.quotes?.enquiries?.enquiry_legs?.[0];
+  const legs = [...(job.quotes?.enquiries?.enquiry_legs ?? [])].sort((a, b) => a.sequence - b.sequence);
+  const firstLeg = legs[0];
   const customer = job.quotes?.customers;
-  const canOffer = job.status === "unassigned" || job.status === "rejected_by_supplier";
-  const canWithdraw = job.status === "offered";
+  const canOffer = canDispatchJobs && (job.status === "unassigned" || job.status === "rejected_by_supplier");
+  const canWithdraw = canDispatchJobs && job.status === "offered";
 
   const filteredSuppliers = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -177,26 +173,14 @@ export function DispatchJobDetail({
       <div className="grid gap-5 lg:grid-cols-3">
         <div className="space-y-5 lg:col-span-2">
           <Panel>
-            <SectionTitle title="Journey" sub="Pickup, destination and passenger details" />
+            <SectionTitle title="Journey" sub={legs.length > 1 ? `${legs.length} legs` : "Pickup, destination and passenger details"} />
+            <div className="mt-4">
+              {legs.map((leg, i) => (
+                <JourneyLegDetail key={leg.sequence} leg={leg} index={i} total={legs.length} />
+              ))}
+              {legs.length === 0 && <p className="text-sm text-slate-500">No journey details recorded.</p>}
+            </div>
             <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-3 rounded-2xl bg-slate-50 p-4 text-sm">
-              <div>
-                <dt className="text-xs font-bold uppercase text-slate-400">Pickup</dt>
-                <dd className="mt-0.5 font-semibold">{leg?.pickup_address ?? "—"}</dd>
-              </div>
-              <div>
-                <dt className="text-xs font-bold uppercase text-slate-400">Destination</dt>
-                <dd className="mt-0.5 font-semibold">{leg?.destination_address ?? "—"}</dd>
-              </div>
-              <div>
-                <dt className="text-xs font-bold uppercase text-slate-400">Date</dt>
-                <dd className="mt-0.5 font-semibold">
-                  {leg?.pickup_date ?? "—"} {leg?.pickup_time ?? ""}
-                </dd>
-              </div>
-              <div>
-                <dt className="text-xs font-bold uppercase text-slate-400">Passengers</dt>
-                <dd className="mt-0.5 font-semibold">{leg?.passenger_count ?? "—"}</dd>
-              </div>
               <div>
                 <dt className="text-xs font-bold uppercase text-slate-400">Value</dt>
                 <dd className="mt-0.5 font-semibold">
@@ -283,7 +267,7 @@ export function DispatchJobDetail({
             </Panel>
           )}
 
-          {job.status === "completed" && (
+          {job.status === "completed" && canDispatchJobs && (
             <Panel>
               <SectionTitle title="Manual payment reference" sub="Optional note/link recorded outside the supplier's own invoice upload" />
               <div className="mt-4 flex flex-wrap gap-2">
@@ -363,8 +347,8 @@ export function DispatchJobDetail({
         pending={pending}
         error={modalError}
         details={[
-          { label: "Journey", value: leg ? `${leg.pickup_address} → ${leg.destination_address}` : "—" },
-          { label: "Date", value: leg?.pickup_date ?? "—" },
+          { label: "Journey", value: firstLeg ? `${firstLeg.pickup_address} → ${firstLeg.destination_address}` : "—" },
+          { label: "Date", value: firstLeg?.pickup_date ?? "—" },
           { label: "Suppliers", value: selectedNames.join(", ") || "—" },
         ]}
         confirmLabel="Send offers"

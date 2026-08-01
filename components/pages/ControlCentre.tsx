@@ -180,9 +180,34 @@ export function ControlCentre({ firstName }: { firstName: string }) {
       </div>
 
       <div className="grid gap-6 xl:grid-cols-2">
-        <Panel>
+        <Panel className="min-w-0">
           <SectionTitle title="Team performance" sub="Live sales activity" />
-          <div className="mt-4 overflow-x-auto">
+          <div className="mt-4 space-y-3 sm:hidden">
+            {teamPerformance.map((u) => (
+              <div key={u.name} className="rounded-2xl border p-3">
+                <div className="flex items-center justify-between gap-2">
+                  <div>
+                    <b>{u.name}</b>
+                    <div className="text-xs text-slate-400">{u.territory}</div>
+                  </div>
+                  <span
+                    className={
+                      "rounded-full px-2 py-1 text-xs font-bold " +
+                      (u.status === "Working" ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700")
+                    }
+                  >
+                    {u.status}
+                  </span>
+                </div>
+                <div className="mt-2 flex justify-between text-xs text-slate-500">
+                  <span>{u.leads} leads</span>
+                  <span>{u.conversion} conversion</span>
+                  <span className="font-bold text-slate-700">{u.revenue}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="mt-4 hidden overflow-x-auto sm:block">
             <table className="w-full min-w-[560px] text-sm">
               <thead className="text-left text-xs uppercase text-slate-400">
                 <tr>

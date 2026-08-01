@@ -5,6 +5,7 @@ import { Panel } from "@/components/ui/Panel";
 import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { hasPermission, PERMISSIONS } from "@/lib/permissions";
+import { landingHrefForProfile } from "@/lib/landing";
 import { NewQuoteForm } from "./NewQuoteForm";
 
 export default async function NewQuotePage({
@@ -13,6 +14,9 @@ export default async function NewQuotePage({
   searchParams: Promise<{ enquiryId?: string }>;
 }) {
   const profile = await requireProfile();
+  if (!(await hasPermission(profile, PERMISSIONS.QUOTES_CREATE))) {
+    redirect(await landingHrefForProfile(profile));
+  }
   const { enquiryId } = await searchParams;
   const supabase = await createClient();
 

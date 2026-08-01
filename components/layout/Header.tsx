@@ -12,10 +12,14 @@ export function Header({
   onOpenMobile,
   brands,
   activeBrandId,
+  canCreateQuote,
+  canAddLead,
 }: {
   onOpenMobile: () => void;
   brands: Brand[];
   activeBrandId: string | null;
+  canCreateQuote: boolean;
+  canAddLead: boolean;
 }) {
   const { clock, cycle } = useAttendance();
 
@@ -58,20 +62,24 @@ export function Header({
           <Bell size={19} />
           <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-primary-500" />
         </button>
-        <Link
-          href="/quotes"
-          className="hidden items-center gap-2 rounded-xl border border-primary-200 bg-primary-50 px-4 py-2.5 text-sm font-bold text-primary-700 hover:bg-primary-100 md:flex"
-        >
-          <FileText size={18} />
-          New Quote
-        </Link>
-        <Link
-          href="/leads"
-          className="flex items-center gap-2 rounded-xl bg-primary-500 px-4 py-2.5 text-sm font-bold text-white shadow-lg shadow-orange-200 hover:bg-primary-600"
-        >
-          <Plus size={18} />
-          <span className="hidden sm:inline">New Lead</span>
-        </Link>
+        {canCreateQuote && (
+          <Link
+            href="/quotes/new"
+            className="hidden items-center gap-2 rounded-xl border border-primary-200 bg-primary-50 px-4 py-2.5 text-sm font-bold text-primary-700 hover:bg-primary-100 md:flex"
+          >
+            <FileText size={18} />
+            New Quote
+          </Link>
+        )}
+        {canAddLead && (
+          <Link
+            href="/leads/new"
+            className="flex items-center gap-2 rounded-xl bg-primary-500 px-4 py-2.5 text-sm font-bold text-white shadow-lg shadow-orange-200 hover:bg-primary-600"
+          >
+            <Plus size={18} />
+            <span className="hidden sm:inline">New Lead</span>
+          </Link>
+        )}
         <form action={signOut}>
           <button
             className="rounded-xl border border-slate-200 p-2.5 text-slate-500 hover:bg-slate-50"

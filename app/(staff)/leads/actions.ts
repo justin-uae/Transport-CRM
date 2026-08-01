@@ -9,6 +9,10 @@ import { recordAudit } from "@/lib/audit";
 
 export async function claimLeadAction(leadId: string) {
   const actor = await requireProfile();
+  const allowed = await hasPermission(actor, PERMISSIONS.ENQUIRIES_CLAIM_OPEN_LEADS);
+  if (!allowed) {
+    return { error: "You do not have permission to claim leads." };
+  }
   const supabase = await createClient();
 
   const { data: lead, error } = await supabase.rpc("claim_lead", { p_lead_id: leadId });
@@ -31,6 +35,10 @@ export async function claimLeadAction(leadId: string) {
 
 export async function releaseLeadAction(leadId: string) {
   const actor = await requireProfile();
+  const allowed = await hasPermission(actor, PERMISSIONS.ENQUIRIES_RETURN_TO_POOL);
+  if (!allowed) {
+    return { error: "You do not have permission to release leads back to the pool." };
+  }
   const supabase = await createClient();
 
   const { data: lead, error } = await supabase.rpc("release_lead", { p_lead_id: leadId });

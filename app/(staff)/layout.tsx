@@ -1,10 +1,10 @@
 import { requireProfile } from "@/lib/auth";
 import { getBrandContext } from "@/lib/brand";
 import { getGrantedPermissions } from "@/lib/permissions";
-import { ADMIN_SURFACE_PERMISSIONS } from "@/lib/permissionKeys";
+import { ADMIN_SURFACE_PERMISSIONS, PERMISSIONS } from "@/lib/permissionKeys";
 import { createClient } from "@/lib/supabase/server";
 import { StaffShell } from "@/components/layout/StaffShell";
-import { NAV } from "@/components/layout/nav";
+import { computeVisibleHrefs } from "@/components/layout/nav";
 
 export default async function StaffLayout({
   children,
@@ -26,10 +26,10 @@ export default async function StaffLayout({
   // (RSC can only serialize data, not function/component references) — so
   // we compute which hrefs are visible here and let the Client Component
   // Sidebar filter its own client-side NAV import by that list.
-  const visibleHrefs = NAV.filter((item) => !item.anyOf || item.anyOf.some((key) => granted.has(key))).map(
-    (item) => item.href,
-  );
+  const visibleHrefs = computeVisibleHrefs(granted);
   const canSeeSettings = ADMIN_SURFACE_PERMISSIONS.some((key) => granted.has(key));
+  const canCreateQuote = granted.has(PERMISSIONS.QUOTES_CREATE);
+  const canAddLead = granted.has(PERMISSIONS.ENQUIRIES_ADD);
 
   return (
     <StaffShell
@@ -39,6 +39,8 @@ export default async function StaffLayout({
       activeBrandId={activeBrandId}
       visibleHrefs={visibleHrefs}
       canSeeSettings={canSeeSettings}
+      canCreateQuote={canCreateQuote}
+      canAddLead={canAddLead}
     >
       {children}
     </StaffShell>
