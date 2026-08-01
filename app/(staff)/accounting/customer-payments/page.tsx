@@ -14,21 +14,22 @@ export default async function Page() {
   const { data: quotes } = await supabase
     .from("quotes")
     .select(
-      "id, quote_number, status, currency, decided_at, invoice_number, invoiced_at, payment_proof_storage_path, customers(company_name, contact_name, phone, email), enquiries(enquiry_legs(pickup_address, destination_address, pickup_date)), quote_versions!quote_versions_quote_id_fkey(selling_price)",
+      "id, quote_number, status, currency, decided_at, invoice_number, invoiced_at, customers(company_name, contact_name, phone, email), enquiries(enquiry_legs(pickup_address, destination_address, pickup_date)), quote_versions!quotes_current_version_id_fkey(selling_price, deposit_percentage), customer_payments(id, amount, method, paid_at, proof_storage_path)",
     )
-    .in("status", ["accepted", "paid"])
+    .in("status", ["accepted", "partially_paid", "paid"])
     .order("decided_at", { ascending: false });
 
-  const rows = (quotes ?? []) as unknown as (AcceptedQuoteRow & { payment_proof_storage_path: string | null })[];
+  const rows = (quotes ?? []) as unknown as AcceptedQuoteRow[];
 
   const signedProofUrls = await Promise.all(
     rows
-      .filter((q) => q.payment_proof_storage_path)
-      .map(async (q) => {
+      .flatMap((q) => q.customer_payments ?? [])
+      .filter((p) => p.proof_storage_path)
+      .map(async (p) => {
         const { data } = await supabase.storage
           .from("customer-payment-proofs")
-          .createSignedUrl(q.payment_proof_storage_path as string, 3600);
-        return { id: q.id, url: data?.signedUrl ?? null };
+          .createSignedUrl(p.proof_storage_path as string, 3600);
+        return { id: p.id, url: data?.signedUrl ?? null };
       }),
   );
   const proofUrls = Object.fromEntries(signedProofUrls.map((s) => [s.id, s.url]));

@@ -8,7 +8,7 @@ import { PageHead } from "@/components/ui/PageHead";
 import { SectionTitle } from "@/components/ui/SectionTitle";
 import { QuoteDetailActions } from "@/components/pages/QuoteDetailActions";
 import { JourneyLegDetail, type JourneyLeg } from "@/components/pages/JourneyLegDetail";
-import type { QuoteStatus, QuoteEventType, QuoteDecisionType } from "@/lib/supabase/database.types";
+import type { QuoteStatus, QuoteEventType, QuoteDecisionType, CustomerPaymentMethod } from "@/lib/supabase/database.types";
 
 interface VersionRow {
   id: string;
@@ -17,9 +17,17 @@ interface VersionRow {
   supplier_estimated_cost: number | null;
   selling_price: number;
   currency: string;
+  deposit_percentage: number | null;
   customer_notes: string | null;
   terms_snapshot: string | null;
   created_at: string;
+}
+
+interface PaymentRow {
+  id: string;
+  amount: number;
+  method: CustomerPaymentMethod;
+  paid_at: string;
 }
 
 interface QuoteDetailRow {
@@ -40,6 +48,7 @@ interface QuoteDetailRow {
   quote_versions: VersionRow[];
   quote_events: { event: QuoteEventType; created_at: string }[];
   quote_decisions: { decision: QuoteDecisionType; reason: string | null; free_text: string | null; decided_at: string }[];
+  customer_payments: PaymentRow[];
 }
 
 const STATUS_STYLE: Record<QuoteStatus, string> = {
@@ -47,6 +56,7 @@ const STATUS_STYLE: Record<QuoteStatus, string> = {
   sent: "bg-blue-50 text-blue-700",
   viewed: "bg-blue-50 text-blue-700",
   accepted: "bg-emerald-50 text-emerald-700",
+  partially_paid: "bg-amber-50 text-amber-700",
   rejected: "bg-red-50 text-red-700",
   expired: "bg-red-50 text-red-700",
   cancelled: "bg-slate-100 text-slate-500",
@@ -61,6 +71,8 @@ const EVENT_LABEL: Record<QuoteEventType, string> = {
   rejected: "Customer rejected the quote",
   expired: "Quote expired",
   cancelled: "Quote cancelled",
+  partially_paid: "Deposit/partial payment received",
+  paid: "Paid in full",
 };
 
 function money(amount: number | undefined | null, currency: string) {
@@ -76,7 +88,7 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
   const { data: quoteRaw, error: quoteError } = await supabase
     .from("quotes")
     .select(
-      "id, quote_number, status, currency, expiry_at, invoice_number, invoiced_at, public_token, created_at, sent_at, viewed_at, decided_at, customers(company_name, contact_name, phone, email), enquiries(enquiry_legs(sequence, journey_type, pickup_address, destination_address, via_points, pickup_date, pickup_time, return_date, return_time, passenger_count, luggage_count, wheelchair_required, child_seats, special_requirements, vehicle_types(name))), quote_versions!quote_versions_quote_id_fkey(id, version_number, vehicle_description, supplier_estimated_cost, selling_price, currency, customer_notes, terms_snapshot, created_at), quote_events(event, created_at), quote_decisions(decision, reason, free_text, decided_at)",
+      "id, quote_number, status, currency, expiry_at, invoice_number, invoiced_at, public_token, created_at, sent_at, viewed_at, decided_at, customers(company_name, contact_name, phone, email), enquiries(enquiry_legs(sequence, journey_type, pickup_address, destination_address, via_points, pickup_date, pickup_time, return_date, return_time, passenger_count, luggage_count, wheelchair_required, child_seats, special_requirements, vehicle_types(name))), quote_versions!quote_versions_quote_id_fkey(id, version_number, vehicle_description, supplier_estimated_cost, selling_price, currency, deposit_percentage, customer_notes, terms_snapshot, created_at), quote_events(event, created_at), quote_decisions(decision, reason, free_text, decided_at), customer_payments(id, amount, method, paid_at)",
     )
     .eq("id", id)
     .single();
@@ -100,6 +112,9 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
   );
   const decision = quote.quote_decisions?.[0] ?? null;
   const jobRow = job as unknown as { id: string; status: string; suppliers: { name: string } | null } | null;
+  const payments = [...(quote.customer_payments ?? [])].sort((a, b) => new Date(a.paid_at).getTime() - new Date(b.paid_at).getTime());
+  const paidSoFar = payments.reduce((sum, p) => sum + Number(p.amount), 0);
+  const balanceRemaining = Math.max(0, (currentVersion?.selling_price ?? 0) - paidSoFar);
 
   return (
     <div>
@@ -243,6 +258,34 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
                   sellingPrice: currentVersion?.selling_price ?? null,
                 }}
               />
+            </div>
+          </Panel>
+
+          <Panel>
+            <SectionTitle
+              title="Payments"
+              sub={
+                currentVersion?.deposit_percentage
+                  ? `${currentVersion.deposit_percentage}% deposit plan`
+                  : "Full payment plan"
+              }
+            />
+            <div className="mt-4 space-y-2 text-sm">
+              {payments.map((p) => (
+                <div key={p.id} className="flex justify-between border-b py-1.5 last:border-0">
+                  <span className="capitalize text-slate-500">
+                    {p.method.replace("_", " ")} · {new Date(p.paid_at).toLocaleDateString()}
+                  </span>
+                  <b>{money(p.amount, quote.currency)}</b>
+                </div>
+              ))}
+              {payments.length === 0 && <p className="text-sm text-slate-500">No payments recorded yet.</p>}
+              {payments.length > 0 && (
+                <div className="flex justify-between pt-1.5 text-sm font-bold">
+                  <span>Balance remaining</span>
+                  <span className="text-primary-600">{money(balanceRemaining, quote.currency)}</span>
+                </div>
+              )}
             </div>
           </Panel>
 

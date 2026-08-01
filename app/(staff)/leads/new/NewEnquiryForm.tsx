@@ -321,25 +321,96 @@ export function NewEnquiryForm({
 
         {step === 4 && (
           <div>
-            <SectionTitle title="Review" sub="Confirm the details before saving this enquiry" />
-            <div className="mt-5 space-y-3 rounded-2xl bg-slate-50 p-5 text-sm">
+            <SectionTitle title="Review" sub="Confirm every detail before saving this enquiry" />
+
+            <div className="mt-5 text-xs font-black uppercase tracking-wide text-primary-500">Customer</div>
+            <div className="mt-2 space-y-2 rounded-2xl bg-slate-50 p-5 text-sm">
+              {customerMode === "existing" ? (
+                <>
+                  <div className="flex justify-between border-b py-2">
+                    <span className="text-slate-500">Name</span>
+                    <b>{selectedCustomer?.company_name || selectedCustomer?.contact_name || "—"}</b>
+                  </div>
+                  <div className="flex justify-between py-2">
+                    <span className="text-slate-500">Email</span>
+                    <b>{selectedCustomer?.email || "—"}</b>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="flex justify-between border-b py-2">
+                    <span className="text-slate-500">Contact name</span>
+                    <b>{newCustomer.contactName || "—"}</b>
+                  </div>
+                  <div className="flex justify-between border-b py-2">
+                    <span className="text-slate-500">Company</span>
+                    <b>{newCustomer.companyName || "—"}</b>
+                  </div>
+                  <div className="flex justify-between border-b py-2">
+                    <span className="text-slate-500">Email</span>
+                    <b>{newCustomer.email || "—"}</b>
+                  </div>
+                  <div className="flex justify-between border-b py-2">
+                    <span className="text-slate-500">Phone</span>
+                    <b>{newCustomer.phone || "—"}</b>
+                  </div>
+                  <div className="flex justify-between py-2">
+                    <span className="text-slate-500">Country</span>
+                    <b>{newCustomer.country || "—"}</b>
+                  </div>
+                </>
+              )}
+            </div>
+
+            <div className="mt-5 text-xs font-black uppercase tracking-wide text-primary-500">Journey</div>
+            <div className="mt-2 space-y-2 rounded-2xl bg-slate-50 p-5 text-sm">
               <div className="flex justify-between border-b py-2">
-                <span className="text-slate-500">Customer</span>
-                <b>{customerMode === "existing" ? selectedCustomer?.company_name || selectedCustomer?.contact_name || "—" : newCustomer.contactName}</b>
+                <span className="text-slate-500">Journey type</span>
+                <b className="capitalize">{journey.type.replaceAll("_", " ")}</b>
               </div>
               <div className="flex justify-between border-b py-2">
-                <span className="text-slate-500">Journey</span>
-                <b>
-                  {journey.pickup || "—"} → {journey.destination || "—"}
-                </b>
+                <span className="text-slate-500">Pickup</span>
+                <b>{journey.pickup || "—"}</b>
               </div>
               <div className="flex justify-between border-b py-2">
-                <span className="text-slate-500">Date</span>
+                <span className="text-slate-500">Destination</span>
+                <b>{journey.destination || "—"}</b>
+              </div>
+              <div className="flex justify-between border-b py-2">
+                <span className="text-slate-500">Date &amp; time</span>
                 <b>{journey.date || "—"} {journey.time}</b>
               </div>
-              <div className="flex justify-between py-2">
+              <div className="flex justify-between border-b py-2">
                 <span className="text-slate-500">Passengers</span>
                 <b>{journey.passengers}</b>
+              </div>
+              <div className="flex justify-between py-2">
+                <span className="text-slate-500">Luggage</span>
+                <b>{journey.luggage}</b>
+              </div>
+            </div>
+
+            <div className="mt-5 text-xs font-black uppercase tracking-wide text-primary-500">Requirements</div>
+            <div className="mt-2 space-y-2 rounded-2xl bg-slate-50 p-5 text-sm">
+              <div className="flex justify-between border-b py-2">
+                <span className="text-slate-500">Vehicle requested</span>
+                <b>{vehicleTypes.find((v) => v.id === requirements.vehicleTypeId)?.name ?? "—"}</b>
+              </div>
+              <div className="flex justify-between border-b py-2">
+                <span className="text-slate-500">Child seats</span>
+                <b>{requirements.childSeats}</b>
+              </div>
+              <div className="flex justify-between border-b py-2">
+                <span className="text-slate-500">Wheelchair accessible</span>
+                <b>{requirements.wheelchair ? "Required" : "Not required"}</b>
+              </div>
+              <div className="flex justify-between border-b py-2">
+                <span className="text-slate-500">Special requirements</span>
+                <b>{requirements.specialRequirements || "—"}</b>
+              </div>
+              <div className="flex justify-between py-2">
+                <span className="text-slate-500">Internal notes</span>
+                <b>{requirements.internalNotes || "—"}</b>
               </div>
             </div>
           </div>

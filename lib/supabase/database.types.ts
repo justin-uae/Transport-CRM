@@ -235,6 +235,7 @@ export type QuoteStatus =
   | "sent"
   | "viewed"
   | "accepted"
+  | "partially_paid"
   | "rejected"
   | "expired"
   | "cancelled"
@@ -243,7 +244,9 @@ export type QuoteStatus =
 
 export type QuoteDecisionType = "accepted" | "rejected";
 
-export type QuoteEventType = "sent" | "viewed" | "accepted" | "rejected" | "expired" | "cancelled";
+export type CustomerPaymentMethod = "stripe" | "bank_transfer";
+
+export type QuoteEventType = "sent" | "viewed" | "accepted" | "rejected" | "expired" | "cancelled" | "partially_paid" | "paid";
 
 export interface Customer {
   id: string;
@@ -364,6 +367,7 @@ export interface Quote {
   invoiced_at: string | null;
   payment_proof_storage_path: string | null;
   payment_proof_file_name: string | null;
+  payment_method_chosen: CustomerPaymentMethod | null;
   created_at: string;
   updated_at: string;
 }
@@ -377,12 +381,28 @@ export interface QuoteVersion {
   supplier_estimated_cost: number | null;
   selling_price: number;
   currency: string;
-  deposit_options: number[];
+  deposit_percentage: 25 | 50 | 75 | null;
   payment_methods: { stripe: boolean; bank_transfer: boolean };
   customer_notes: string | null;
   terms_snapshot: string | null;
   brand_snapshot: Record<string, unknown>;
   created_by: string | null;
+  created_at: string;
+}
+
+export interface CustomerPayment {
+  id: string;
+  tenant_id: string;
+  quote_id: string;
+  amount: number;
+  currency: string;
+  method: CustomerPaymentMethod;
+  stripe_session_id: string | null;
+  stripe_payment_intent_id: string | null;
+  proof_storage_path: string | null;
+  proof_file_name: string | null;
+  recorded_by: string | null;
+  paid_at: string;
   created_at: string;
 }
 
@@ -631,6 +651,7 @@ export interface Database {
       job_offers: Table<JobOffer>;
       job_supplier_invoices: Table<JobSupplierInvoice>;
       supplier_payments: Table<SupplierPayment>;
+      customer_payments: Table<CustomerPayment>;
     };
     Views: {
       job_offer_view: { Row: JobOfferView; Relationships: [] };

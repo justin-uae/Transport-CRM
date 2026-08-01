@@ -6,6 +6,7 @@ import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { hasPermission, PERMISSIONS } from "@/lib/permissions";
 import { landingHrefForProfile } from "@/lib/landing";
+import type { JourneyLeg } from "@/components/pages/JourneyLegDetail";
 import { NewQuoteForm } from "./NewQuoteForm";
 
 export default async function NewQuotePage({
@@ -67,24 +68,25 @@ export default async function NewQuotePage({
     );
   }
 
-  const [{ data: enquiry }, { data: vehicleTypes }] = await Promise.all([
-    supabase
-      .from("enquiries")
-      .select(
-        "id, brand_id, customer_id, customers(company_name, contact_name, email), enquiry_legs(pickup_address, destination_address, pickup_date, passenger_count), brands(default_currency)",
-      )
-      .eq("id", enquiryId)
-      .single(),
-    supabase.from("vehicle_types").select("id, name, seat_capacity").eq("is_active", true).order("seat_capacity"),
-  ]);
+  const { data: enquiry } = await supabase
+    .from("enquiries")
+    .select(
+      "id, brand_id, customer_id, customers(company_name, contact_name, email, phone, country), enquiry_legs(sequence, journey_type, pickup_address, destination_address, via_points, pickup_date, pickup_time, return_date, return_time, passenger_count, luggage_count, wheelchair_required, child_seats, special_requirements, vehicle_types(name)), brands(default_currency)",
+    )
+    .eq("id", enquiryId)
+    .single();
 
   if (!enquiry) redirect("/quotes/new");
 
   const canSend = await hasPermission(profile, PERMISSIONS.QUOTES_SEND);
-  const customer = enquiry.customers as unknown as { company_name: string | null; contact_name: string } | null;
-  const leg = (enquiry.enquiry_legs as unknown as
-    | { pickup_address: string; destination_address: string; pickup_date: string | null; passenger_count: number | null }[]
-    | null)?.[0];
+  const customer = enquiry.customers as unknown as {
+    company_name: string | null;
+    contact_name: string;
+    email: string | null;
+    phone: string | null;
+    country: string | null;
+  } | null;
+  const legs = [...((enquiry.enquiry_legs as unknown as JourneyLeg[] | null) ?? [])].sort((a, b) => a.sequence - b.sequence);
   const brand = enquiry.brands as unknown as { default_currency: string } | null;
 
   return (
@@ -92,13 +94,15 @@ export default async function NewQuotePage({
       <PageHead eyebrow="Sales Workspace" title="Build Quote" text="Price the journey and send a professional quotation." />
       <NewQuoteForm
         enquiryId={enquiry.id}
-        customerName={customer?.company_name || customer?.contact_name || "Customer"}
-        pickup={leg?.pickup_address ?? "—"}
-        destination={leg?.destination_address ?? "—"}
-        pickupDate={leg?.pickup_date ?? null}
-        passengerCount={leg?.passenger_count ?? null}
+        customer={{
+          name: customer?.company_name || customer?.contact_name || "Customer",
+          contactName: customer?.contact_name ?? "—",
+          email: customer?.email ?? null,
+          phone: customer?.phone ?? null,
+          country: customer?.country ?? null,
+        }}
+        legs={legs}
         defaultCurrency={brand?.default_currency ?? "EUR"}
-        vehicleTypes={vehicleTypes ?? []}
         canSend={canSend}
       />
     </div>

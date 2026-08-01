@@ -28,7 +28,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ q
       "id, quote_number, status, currency, expiry_at, invoice_number, public_token, created_at, customers(company_name, contact_name), enquiries(enquiry_legs(pickup_address, destination_address)), quote_versions!quotes_current_version_id_fkey(selling_price)",
       { count: "exact" },
     )
-    .in("status", ["draft", "sent", "viewed", "accepted"]);
+    .in("status", ["draft", "sent", "viewed", "accepted", "partially_paid"]);
   if (q) {
     listQuery = listQuery.or(`quote_number.ilike.%${q}%,invoice_number.ilike.%${q}%`);
   }
@@ -46,7 +46,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ q
     hasPermission(profile, PERMISSIONS.QUOTES_CREATE),
     supabase.from("quotes").select("id", { count: "exact", head: true }).eq("status", "draft"),
     supabase.from("quotes").select("id", { count: "exact", head: true }).in("status", ["sent", "viewed"]),
-    supabase.from("quotes").select("id", { count: "exact", head: true }).in("status", ["accepted", "converted"]),
+    supabase.from("quotes").select("id", { count: "exact", head: true }).in("status", ["accepted", "partially_paid", "converted"]),
     supabase.from("quotes").select("id", { count: "exact", head: true }),
     supabase
       .from("quotes")

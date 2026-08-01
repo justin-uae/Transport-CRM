@@ -25,6 +25,10 @@ services:
         generateValue: true
       - key: NEXT_PUBLIC_APP_URL
         sync: false
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false
       - key: NODE_VERSION
         value: 20.17.0
 

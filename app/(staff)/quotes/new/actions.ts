@@ -21,7 +21,7 @@ export async function createQuoteAction(
   const enquiryId = String(formData.get("enquiryId") ?? "");
   const { data: enquiry } = await supabase
     .from("enquiries")
-    .select("id, brand_id, customer_id, lead_id")
+    .select("id, brand_id, customer_id, lead_id, enquiry_legs(sequence, vehicle_type_id, vehicle_types(name))")
     .eq("id", enquiryId)
     .single();
 
@@ -72,25 +72,32 @@ export async function createQuoteAction(
     return { error: quoteError?.message ?? "Could not create the quote.", link: null };
   }
 
-  const depositOptions = formData
-    .getAll("depositOptions")
-    .map((value) => Number(value))
-    .filter((value) => Number.isFinite(value) && value > 0);
+  const depositPercentageRaw = Number(formData.get("depositPercentage") ?? "");
+  const depositPercentage = [25, 50, 75].includes(depositPercentageRaw) ? depositPercentageRaw : null;
+
+  // Vehicle is chosen once, at lead/enquiry intake — the quote just inherits
+  // whatever the enquiry's first leg already has, rather than asking staff
+  // to pick it again.
+  const legs = (enquiry.enquiry_legs as unknown as { sequence: number; vehicle_type_id: string | null; vehicle_types: { name: string } | null }[]) ?? [];
+  const firstLeg = [...legs].sort((a, b) => a.sequence - b.sequence)[0];
 
   const { data: version, error: versionError } = await supabase
     .from("quote_versions")
     .insert({
       quote_id: quote.id,
       version_number: 1,
-      vehicle_type_id: String(formData.get("vehicleTypeId") ?? "").trim() || null,
-      vehicle_description: String(formData.get("vehicleDescription") ?? "").trim() || null,
+      vehicle_type_id: firstLeg?.vehicle_type_id ?? null,
+      vehicle_description: firstLeg?.vehicle_types?.name ?? null,
       supplier_estimated_cost: Number(formData.get("supplierEstimatedCost") ?? 0) || null,
       selling_price: sellingPrice,
       currency,
-      deposit_options: depositOptions.length > 0 ? depositOptions : [25, 50, 100],
+      deposit_percentage: depositPercentage,
+      // Stripe is a system-computed eligibility rule (selling price above
+      // the threshold), never a manual staff toggle — bank transfer stays
+      // unconditionally available.
       payment_methods: {
-        stripe: formData.get("paymentStripe") === "on",
-        bank_transfer: formData.get("paymentBankTransfer") === "on",
+        stripe: sellingPrice > 1000,
+        bank_transfer: true,
       },
       customer_notes: String(formData.get("customerNotes") ?? "").trim() || null,
       terms_snapshot: String(formData.get("terms") ?? "").trim() || null,
