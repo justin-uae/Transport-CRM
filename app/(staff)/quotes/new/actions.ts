@@ -6,6 +6,7 @@ import { requireProfile } from "@/lib/auth";
 import { hasPermission, PERMISSIONS } from "@/lib/permissions";
 import { recordAudit } from "@/lib/audit";
 import { paymentMethodsFor } from "@/lib/quoteMoney";
+import { sendTemplatedEmail } from "@/lib/emailTemplates";
 
 export async function createQuoteAction(
   _prevState: { error: string | null; link: string | null },
@@ -22,7 +23,7 @@ export async function createQuoteAction(
   const enquiryId = String(formData.get("enquiryId") ?? "");
   const { data: enquiry } = await supabase
     .from("enquiries")
-    .select("id, brand_id, customer_id, lead_id, enquiry_legs(sequence, vehicle_type_id, vehicle_types(name))")
+    .select("id, brand_id, customer_id, lead_id, customers(contact_name, company_name, email), enquiry_legs(sequence, vehicle_type_id, vehicle_types(name))")
     .eq("id", enquiryId)
     .single();
 
@@ -138,6 +139,21 @@ export async function createQuoteAction(
       .eq("id", quote.id);
     await supabase.from("quote_events").insert({ quote_id: quote.id, event: "sent" });
     publicLink = `${process.env.NEXT_PUBLIC_APP_URL ?? ""}/q/${quote.public_token}`;
+
+    const customer = enquiry.customers as unknown as { contact_name: string; company_name: string | null; email: string | null } | null;
+    await sendTemplatedEmail(supabase, {
+      tenantId: actor.tenant_id,
+      key: "quote_sent",
+      to: customer?.email,
+      variables: {
+        customer_name: customer?.company_name || customer?.contact_name || "Customer",
+        quote_number: quote.quote_number,
+        brand_name: brand.name,
+        currency,
+        selling_price: sellingPrice.toFixed(2),
+        link: publicLink,
+      },
+    });
   }
 
   await recordAudit({

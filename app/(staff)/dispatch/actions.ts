@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { requireProfile } from "@/lib/auth";
 import { hasPermission, PERMISSIONS } from "@/lib/permissions";
 import { recordAudit } from "@/lib/audit";
+import { sendTemplatedEmail } from "@/lib/emailTemplates";
 import type { Profile } from "@/lib/supabase/database.types";
 
 // The user who created the job (i.e. the sales user who marked its quote as
@@ -23,7 +24,13 @@ export async function offerJobToSuppliersAction(jobId: string, supplierIds: stri
 
   if (supplierIds.length === 0) throw new Error("Select at least one supplier.");
 
-  const { data: job } = await supabase.from("jobs").select("tenant_id, status, created_by").eq("id", jobId).single();
+  const { data: job } = await supabase
+    .from("jobs")
+    .select(
+      "tenant_id, status, created_by, region, quotes(enquiries(enquiry_legs(sequence, pickup_date, pickup_time, passenger_count)))",
+    )
+    .eq("id", jobId)
+    .single();
   if (!job || job.tenant_id !== actor.tenant_id) throw new Error("Job not found.");
   if (!(await canDispatch(actor, job))) throw new Error("You do not have permission to dispatch this job.");
 
@@ -61,6 +68,28 @@ export async function offerJobToSuppliersAction(jobId: string, supplierIds: stri
     previousValue: { status: job.status },
     newValue: { supplierIds, status: "offered" },
   });
+
+  const { data: suppliers } = await supabase.from("suppliers").select("id, name, email").in("id", supplierIds);
+  const quote = job.quotes as unknown as {
+    enquiries: { enquiry_legs: { sequence: number; pickup_date: string | null; pickup_time: string | null; passenger_count: number | null }[] } | null;
+  } | null;
+  const leg = [...(quote?.enquiries?.enquiry_legs ?? [])].sort((a, b) => a.sequence - b.sequence)[0];
+
+  for (const supplier of suppliers ?? []) {
+    await sendTemplatedEmail(supabase, {
+      tenantId: actor.tenant_id,
+      key: "job_offered",
+      to: supplier.email,
+      variables: {
+        supplier_name: supplier.name,
+        region: job.region ?? "—",
+        pickup_date: leg?.pickup_date ?? "TBC",
+        pickup_time: leg?.pickup_time ?? "",
+        passenger_count: String(leg?.passenger_count ?? "—"),
+        link: `${process.env.NEXT_PUBLIC_APP_URL ?? ""}/supplier/dashboard/${jobId}`,
+      },
+    });
+  }
 
   revalidatePath("/dispatch");
   revalidatePath(`/dispatch/${jobId}`);

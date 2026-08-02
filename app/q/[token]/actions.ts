@@ -6,10 +6,25 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { recordAudit } from "@/lib/audit";
 import { getStripeClient, toStripeAmount } from "@/lib/stripe";
 import { amountDueNow } from "@/lib/quotePayments";
+import { sendTemplatedEmail } from "@/lib/emailTemplates";
 
 async function loadDecidableQuote(admin: ReturnType<typeof createAdminClient>, token: string) {
-  const { data: quote } = await admin.from("quotes").select("id, tenant_id, status").eq("public_token", token).single();
+  const { data: quote } = await admin
+    .from("quotes")
+    .select(
+      "id, tenant_id, status, quote_number, created_by, enquiries(assigned_user_id, customers(contact_name, company_name))",
+    )
+    .eq("public_token", token)
+    .single();
   return quote;
+}
+
+/** The enquiry's assigned salesperson, falling back to the quote's creator if it was never assigned — see app/(staff)/quotes/new/actions.ts's createQuoteAction for the equivalent customer-facing send. */
+async function resolveStaffEmail(admin: ReturnType<typeof createAdminClient>, assignedUserId: string | null, createdBy: string | null) {
+  const profileId = assignedUserId ?? createdBy;
+  if (!profileId) return null;
+  const { data } = await admin.from("profiles").select("email").eq("id", profileId).maybeSingle();
+  return data?.email ?? null;
 }
 
 const PAYABLE = new Set(["accepted", "partially_paid"]);
@@ -121,6 +136,22 @@ export async function acceptQuoteAction(token: string) {
     entityId: quote.id,
   });
 
+  const enquiry = quote.enquiries as unknown as {
+    assigned_user_id: string | null;
+    customers: { contact_name: string; company_name: string | null } | null;
+  } | null;
+  const staffEmail = await resolveStaffEmail(admin, enquiry?.assigned_user_id ?? null, quote.created_by);
+  await sendTemplatedEmail(admin, {
+    tenantId: quote.tenant_id,
+    key: "quote_accepted",
+    to: staffEmail,
+    variables: {
+      customer_name: enquiry?.customers?.company_name || enquiry?.customers?.contact_name || "Customer",
+      quote_number: quote.quote_number,
+      link: `${process.env.NEXT_PUBLIC_APP_URL ?? ""}/quotes/${quote.id}`,
+    },
+  });
+
   revalidatePath(`/q/${token}`);
   return { error: null };
 }
@@ -153,6 +184,23 @@ export async function rejectQuoteAction(token: string, reason: string | null) {
     entityType: "quote",
     entityId: quote.id,
     reason,
+  });
+
+  const enquiry = quote.enquiries as unknown as {
+    assigned_user_id: string | null;
+    customers: { contact_name: string; company_name: string | null } | null;
+  } | null;
+  const staffEmail = await resolveStaffEmail(admin, enquiry?.assigned_user_id ?? null, quote.created_by);
+  await sendTemplatedEmail(admin, {
+    tenantId: quote.tenant_id,
+    key: "quote_rejected",
+    to: staffEmail,
+    variables: {
+      customer_name: enquiry?.customers?.company_name || enquiry?.customers?.contact_name || "Customer",
+      quote_number: quote.quote_number,
+      reason: reason ?? "No reason given",
+      link: `${process.env.NEXT_PUBLIC_APP_URL ?? ""}/quotes/${quote.id}`,
+    },
   });
 
   revalidatePath(`/q/${token}`);

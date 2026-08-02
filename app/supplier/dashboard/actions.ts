@@ -5,12 +5,35 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireSupplier } from "@/lib/auth";
 import { recordAudit } from "@/lib/audit";
+import { sendTemplatedEmail, type EmailTemplateKey } from "@/lib/emailTemplates";
 
 // recordAudit() here always passes the admin client — a supplier has no
 // `profiles` row, so audit_log's RLS (which resolves tenant via
 // current_tenant_id() -> profiles) would silently reject the insert under
 // the supplier's own session, same reasoning as the public /q/[token] flow.
 const admin = () => createAdminClient();
+
+/** Notify the job's creator (the dispatching salesperson) about something a supplier just did — job_accepted_by_supplier, job_rejected_by_supplier, supplier_invoice_submitted all follow this shape. */
+async function notifyJobCreator(
+  adminClient: ReturnType<typeof createAdminClient>,
+  input: { tenantId: string; jobId: string; createdBy: string | null; quoteId: string; key: EmailTemplateKey; extraVariables?: Record<string, string> },
+) {
+  if (!input.createdBy) return;
+  const [{ data: profile }, { data: quote }] = await Promise.all([
+    adminClient.from("profiles").select("email").eq("id", input.createdBy).maybeSingle(),
+    adminClient.from("quotes").select("quote_number").eq("id", input.quoteId).maybeSingle(),
+  ]);
+  await sendTemplatedEmail(adminClient, {
+    tenantId: input.tenantId,
+    key: input.key,
+    to: profile?.email,
+    variables: {
+      quote_number: quote?.quote_number ?? "—",
+      link: `${process.env.NEXT_PUBLIC_APP_URL ?? ""}/dispatch/${input.jobId}`,
+      ...input.extraVariables,
+    },
+  });
+}
 
 export async function acceptJobOfferAction(jobId: string) {
   const supplier = await requireSupplier();
@@ -28,6 +51,15 @@ export async function acceptJobOfferAction(jobId: string) {
     action: "job_accepted_by_supplier",
     entityType: "job",
     entityId: jobId,
+  });
+
+  await notifyJobCreator(admin(), {
+    tenantId: job.tenant_id,
+    jobId,
+    createdBy: job.created_by,
+    quoteId: job.quote_id,
+    key: "job_accepted_by_supplier",
+    extraVariables: { supplier_name: supplier.name },
   });
 
   revalidatePath("/supplier/dashboard");
@@ -52,6 +84,18 @@ export async function rejectJobOfferAction(jobId: string) {
     entityId: jobId,
   });
 
+  const { data: job } = await admin().from("jobs").select("tenant_id, created_by, quote_id").eq("id", jobId).maybeSingle();
+  if (job) {
+    await notifyJobCreator(admin(), {
+      tenantId: job.tenant_id,
+      jobId,
+      createdBy: job.created_by,
+      quoteId: job.quote_id,
+      key: "job_rejected_by_supplier",
+      extraVariables: { supplier_name: supplier.name },
+    });
+  }
+
   revalidatePath("/supplier/dashboard");
   revalidatePath("/dispatch");
 }
@@ -63,7 +107,11 @@ export async function uploadSupplierInvoiceAction(
   const supplier = await requireSupplier();
   const supabase = await createClient();
 
-  const { data: job } = await supabase.from("jobs").select("status, assigned_supplier_id, tenant_id, quote_id").eq("id", jobId).single();
+  const { data: job } = await supabase
+    .from("jobs")
+    .select("status, assigned_supplier_id, tenant_id, quote_id, created_by")
+    .eq("id", jobId)
+    .single();
   if (!job || job.assigned_supplier_id !== supplier.id || !["confirmed", "completed"].includes(job.status)) {
     throw new Error("You can only upload an invoice once this job is confirmed.");
   }
@@ -118,6 +166,15 @@ export async function uploadSupplierInvoiceAction(
     action: existing ? "supplier_invoice_updated" : "supplier_invoice_uploaded",
     entityType: "job",
     entityId: jobId,
+  });
+
+  await notifyJobCreator(admin(), {
+    tenantId: job.tenant_id,
+    jobId,
+    createdBy: job.created_by,
+    quoteId: job.quote_id,
+    key: "supplier_invoice_submitted",
+    extraVariables: { supplier_name: supplier.name, currency, amount: amount.toFixed(2) },
   });
 
   revalidatePath("/supplier/dashboard");

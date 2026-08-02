@@ -406,6 +406,17 @@ export interface CustomerPayment {
   created_at: string;
 }
 
+export interface EmailTemplate {
+  id: string;
+  tenant_id: string;
+  key: string;
+  subject: string;
+  body_html: string;
+  updated_by: string | null;
+  updated_at: string;
+  created_at: string;
+}
+
 export interface QuoteDecision {
   id: string;
   quote_id: string;
@@ -652,6 +663,7 @@ export interface Database {
       job_supplier_invoices: Table<JobSupplierInvoice>;
       supplier_payments: Table<SupplierPayment>;
       customer_payments: Table<CustomerPayment>;
+      email_templates: Table<EmailTemplate>;
     };
     Views: {
       job_offer_view: { Row: JobOfferView; Relationships: [] };
