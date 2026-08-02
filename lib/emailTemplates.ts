@@ -19,35 +19,53 @@ interface SendTemplatedEmailInput {
 }
 
 /**
- * Single call-site for every transactional email trigger in the app. Looks
- * up the tenant's editable template for `key`, substitutes {{variables}},
- * and sends it — logging and swallowing any failure (missing template row,
- * unset SMTP config, unreachable host, no recipient email on file) rather
- * than throwing, so a mail problem never breaks the quote/job action that
- * triggered it.
+ * Looks up the tenant's editable template for `key`, substitutes
+ * {{variables}}, and sends it — returning `{ error }` instead of throwing,
+ * for callers that need to show the actual failure reason to a human (e.g.
+ * a staff-facing "Resend email" button). For automatic triggers, use
+ * sendTemplatedEmail below instead, which wraps this and never surfaces an
+ * error to the caller.
  */
-export async function sendTemplatedEmail(supabase: SupabaseClient<Database>, input: SendTemplatedEmailInput): Promise<void> {
-  if (!input.to) return;
+export async function renderAndSendTemplate(
+  supabase: SupabaseClient<Database>,
+  input: SendTemplatedEmailInput,
+): Promise<{ error: string | null }> {
+  if (!input.to) return { error: "No recipient email address on file." };
+
+  const { data: template, error } = await supabase
+    .from("email_templates")
+    .select("subject, body_html")
+    .eq("tenant_id", input.tenantId)
+    .eq("key", input.key)
+    .maybeSingle();
+
+  if (error || !template) {
+    return { error: error?.message ?? `No "${input.key}" email template found.` };
+  }
 
   try {
-    const { data: template, error } = await supabase
-      .from("email_templates")
-      .select("subject, body_html")
-      .eq("tenant_id", input.tenantId)
-      .eq("key", input.key)
-      .maybeSingle();
-
-    if (error || !template) {
-      console.error(`sendTemplatedEmail: no template found for key "${input.key}"`, error?.message);
-      return;
-    }
-
     await sendEmail({
       to: input.to,
       subject: renderTemplate(template.subject, input.variables),
       html: renderTemplate(template.body_html, input.variables),
     });
+    return { error: null };
   } catch (err) {
-    console.error(`sendTemplatedEmail: failed to send "${input.key}" to ${input.to}`, err instanceof Error ? err.message : err);
+    return { error: err instanceof Error ? err.message : "Could not send the email." };
+  }
+}
+
+/**
+ * Single call-site for every automatic transactional email trigger in the
+ * app (quote sent, quote accepted/rejected, job offered, ...). Same as
+ * renderAndSendTemplate, but logs and swallows any failure (missing
+ * template row, unset SMTP config, unreachable host, no recipient email on
+ * file) rather than surfacing it, so a mail problem never breaks the
+ * quote/job action that triggered it.
+ */
+export async function sendTemplatedEmail(supabase: SupabaseClient<Database>, input: SendTemplatedEmailInput): Promise<void> {
+  const result = await renderAndSendTemplate(supabase, input);
+  if (result.error) {
+    console.error(`sendTemplatedEmail: failed to send "${input.key}" to ${input.to ?? "(no recipient)"}: ${result.error}`);
   }
 }
