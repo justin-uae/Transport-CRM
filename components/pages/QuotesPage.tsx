@@ -7,6 +7,7 @@ import { Kpi } from "@/components/ui/Kpi";
 import { PageHead } from "@/components/ui/PageHead";
 import { SearchInput } from "@/components/ui/SearchInput";
 import { Pagination } from "@/components/ui/Pagination";
+import { JourneyCell } from "@/components/ui/JourneyCell";
 import { useToast } from "@/components/ui/Toast";
 import type { QuoteStatus } from "@/lib/supabase/database.types";
 
@@ -43,8 +44,7 @@ function money(amount: number | undefined, currency: string) {
 }
 
 function journeyOf(q: QuoteRow) {
-  const leg = q.enquiries?.enquiry_legs?.[0];
-  return leg ? `${leg.pickup_address} → ${leg.destination_address}` : "—";
+  return q.enquiries?.enquiry_legs?.[0] ?? null;
 }
 
 export function QuotesPage({
@@ -121,7 +121,9 @@ export function QuotesPage({
                 <span className={"rounded-full px-2.5 py-1 text-xs font-bold capitalize " + STATUS_STYLE[q.status]}>{q.status}</span>
               </div>
               <div className="mt-2 text-sm font-semibold">{q.customers?.company_name || q.customers?.contact_name || "—"}</div>
-              <div className="mt-1 text-sm text-slate-600">{journeyOf(q)}</div>
+              <div className="mt-1 text-sm text-slate-600">
+                <JourneyCell pickup={journeyOf(q)?.pickup_address} destination={journeyOf(q)?.destination_address} maxWidth="100%" />
+              </div>
               <div className="mt-2 font-black">{money(q.quote_versions?.selling_price, q.currency)}</div>
               <div className="mt-3 flex flex-wrap gap-2">
                 <Link
@@ -163,7 +165,9 @@ export function QuotesPage({
                     {q.invoice_number && <div className="text-xs font-normal text-slate-400">Inv {q.invoice_number}</div>}
                   </td>
                   <td className="whitespace-nowrap px-3 py-4 font-semibold">{q.customers?.company_name || q.customers?.contact_name || "—"}</td>
-                  <td className="whitespace-nowrap px-3 py-4 text-slate-600">{journeyOf(q)}</td>
+                  <td className="px-3 py-4 text-slate-600">
+                    <JourneyCell pickup={journeyOf(q)?.pickup_address} destination={journeyOf(q)?.destination_address} />
+                  </td>
                   <td className="whitespace-nowrap px-3 py-4 font-black">{money(q.quote_versions?.selling_price, q.currency)}</td>
                   <td className="whitespace-nowrap px-3 py-4">
                     <span className={"rounded-full px-2.5 py-1 text-xs font-bold capitalize " + STATUS_STYLE[q.status]}>

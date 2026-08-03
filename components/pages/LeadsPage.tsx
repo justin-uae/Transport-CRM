@@ -6,6 +6,7 @@ import { usePathname, useSearchParams } from "next/navigation";
 import { UserCheck, UserPlus, FileText, TrendingUp, Plus } from "lucide-react";
 import { Panel } from "@/components/ui/Panel";
 import { Kpi } from "@/components/ui/Kpi";
+import { JourneyCell } from "@/components/ui/JourneyCell";
 import { PageHead } from "@/components/ui/PageHead";
 import { SearchInput } from "@/components/ui/SearchInput";
 import { Pagination } from "@/components/ui/Pagination";
@@ -31,6 +32,7 @@ export interface LeadRow {
   created_at: string;
   customers: { company_name: string | null; contact_name: string; phone: string | null; email: string | null } | null;
   profiles: { full_name: string } | null;
+  brands: { name: string } | null;
 }
 
 const STATUS_LABEL: Record<LeadStatus, string> = {
@@ -203,10 +205,13 @@ export function LeadsPage({
                     <span className="ml-2 rounded-full bg-red-50 px-2 py-0.5 text-[10px] font-bold text-red-600">HIGH</span>
                   )}
                 </b>
-                <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold capitalize">{l.source}</span>
+                <span className="shrink-0 text-right">
+                  <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold capitalize">{l.source}</span>
+                  {l.brands?.name && <div className="mt-1 text-[10px] text-slate-400">{l.brands.name}</div>}
+                </span>
               </div>
               <div className="mt-1 text-sm">
-                {l.pickup_text ?? "—"} → {l.destination_text ?? "—"}
+                <JourneyCell pickup={l.pickup_text} destination={l.destination_text} maxWidth="100%" />
                 <div className="text-xs text-slate-400">{l.travel_date ?? ""}</div>
               </div>
               <div className="mt-2 flex items-center justify-between text-xs text-slate-500">
@@ -260,12 +265,13 @@ export function LeadsPage({
                       <span className="ml-2 rounded-full bg-red-50 px-2 py-0.5 text-[10px] font-bold text-red-600">HIGH</span>
                     )}
                   </td>
-                  <td className="whitespace-nowrap">
-                    <b>{l.pickup_text ?? "—"} → {l.destination_text ?? "—"}</b>
+                  <td>
+                    <JourneyCell pickup={l.pickup_text} destination={l.destination_text} />
                     <div className="text-xs text-slate-400">{l.travel_date ?? ""}</div>
                   </td>
                   <td className="whitespace-nowrap">
                     <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold capitalize">{l.source}</span>
+                    {l.brands?.name && <div className="mt-1 text-[10px] text-slate-400">{l.brands.name}</div>}
                   </td>
                   <td className="whitespace-nowrap">{STATUS_LABEL[l.status]}</td>
                   <td className="whitespace-nowrap">{timeAgo(l.created_at)}</td>
@@ -318,6 +324,8 @@ export function LeadsPage({
             detailLead.status === "open_pool" || isOwnActiveLead(detailLead) ? "Cancel" : "Close"
           }
           details={[
+            { label: "Source", value: <span className="capitalize">{detailLead.source}</span> },
+            { label: "Brand / website", value: detailLead.brands?.name ?? "—" },
             { label: "Pickup", value: detailLead.pickup_text ?? "—" },
             { label: "Destination", value: detailLead.destination_text ?? "—" },
             { label: "Travel date", value: detailLead.travel_date ?? "—" },
