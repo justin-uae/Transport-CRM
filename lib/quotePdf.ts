@@ -1,4 +1,6 @@
 import "server-only";
+import { readFileSync } from "fs";
+import path from "path";
 import PDFDocument from "pdfkit";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "./supabase/database.types";
@@ -54,6 +56,82 @@ const FALLBACK_COLOR = "#f97316";
 const INK = "#1e293b";
 const MUTED = "#64748b";
 const PAGE_MARGIN = 50;
+
+// Fixed names this file's own font(...) calls use — never "Helvetica"
+// directly (see resolveFontSources below for why).
+const FONT_REGULAR = "Regular";
+const FONT_BOLD = "Bold";
+
+/**
+ * pdfkit's built-in "Helvetica"/"Helvetica-Bold" names aren't real embedded
+ * fonts — selecting them makes pdfkit read glyph-width metrics from an .afm
+ * file under node_modules/pdfkit/js/data/ at render time. That file has
+ * been observed missing in at least one production deployment (Next.js'
+ * bundler doesn't reliably carry a dependency's non-JS data files into a
+ * trimmed build), which crashes PDF generation entirely.
+ *
+ * Embedding a real font file sidesteps this: pdfkit reads metrics straight
+ * out of the font's own tables, no separate data file involved. Next.js
+ * ships one for its own OG-image feature (Geist, permissively licensed),
+ * which is about as reliably present as any file can be in a Next.js
+ * deployment — so it doubles as our unconditional fallback here. It only
+ * ships a single weight, so "Bold" reuses the same buffer (no true bold,
+ * per the request that a plain default font is fine) rather than fail.
+ * If even that read fails, fall back to the plain named fonts, which is
+ * exactly what worked before this file existed.
+ */
+function resolveFontSources(): { regular: string | Buffer; bold: string | Buffer } {
+  try {
+    const buffer = readFileSync(
+      path.join(process.cwd(), "node_modules/next/dist/compiled/@vercel/og/Geist-Regular.ttf"),
+    );
+    return { regular: buffer, bold: buffer };
+  } catch {
+    return { regular: "Helvetica", bold: "Helvetica-Bold" };
+  }
+}
+
+// Geist (and most fonts with any OpenType typography) substitutes "fi",
+// "ff", "ffi" etc. with a single ligature glyph. That renders fine visually,
+// but pdfkit/fontkit doesn't always map the ligature glyph back to its full
+// multi-character text in the PDF's extractable text layer — copy/paste and
+// search then silently drop letters ("confirm" -> "confrm", "traffic" ->
+// "trafic"). Disabling the ligature features avoids the substitution
+// entirely, which is the safe tradeoff for a document whose text needs to
+// stay correct when copied, searched, or read by a screen reader.
+//
+// fontkit's ShapingPlan#setFeatureOverrides (what pdfkit's `features` option
+// ultimately reaches) accepts either an array of tags to *enable*, or an
+// object of {tag: boolean} to enable/disable individual ones — @types/pdfkit
+// only declares the array-of-tags form (and its own TextOptions/
+// OpenTypeFeatures types aren't resolvable from here regardless), so this
+// whole shim is kept loosely typed rather than fought into pdfkit's types.
+const NO_LIGATURE_FEATURES = { liga: false, clig: false, calt: false, rclt: false };
+
+/**
+ * Patches this document's own .text() so every call — regardless of which
+ * of pdfkit's four call shapes (text-only, +options, +x/y, +x/y/options) is
+ * used anywhere in this file — always carries the no-ligature features,
+ * without having to thread that through every individual call site below.
+ */
+function disableLigatures(doc: PDFKit.PDFDocument) {
+  const original = doc.text.bind(doc) as (...args: unknown[]) => PDFKit.PDFDocument;
+  const patched = (str: string, ...rest: unknown[]) => {
+    if (rest.length === 0) {
+      return original(str, { features: NO_LIGATURE_FEATURES });
+    }
+    if (rest.length === 1) {
+      const opts = (rest[0] as Record<string, unknown> | undefined) ?? {};
+      return original(str, { ...opts, features: NO_LIGATURE_FEATURES });
+    }
+    if (rest.length === 2) {
+      return original(str, rest[0], rest[1], { features: NO_LIGATURE_FEATURES });
+    }
+    const opts = (rest[2] as Record<string, unknown> | undefined) ?? {};
+    return original(str, rest[0], rest[1], { ...opts, features: NO_LIGATURE_FEATURES });
+  };
+  (doc as unknown as { text: typeof patched }).text = patched;
+}
 
 function money(amount: number | null | undefined, currency: string) {
   if (amount === null || amount === undefined) return "—";
@@ -142,7 +220,31 @@ export async function generateQuotePdf(
   const legs = [...(quote.enquiries?.enquiry_legs ?? [])].sort((a, b) => a.sequence - b.sequence);
   const logoBuffer = await fetchLogoBuffer(brand?.logo_url ?? null);
 
-  const doc = new PDFDocument({ size: "A4", margin: PAGE_MARGIN, bufferPages: true });
+  // font: false skips pdfkit's automatic "Helvetica" load at construction
+  // time — that happens before we'd get a chance to register our own safe
+  // fallback below, so it would crash regardless of resolveFontSources().
+  // @types/pdfkit only declares `font` as `string | undefined`, but pdfkit
+  // itself (`if (defaultFont) { this.font(...) }`) happily treats `false`
+  // as "skip" at runtime — the type is just incomplete here.
+  const doc = new PDFDocument({
+    size: "A4",
+    margin: PAGE_MARGIN,
+    bufferPages: true,
+    font: false as unknown as string,
+  });
+  const { regular, bold } = resolveFontSources();
+  try {
+    doc.registerFont(FONT_REGULAR, regular);
+    doc.registerFont(FONT_BOLD, bold);
+    doc.font(FONT_REGULAR);
+  } catch (err) {
+    // Both the embedded fallback and the named-font path failed — nothing
+    // left to draw text with, so bail out the same way a data-fetch miss
+    // above does.
+    console.error(`quotePdf: could not initialize a font: ${err instanceof Error ? err.message : err}`);
+    return null;
+  }
+  disableLigatures(doc);
   const chunks: Buffer[] = [];
   doc.on("data", (chunk) => chunks.push(chunk));
   const done = new Promise<Buffer>((resolve) => {
@@ -164,15 +266,15 @@ export async function generateQuotePdf(
   }
   doc
     .fillColor("#ffffff")
-    .font("Helvetica-Bold")
+    .font(FONT_BOLD)
     .fontSize(20)
     .text(brandName, logoBuffer ? PAGE_MARGIN + 66 : PAGE_MARGIN, 40, { width: contentWidth - 160 });
   doc
-    .font("Helvetica-Bold")
+    .font(FONT_BOLD)
     .fontSize(22)
     .text("QUOTATION", PAGE_MARGIN, 38, { width: contentWidth, align: "right" });
   doc
-    .font("Helvetica")
+    .font(FONT_REGULAR)
     .fontSize(11)
     .text(quote.quote_number, PAGE_MARGIN, 66, { width: contentWidth, align: "right" });
 
@@ -182,13 +284,13 @@ export async function generateQuotePdf(
   // ---- Bill to / quote details --------------------------------------------
   const colWidth = contentWidth / 2 - 10;
   const infoTop = doc.y;
-  doc.font("Helvetica-Bold").fontSize(10).fillColor(MUTED).text("BILL TO", PAGE_MARGIN, infoTop);
+  doc.font(FONT_BOLD).fontSize(10).fillColor(MUTED).text("BILL TO", PAGE_MARGIN, infoTop);
   doc
-    .font("Helvetica-Bold")
+    .font(FONT_BOLD)
     .fontSize(12)
     .fillColor(INK)
     .text(customer?.company_name || customer?.contact_name || "Customer", PAGE_MARGIN, infoTop + 14, { width: colWidth });
-  doc.font("Helvetica").fontSize(10).fillColor(MUTED);
+  doc.font(FONT_REGULAR).fontSize(10).fillColor(MUTED);
   let billY = doc.y + 2;
   if (customer?.company_name && customer.contact_name) {
     doc.text(customer.contact_name, PAGE_MARGIN, billY, { width: colWidth });
@@ -203,7 +305,7 @@ export async function generateQuotePdf(
   }
 
   const detailsX = PAGE_MARGIN + colWidth + 20;
-  doc.font("Helvetica-Bold").fontSize(10).fillColor(MUTED).text("QUOTE DETAILS", detailsX, infoTop);
+  doc.font(FONT_BOLD).fontSize(10).fillColor(MUTED).text("QUOTE DETAILS", detailsX, infoTop);
   const detailRows: [string, string][] = [
     ["Issue date", formatDate(quote.created_at)],
     ["Valid until", formatDate(quote.expiry_at)],
@@ -211,9 +313,9 @@ export async function generateQuotePdf(
   ];
   let detailY = infoTop + 14;
   for (const [label, value] of detailRows) {
-    doc.font("Helvetica").fontSize(10).fillColor(MUTED).text(label, detailsX, detailY, { width: colWidth / 2, continued: false });
+    doc.font(FONT_REGULAR).fontSize(10).fillColor(MUTED).text(label, detailsX, detailY, { width: colWidth / 2, continued: false });
     doc
-      .font("Helvetica-Bold")
+      .font(FONT_BOLD)
       .fillColor(INK)
       .text(value, detailsX + colWidth / 2, detailY, { width: colWidth / 2, align: "right" });
     detailY += 15;
@@ -224,12 +326,12 @@ export async function generateQuotePdf(
   // ---- Travel details -------------------------------------------------------
   sectionHeading(doc, "Travel Details", brandColor, contentWidth);
   if (legs.length === 0) {
-    doc.font("Helvetica").fontSize(10).fillColor(MUTED).text("No journey details recorded.", PAGE_MARGIN);
+    doc.font(FONT_REGULAR).fontSize(10).fillColor(MUTED).text("No journey details recorded.", PAGE_MARGIN);
   }
   legs.forEach((leg, i) => {
     if (legs.length > 1) {
       doc
-        .font("Helvetica-Bold")
+        .font(FONT_BOLD)
         .fontSize(9)
         .fillColor(brandColor)
         .text(`LEG ${leg.sequence} OF ${legs.length} · ${leg.journey_type.replaceAll("_", " ").toUpperCase()}`, PAGE_MARGIN);
@@ -266,9 +368,9 @@ export async function generateQuotePdf(
   // ---- Pricing ---------------------------------------------------------------
   sectionHeading(doc, "Pricing", brandColor, contentWidth);
   const priceBoxTop = doc.y;
-  doc.font("Helvetica").fontSize(11).fillColor(MUTED).text("Total price", PAGE_MARGIN, priceBoxTop);
+  doc.font(FONT_REGULAR).fontSize(11).fillColor(MUTED).text("Total price", PAGE_MARGIN, priceBoxTop);
   doc
-    .font("Helvetica-Bold")
+    .font(FONT_BOLD)
     .fontSize(20)
     .fillColor(brandColor)
     .text(money(version.selling_price, quote.currency), PAGE_MARGIN, priceBoxTop + 14);
@@ -293,7 +395,7 @@ export async function generateQuotePdf(
 
   if (version.customer_notes) {
     doc.moveDown(0.8);
-    doc.font("Helvetica-Oblique").fontSize(10).fillColor(MUTED).text(version.customer_notes, PAGE_MARGIN, doc.y, { width: contentWidth });
+    doc.font(FONT_REGULAR).fontSize(10).fillColor(MUTED).text(version.customer_notes, PAGE_MARGIN, doc.y, { width: contentWidth });
   }
 
   doc.moveDown(1.2);
@@ -303,7 +405,7 @@ export async function generateQuotePdf(
   const terms = version.terms_snapshot?.trim()
     ? [version.terms_snapshot.trim()]
     : defaultTermsAndConditions(brandName, version.deposit_percentage);
-  doc.font("Helvetica").fontSize(9).fillColor(MUTED);
+  doc.font(FONT_REGULAR).fontSize(9).fillColor(MUTED);
   for (const clause of terms) {
     doc.text(clause, PAGE_MARGIN, doc.y, { width: contentWidth, align: "left" });
     doc.moveDown(0.5);
@@ -326,7 +428,7 @@ export async function generateQuotePdf(
     const restoreBottomMargin = doc.page.margins.bottom;
     doc.page.margins.bottom = 0;
     doc
-      .font("Helvetica")
+      .font(FONT_REGULAR)
       .fontSize(8)
       .fillColor(MUTED)
       .text(footerLine, PAGE_MARGIN, footerY, { width: contentWidth - 100, align: "left", lineBreak: false });
@@ -343,7 +445,7 @@ export async function generateQuotePdf(
 }
 
 function sectionHeading(doc: PDFKit.PDFDocument, title: string, color: string, width: number) {
-  doc.font("Helvetica-Bold").fontSize(13).fillColor(color).text(title, PAGE_MARGIN, doc.y, { width });
+  doc.font(FONT_BOLD).fontSize(13).fillColor(color).text(title, PAGE_MARGIN, doc.y, { width });
   doc.moveDown(0.4);
   doc.fillColor(INK);
 }
@@ -367,9 +469,9 @@ function drawKeyValueBox(doc: PDFKit.PDFDocument, rows: [string, string][], widt
   let y = startY + padding;
   for (const [label, value] of rows) {
     const valueHeight = doc.heightOfString(value, { width: valueWidth });
-    doc.font("Helvetica").fontSize(9).fillColor(MUTED).text(label, PAGE_MARGIN + padding, y, { width: labelWidth });
+    doc.font(FONT_REGULAR).fontSize(9).fillColor(MUTED).text(label, PAGE_MARGIN + padding, y, { width: labelWidth });
     doc
-      .font("Helvetica-Bold")
+      .font(FONT_BOLD)
       .fontSize(10)
       .fillColor(INK)
       .text(value, PAGE_MARGIN + padding + labelWidth, y, { width: valueWidth });
