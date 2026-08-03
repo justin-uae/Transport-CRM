@@ -2,6 +2,8 @@
 
 import { useState, useTransition } from "react";
 import { SectionTitle } from "@/components/ui/SectionTitle";
+import { PhoneNumberField } from "@/components/ui/PhoneNumberField";
+import { AddressAutocompleteField } from "@/components/ui/AddressAutocompleteField";
 import { createEnquiryAction } from "./actions";
 
 const STEPS = ["Customer", "Journey", "Requirements", "Review"];
@@ -37,7 +39,11 @@ export function NewEnquiryForm({
   const [journey, setJourney] = useState({
     type: "one_way",
     pickup: "",
+    pickupLat: null as number | null,
+    pickupLng: null as number | null,
     destination: "",
+    destinationLat: null as number | null,
+    destinationLng: null as number | null,
     date: "",
     time: "",
     returnDate: "",
@@ -69,7 +75,11 @@ export function NewEnquiryForm({
     }
     formData.set("journeyType", journey.type);
     formData.set("pickupAddress", journey.pickup);
+    if (journey.pickupLat != null) formData.set("pickupLat", String(journey.pickupLat));
+    if (journey.pickupLng != null) formData.set("pickupLng", String(journey.pickupLng));
     formData.set("destinationAddress", journey.destination);
+    if (journey.destinationLat != null) formData.set("destinationLat", String(journey.destinationLat));
+    if (journey.destinationLng != null) formData.set("destinationLng", String(journey.destinationLng));
     formData.set("pickupDate", journey.date);
     formData.set("pickupTime", journey.time);
     if (journey.type === "return") {
@@ -172,10 +182,10 @@ export function NewEnquiryForm({
                 </label>
                 <label className="text-sm font-bold">
                   Phone
-                  <input
+                  <PhoneNumberField
                     value={newCustomer.phone}
-                    onChange={(e) => setNewCustomer({ ...newCustomer, phone: e.target.value })}
-                    className="mt-2 w-full rounded-xl border px-3 py-3 font-normal"
+                    onChange={(v) => setNewCustomer({ ...newCustomer, phone: v ?? "" })}
+                    className="mt-2"
                   />
                 </label>
               </div>
@@ -211,17 +221,25 @@ export function NewEnquiryForm({
               </label>
               <label className="text-sm font-bold">
                 Pickup address
-                <input
+                <AddressAutocompleteField
                   value={journey.pickup}
-                  onChange={(e) => setJourney({ ...journey, pickup: e.target.value })}
+                  onChange={(v) => setJourney({ ...journey, pickup: v })}
+                  onPlaceSelect={(place) =>
+                    setJourney((j) => ({ ...j, pickup: place.address, pickupLat: place.lat, pickupLng: place.lng }))
+                  }
+                  placeholder="Start typing an address, hotel or airport…"
                   className="mt-2 w-full rounded-xl border px-3 py-3 font-normal"
                 />
               </label>
               <label className="text-sm font-bold">
                 Destination
-                <input
+                <AddressAutocompleteField
                   value={journey.destination}
-                  onChange={(e) => setJourney({ ...journey, destination: e.target.value })}
+                  onChange={(v) => setJourney({ ...journey, destination: v })}
+                  onPlaceSelect={(place) =>
+                    setJourney((j) => ({ ...j, destination: place.address, destinationLat: place.lat, destinationLng: place.lng }))
+                  }
+                  placeholder="Start typing an address, hotel or airport…"
                   className="mt-2 w-full rounded-xl border px-3 py-3 font-normal"
                 />
               </label>

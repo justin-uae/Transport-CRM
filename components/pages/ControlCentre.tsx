@@ -21,7 +21,6 @@ import {
   Bus,
   Download,
   Sparkles,
-  Globe2,
   MapPin,
 } from "lucide-react";
 import { Panel } from "@/components/ui/Panel";
@@ -30,8 +29,9 @@ import { SectionTitle } from "@/components/ui/SectionTitle";
 import { Alert } from "@/components/ui/Alert";
 import { useToast } from "@/components/ui/Toast";
 import { revenueData, channelData, CHANNEL_COLORS, teamPerformance, seedLeads } from "@/components/demo/demoData";
+import { LiveOperationsMap, type CountryLeadCluster } from "@/components/pages/LiveOperationsMap";
 
-export function ControlCentre({ firstName }: { firstName: string }) {
+export function ControlCentre({ firstName, leadClusters }: { firstName: string; leadClusters: CountryLeadCluster[] }) {
   const notify = useToast();
   const openLeads = seedLeads.filter((l) => !l.assigned);
 
@@ -81,33 +81,8 @@ export function ControlCentre({ firstName }: { firstName: string }) {
               <h2 className="font-black">Live global operations</h2>
               <p className="text-sm text-slate-500">Active bookings, leads and supplier activity</p>
             </div>
-            <button className="rounded-xl border px-3 py-2 text-sm font-bold">
-              <Globe2 className="mr-2 inline" size={16} />
-              Live map
-            </button>
           </div>
-          <div className="relative h-[360px] overflow-hidden bg-gradient-to-br from-slate-900 via-slate-800 to-slate-950">
-            <div
-              className="absolute inset-0 opacity-20"
-              style={{
-                background:
-                  "radial-gradient(circle at 30% 45%, #fb923c 0 2px, transparent 3px), radial-gradient(circle at 55% 38%, #fb923c 0 2px, transparent 3px), radial-gradient(circle at 72% 57%, #fb923c 0 2px, transparent 3px)",
-              }}
-            />
-            <MapPulse label="London" value="12 jobs" style={{ left: "18%", top: "34%" }} />
-            <MapPulse label="Dubai" value="8 jobs" style={{ left: "47%", top: "29%" }} />
-            <MapPulse label="Singapore" value="5 jobs" style={{ left: "68%", top: "53%" }} />
-            <div className="absolute bottom-5 left-5 flex gap-4 rounded-2xl bg-white/10 p-3 text-xs text-white backdrop-blur">
-              <span>
-                <i className="mr-2 inline-block h-2 w-2 rounded-full bg-orange-400" />
-                Active jobs 28
-              </span>
-              <span>
-                <i className="mr-2 inline-block h-2 w-2 rounded-full bg-emerald-400" />
-                New leads 47
-              </span>
-            </div>
-          </div>
+          <LiveOperationsMap clusters={leadClusters} />
         </Panel>
         <Panel>
           <div className="flex items-center justify-between">
@@ -265,28 +240,6 @@ export function ControlCentre({ firstName }: { firstName: string }) {
             ))}
           </div>
         </Panel>
-      </div>
-    </div>
-  );
-}
-
-function MapPulse({
-  label,
-  value,
-  style,
-}: {
-  label: string;
-  value: string;
-  style: React.CSSProperties;
-}) {
-  return (
-    <div className="absolute" style={style}>
-      <div className="relative">
-        <div className="absolute inset-0 animate-ping rounded-full bg-orange-400/30" />
-        <div className="relative rounded-2xl bg-white px-3 py-2 shadow-xl">
-          <div className="text-xs font-black text-slate-900">{label}</div>
-          <div className="text-[10px] text-slate-500">{value}</div>
-        </div>
       </div>
     </div>
   );

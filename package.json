@@ -20,12 +20,14 @@
     "pdfkit": "^0.19.1",
     "react": "19.2.0",
     "react-dom": "19.2.0",
+    "react-phone-number-input": "^3.4.17",
     "recharts": "^2.12.7",
     "server-only": "^0.0.1",
     "stripe": "^17.7.0",
     "zod": "^3.23.8"
   },
   "devDependencies": {
+    "@types/google.maps": "^3.65.4",
     "@types/node": "^20.16.11",
     "@types/nodemailer": "^8.0.1",
     "@types/pdfkit": "^0.17.6",

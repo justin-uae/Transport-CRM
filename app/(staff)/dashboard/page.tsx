@@ -1,5 +1,6 @@
 import dynamic from "next/dynamic";
 import { requireProfile } from "@/lib/auth";
+import { getLeadsByCountry } from "@/lib/liveOperations";
 import { SkeletonDashboardBody } from "@/components/ui/Skeleton";
 
 // /dashboard is the first page every staff member lands on after login —
@@ -13,5 +14,6 @@ const ControlCentre = dynamic(() => import("@/components/pages/ControlCentre").t
 export default async function DashboardPage() {
   const profile = await requireProfile();
   const firstName = profile.full_name.split(" ")[0] ?? profile.full_name;
-  return <ControlCentre firstName={firstName} />;
+  const leadClusters = await getLeadsByCountry(profile.tenant_id);
+  return <ControlCentre firstName={firstName} leadClusters={leadClusters} />;
 }

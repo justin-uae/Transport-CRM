@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { FileText, Trash2, Upload } from "lucide-react";
 import { Panel } from "@/components/ui/Panel";
 import { useToast } from "@/components/ui/Toast";
+import { PhoneNumberField } from "@/components/ui/PhoneNumberField";
 import { createClient } from "@/lib/supabase/client";
 import {
   updateSupplierDetailsAction,
@@ -167,11 +168,11 @@ export function VerificationForm({
           </label>
           <label className={labelClass}>
             Phone
-            <input name="phone" defaultValue={supplier.phone ?? ""} disabled={!canEdit} className={inputClass} />
+            <PhoneNumberField name="phone" defaultValue={supplier.phone} disabled={!canEdit} className="mt-1.5" />
           </label>
           <label className={labelClass}>
             WhatsApp
-            <input name="whatsapp" defaultValue={supplier.whatsapp ?? ""} disabled={!canEdit} className={inputClass} />
+            <PhoneNumberField name="whatsapp" defaultValue={supplier.whatsapp} disabled={!canEdit} className="mt-1.5" />
           </label>
           <label className={labelClass}>
             Region / location covered

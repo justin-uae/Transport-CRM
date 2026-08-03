@@ -101,12 +101,21 @@ export async function createEnquiryAction(_prevState: { error: string | null }, 
 
   const journeyType = String(formData.get("journeyType") ?? "one_way");
 
+  const pickupLat = formData.get("pickupLat") ? Number(formData.get("pickupLat")) : null;
+  const pickupLng = formData.get("pickupLng") ? Number(formData.get("pickupLng")) : null;
+  const destinationLat = formData.get("destinationLat") ? Number(formData.get("destinationLat")) : null;
+  const destinationLng = formData.get("destinationLng") ? Number(formData.get("destinationLng")) : null;
+
   const { error: legError } = await supabase.from("enquiry_legs").insert({
     enquiry_id: enquiry.id,
     sequence: 1,
     journey_type: journeyType,
     pickup_address: pickupAddress,
+    pickup_lat: pickupLat,
+    pickup_lng: pickupLng,
     destination_address: destinationAddress,
+    destination_lat: destinationLat,
+    destination_lng: destinationLng,
     pickup_date: pickupDate,
     pickup_time: String(formData.get("pickupTime") ?? "").trim() || null,
     return_date: journeyType === "return" ? String(formData.get("returnDate") ?? "").trim() || null : null,

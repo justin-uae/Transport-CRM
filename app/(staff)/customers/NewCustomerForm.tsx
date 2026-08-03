@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { Plus } from "lucide-react";
 import { useToast } from "@/components/ui/Toast";
+import { PhoneNumberField } from "@/components/ui/PhoneNumberField";
 import { createCustomerAction } from "./actions";
 
 export function NewCustomerForm() {
@@ -50,7 +51,7 @@ export function NewCustomerForm() {
         </label>
         <label className="text-sm font-bold">
           Phone
-          <input name="phone" className="mt-2 w-full rounded-xl border px-3 py-2.5 font-normal" />
+          <PhoneNumberField name="phone" className="mt-2" />
         </label>
         <label className="text-sm font-bold">
           Country
