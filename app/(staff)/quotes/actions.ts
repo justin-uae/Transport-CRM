@@ -7,6 +7,7 @@ import { hasPermission, PERMISSIONS } from "@/lib/permissions";
 import { recordAudit } from "@/lib/audit";
 import { recordCustomerPayment } from "@/lib/quotePayments";
 import { renderAndSendTemplate } from "@/lib/emailTemplates";
+import { generateQuotePdf } from "@/lib/quotePdf";
 
 /**
  * Manual bank-transfer payment recording, for a deposit, the remaining
@@ -84,6 +85,10 @@ export async function resendQuoteEmailAction(quoteId: string) {
   const brand = quote.brands as unknown as { name: string } | null;
   const version = quote.quote_versions as unknown as { selling_price: number } | null;
 
+  // Same non-fatal-on-failure treatment as the initial send in
+  // quotes/new/actions.ts.
+  const quotePdf = await generateQuotePdf(supabase, quoteId).catch(() => null);
+
   const result = await renderAndSendTemplate(supabase, {
     tenantId: actor.tenant_id,
     key: "quote_sent",
@@ -96,6 +101,7 @@ export async function resendQuoteEmailAction(quoteId: string) {
       selling_price: version ? version.selling_price.toFixed(2) : "",
       link: `${process.env.NEXT_PUBLIC_APP_URL ?? ""}/q/${quote.public_token}`,
     },
+    attachments: quotePdf ? [{ filename: `${quote.quote_number}.pdf`, content: quotePdf, contentType: "application/pdf" }] : undefined,
   });
 
   if (!result.error) {

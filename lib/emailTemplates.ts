@@ -1,7 +1,7 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "./supabase/database.types";
-import { sendEmail } from "./email";
+import { sendEmail, type EmailAttachment } from "./email";
 import type { EmailTemplateKey } from "./emailTemplateInfo";
 
 export type { EmailTemplateKey } from "./emailTemplateInfo";
@@ -16,6 +16,7 @@ interface SendTemplatedEmailInput {
   key: EmailTemplateKey;
   to: string | null | undefined;
   variables: Record<string, string>;
+  attachments?: EmailAttachment[];
 }
 
 /**
@@ -48,6 +49,7 @@ export async function renderAndSendTemplate(
       to: input.to,
       subject: renderTemplate(template.subject, input.variables),
       html: renderTemplate(template.body_html, input.variables),
+      attachments: input.attachments,
     });
     return { error: null };
   } catch (err) {

@@ -7,6 +7,7 @@ import { hasPermission, PERMISSIONS } from "@/lib/permissions";
 import { recordAudit } from "@/lib/audit";
 import { paymentMethodsFor } from "@/lib/quoteMoney";
 import { sendTemplatedEmail } from "@/lib/emailTemplates";
+import { generateQuotePdf } from "@/lib/quotePdf";
 
 export async function createQuoteAction(
   _prevState: { error: string | null; link: string | null },
@@ -141,6 +142,9 @@ export async function createQuoteAction(
     publicLink = `${process.env.NEXT_PUBLIC_APP_URL ?? ""}/q/${quote.public_token}`;
 
     const customer = enquiry.customers as unknown as { contact_name: string; company_name: string | null; email: string | null } | null;
+    // A PDF-generation failure (e.g. an unreachable brand logo URL) should
+    // never block the quote from sending — fall back to no attachment.
+    const quotePdf = await generateQuotePdf(supabase, quote.id).catch(() => null);
     await sendTemplatedEmail(supabase, {
       tenantId: actor.tenant_id,
       key: "quote_sent",
@@ -153,6 +157,7 @@ export async function createQuoteAction(
         selling_price: sellingPrice.toFixed(2),
         link: publicLink,
       },
+      attachments: quotePdf ? [{ filename: `${quote.quote_number}.pdf`, content: quotePdf, contentType: "application/pdf" }] : undefined,
     });
   }
 

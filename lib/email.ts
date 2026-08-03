@@ -23,10 +23,26 @@ function getTransporter() {
   });
 }
 
-export async function sendEmail({ to, subject, html }: { to: string; subject: string; html: string }) {
+export interface EmailAttachment {
+  filename: string;
+  content: Buffer;
+  contentType?: string;
+}
+
+export async function sendEmail({
+  to,
+  subject,
+  html,
+  attachments,
+}: {
+  to: string;
+  subject: string;
+  html: string;
+  attachments?: EmailAttachment[];
+}) {
   const from = process.env.SMTP_FROM;
   if (!from) {
     throw new Error("SMTP_FROM is not configured — email was not sent.");
   }
-  await getTransporter().sendMail({ from, to, subject, html });
+  await getTransporter().sendMail({ from, to, subject, html, attachments });
 }
