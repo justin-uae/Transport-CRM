@@ -143,8 +143,12 @@ export async function createQuoteAction(
 
     const customer = enquiry.customers as unknown as { contact_name: string; company_name: string | null; email: string | null } | null;
     // A PDF-generation failure (e.g. an unreachable brand logo URL) should
-    // never block the quote from sending — fall back to no attachment.
-    const quotePdf = await generateQuotePdf(supabase, quote.id).catch(() => null);
+    // never block the quote from sending — fall back to no attachment, but
+    // log it so a silent failure in production is still visible somewhere.
+    const quotePdf = await generateQuotePdf(supabase, quote.id).catch((err) => {
+      console.error(`generateQuotePdf failed for quote ${quote.id}:`, err);
+      return null;
+    });
     await sendTemplatedEmail(supabase, {
       tenantId: actor.tenant_id,
       key: "quote_sent",

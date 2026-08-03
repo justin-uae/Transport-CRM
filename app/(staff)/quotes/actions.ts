@@ -87,7 +87,10 @@ export async function resendQuoteEmailAction(quoteId: string) {
 
   // Same non-fatal-on-failure treatment as the initial send in
   // quotes/new/actions.ts.
-  const quotePdf = await generateQuotePdf(supabase, quoteId).catch(() => null);
+  const quotePdf = await generateQuotePdf(supabase, quoteId).catch((err) => {
+    console.error(`generateQuotePdf failed for quote ${quoteId}:`, err);
+    return null;
+  });
 
   const result = await renderAndSendTemplate(supabase, {
     tenantId: actor.tenant_id,
