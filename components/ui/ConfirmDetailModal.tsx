@@ -73,51 +73,57 @@ export function ConfirmDetailModal({
     >
       <div className="flex min-h-full items-center justify-center">
         <div
-          className="max-h-[90dvh] w-full max-w-lg overflow-y-auto rounded-3xl border border-slate-200 bg-white p-6 shadow-2xl"
+          className="flex max-h-[90dvh] w-full max-w-lg flex-col overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl"
           onClick={(e) => e.stopPropagation()}
         >
-          <h3 className="text-lg font-black text-slate-900">{title}</h3>
-          {description && <p className="mt-1 text-sm text-slate-500">{description}</p>}
+          {/* Scrolls on its own — the footer below stays pinned in view so the
+              action buttons are never pushed off-screen behind a long details
+              list on a short mobile viewport. */}
+          <div className="overflow-y-auto p-6">
+            <h3 className="text-lg font-black text-slate-900">{title}</h3>
+            {description && <p className="mt-1 text-sm text-slate-500">{description}</p>}
 
-          {details && details.length > 0 && (
-            <dl className="mt-4 grid grid-cols-1 gap-x-4 gap-y-3 rounded-2xl bg-slate-50 p-4 sm:grid-cols-2">
-              {details.map((d, i) => (
-                <div key={i}>
-                  <dt className="text-xs font-bold uppercase text-slate-400">{d.label}</dt>
-                  <dd className="mt-0.5 text-sm font-semibold text-slate-800">{d.value}</dd>
-                </div>
-              ))}
-            </dl>
-          )}
+            {details && details.length > 0 && (
+              <dl className="mt-4 grid grid-cols-1 gap-x-4 gap-y-3 rounded-2xl bg-slate-50 p-4 sm:grid-cols-2">
+                {details.map((d, i) => (
+                  <div key={i}>
+                    <dt className="text-xs font-bold uppercase text-slate-400">{d.label}</dt>
+                    <dd className="mt-0.5 text-sm font-semibold text-slate-800">{d.value}</dd>
+                  </div>
+                ))}
+              </dl>
+            )}
 
-          {children && <div className="mt-4">{children}</div>}
+            {children && <div className="mt-4">{children}</div>}
+          </div>
 
-          {error && (
-            <div className="mt-4 rounded-xl bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">{error}</div>
-          )}
-
-          <div className="mt-6 flex flex-wrap justify-end gap-2">
-            <button
-              type="button"
-              disabled={pending}
-              onClick={onClose}
-              className="shrink-0 whitespace-nowrap rounded-xl border px-4 py-2.5 text-sm font-bold disabled:opacity-60"
-            >
-              {cancelLabel}
-            </button>
-            {onConfirm && (
+          <div className="shrink-0 border-t border-slate-100 px-6 py-4">
+            {error && (
+              <div className="mb-3 rounded-xl bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">{error}</div>
+            )}
+            <div className="flex flex-wrap justify-end gap-2">
               <button
                 type="button"
                 disabled={pending}
-                onClick={onConfirm}
-                className={clsx(
-                  "shrink-0 whitespace-nowrap rounded-xl px-4 py-2.5 text-sm font-bold text-white disabled:opacity-60",
-                  destructive ? "bg-red-600" : "bg-primary-500",
-                )}
+                onClick={onClose}
+                className="shrink-0 whitespace-nowrap rounded-xl border px-4 py-2.5 text-sm font-bold disabled:opacity-60"
               >
-                {pending ? "Please wait…" : confirmLabel}
+                {cancelLabel}
               </button>
-            )}
+              {onConfirm && (
+                <button
+                  type="button"
+                  disabled={pending}
+                  onClick={onConfirm}
+                  className={clsx(
+                    "shrink-0 whitespace-nowrap rounded-xl px-4 py-2.5 text-sm font-bold text-white disabled:opacity-60",
+                    destructive ? "bg-red-600" : "bg-primary-500",
+                  )}
+                >
+                  {pending ? "Please wait…" : confirmLabel}
+                </button>
+              )}
+            </div>
           </div>
         </div>
       </div>
