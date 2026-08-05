@@ -3,11 +3,13 @@ import { NextResponse, type NextRequest } from "next/server";
 import { NAV, landingHref, type NavItem } from "@/components/layout/nav";
 import { PERMISSIONS, type PermissionKey } from "@/lib/permissionKeys";
 
-// "/q" is the token-based customer quote page (Part 55) and
-// "/api/leads/website" is the public website lead webhook (Part 22) — both
-// authenticate on their own terms (an unguessable token / a per-brand
-// shared secret) rather than a Supabase session.
-const PUBLIC_PATHS = ["/login", "/reset-password", "/accept-invite", "/auth/confirm", "/q", "/api/leads/website", "/api/stripe/webhook"];
+// "/q" is the token-based customer quote page (Part 55), "/api/leads/website"
+// is the public website lead webhook (Part 22), and "/api/cron/*" is every
+// Render Cron Job route (e.g. email-sync) — all three authenticate on their
+// own terms (an unguessable token / a per-brand shared secret / the
+// CRON_SECRET bearer token) rather than a Supabase session, so none of them
+// have one to gate on here.
+const PUBLIC_PATHS = ["/login", "/reset-password", "/accept-invite", "/auth/confirm", "/q", "/api/leads/website", "/api/stripe/webhook", "/api/cron"];
 
 /** Most specific (longest-href) NAV item whose route this path falls under, if any — mirrors the highlighting logic in Sidebar.tsx. Paths matching no NAV item (settings/*, api/*, ...) are left to their own page/layout-level gates. */
 function matchingNavItem(pathname: string): NavItem | null {
