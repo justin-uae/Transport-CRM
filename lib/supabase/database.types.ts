@@ -417,6 +417,69 @@ export interface EmailTemplate {
   created_at: string;
 }
 
+// -----------------------------------------------------------------------------
+// Per-user IMAP/SMTP mailboxes + synced mail (0022_email_accounts.sql)
+// -----------------------------------------------------------------------------
+
+export type EmailSecurity = "ssl" | "starttls" | "none";
+export type EmailMessageDirection = "inbound" | "outbound";
+export type EmailFolder = "inbox" | "sent" | "archived";
+
+export interface EmailAccount {
+  id: string;
+  tenant_id: string;
+  user_id: string;
+  display_name: string;
+  email_address: string;
+  imap_host: string;
+  imap_port: number;
+  imap_security: EmailSecurity;
+  imap_username: string;
+  imap_password_enc: string;
+  smtp_host: string;
+  smtp_port: number;
+  smtp_security: EmailSecurity;
+  smtp_username: string;
+  smtp_password_enc: string;
+  is_active: boolean;
+  last_synced_at: string | null;
+  last_sync_error: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface EmailAttachmentMeta {
+  filename: string;
+  size: number | null;
+  contentType: string | null;
+}
+
+export interface EmailMessage {
+  id: string;
+  tenant_id: string;
+  email_account_id: string;
+  direction: EmailMessageDirection;
+  folder: EmailFolder;
+  message_uid: string;
+  message_id: string | null;
+  in_reply_to: string | null;
+  thread_key: string | null;
+  from_name: string | null;
+  from_address: string;
+  to_addresses: string[];
+  cc_addresses: string[];
+  subject: string | null;
+  body_text: string | null;
+  body_html: string | null;
+  snippet: string | null;
+  has_attachments: boolean;
+  attachment_meta: EmailAttachmentMeta[];
+  is_read: boolean;
+  occurred_at: string;
+  created_at: string;
+}
+
 export interface QuoteDecision {
   id: string;
   quote_id: string;
@@ -664,6 +727,8 @@ export interface Database {
       supplier_payments: Table<SupplierPayment>;
       customer_payments: Table<CustomerPayment>;
       email_templates: Table<EmailTemplate>;
+      email_accounts: Table<EmailAccount>;
+      email_messages: Table<EmailMessage>;
     };
     Views: {
       job_offer_view: { Row: JobOfferView; Relationships: [] };

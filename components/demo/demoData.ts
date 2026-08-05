@@ -54,32 +54,12 @@ export const seedLeads: DemoLead[] = [
   { id: "LD-10838", customer: "Open enquiry", route: "Madrid → Toledo", country: "Spain", source: "Live Chat", value: "AED 7,900", age: "18 min", priority: "Normal", assigned: null },
 ];
 
-export const bankTransferQueue: [string, string, string][] = [
-  ["INV-4382", "Horizon Events", "AED 18,400"],
-  ["INV-4379", "Al Noor School", "AED 24,500"],
-  ["INV-4371", "Maison Travel", "AED 9,800"],
-];
-
-export const receivablesAgeing = [
-  { n: "Current", v: 186000 },
-  { n: "1–30", v: 62000 },
-  { n: "31–60", v: 26000 },
-  { n: "61+", v: 12000 },
-];
-
 export const commissionLifecycle = [
   "Job completed",
   "Supplier costs final",
   "Margin calculated",
   "Manager approved",
   "Payroll paid",
-];
-
-export const inboxMessages: [string, string, string][] = [
-  ["Horizon Events", "Re: London group transport quote", "2 min"],
-  ["Al Noor School", "Payment remittance attached", "14 min"],
-  ["Maison Travel", "Paris booking amendments", "31 min"],
-  ["Premier Tours", "New enquiry for 55 passengers", "1 hr"],
 ];
 
 export const optimisationCards: [string, string, string, "High" | "Medium"][] = [

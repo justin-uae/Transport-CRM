@@ -9,6 +9,7 @@ import {
   addUserRegionAction,
   removeUserRegionAction,
 } from "./actions";
+import { MailboxBadge, type EmailAccountStatus } from "./EmailAccountForm";
 import type { ProfileStatus } from "@/lib/supabase/database.types";
 
 const STATUS_STYLES: Record<ProfileStatus, string> = {
@@ -35,10 +36,12 @@ export function UserRow({
   user,
   roles,
   canManage,
+  mailbox,
 }: {
   user: UserListRow;
   roles: { id: string; name: string }[];
   canManage: boolean;
+  mailbox: EmailAccountStatus | null;
 }) {
   const notify = useToast();
   const [pending, startTransition] = useTransition();
@@ -183,6 +186,9 @@ export function UserRow({
         <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${STATUS_STYLES[user.status]}`}>
           {user.status}
         </span>
+      </td>
+      <td className="whitespace-nowrap">
+        <MailboxBadge userId={user.id} userName={user.full_name} account={mailbox} canManage={canManage} />
       </td>
       <td className="whitespace-nowrap text-right">
         {canManage && !user.is_master_admin && (

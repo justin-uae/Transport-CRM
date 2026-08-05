@@ -1,9 +1,12 @@
 # Render Blueprint — https://render.com/docs/blueprint-spec
 #
-# Deploys the Next.js app as a web service. Cron jobs are commented out until
-# their route handlers exist (Phase 2+: quote-expiry, lead-release-sla,
-# dispatch-wave-escalation, document-expiry, daily-brief) — uncomment and
-# point each at its /api/cron/<name> route as those phases are built.
+# Deploys the Next.js app as a web service, plus the email-sync cron job
+# (polls every active email_accounts mailbox's INBOX via IMAP — see
+# app/api/cron/email-sync/route.ts). The remaining cron jobs stay commented
+# out until their route handlers exist (Phase 2+: quote-expiry,
+# lead-release-sla, dispatch-wave-escalation, document-expiry, daily-brief) —
+# uncomment and point each at its /api/cron/<name> route as those phases are
+# built.
 
 services:
   - type: web
@@ -39,10 +42,26 @@ services:
         sync: false
       - key: SMTP_FROM
         sync: false
+      - key: EMAIL_CREDENTIALS_KEY
+        generateValue: true
       - key: NEXT_PUBLIC_GOOGLE_MAPS_API_KEY
         sync: false
       - key: NODE_VERSION
         value: 20.17.0
+
+  - type: cron
+    name: email-sync
+    runtime: node
+    schedule: "*/5 * * * *"
+    buildCommand: npm install
+    startCommand: >
+      curl -sf -X POST "$NEXT_PUBLIC_APP_URL/api/cron/email-sync"
+      -H "Authorization: Bearer $CRON_SECRET"
+    envVars:
+      - key: NEXT_PUBLIC_APP_URL
+        sync: false
+      - key: CRON_SECRET
+        sync: false
 
   # - type: cron
   #   name: quote-expiry-sweep

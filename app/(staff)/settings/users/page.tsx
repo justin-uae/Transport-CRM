@@ -7,6 +7,7 @@ import { createClient } from "@/lib/supabase/server";
 import { hasPermission, PERMISSIONS } from "@/lib/permissions";
 import { InviteUserForm } from "./InviteUserForm";
 import { UserRow, type UserListRow } from "./UserRow";
+import type { EmailAccountStatus } from "./EmailAccountForm";
 
 const PAGE_SIZE = 25;
 
@@ -31,12 +32,20 @@ export default async function UsersPage({ searchParams }: { searchParams: Promis
     usersQuery = usersQuery.or(`full_name.ilike.%${q}%,email.ilike.%${q}%`);
   }
 
-  const [{ data, count }, { data: roles }, { data: brands }] = await Promise.all([
+  const [{ data, count }, { data: roles }, { data: brands }, { data: mailboxes }] = await Promise.all([
     usersQuery.order("full_name").range(from, to),
     supabase.from("roles").select("id, name").order("name"),
     supabase.from("brands").select("id, name").order("name"),
+    supabase
+      .from("email_accounts")
+      .select(
+        "id, user_id, display_name, email_address, imap_host, imap_port, imap_security, imap_username, smtp_host, smtp_port, smtp_security, smtp_username, is_active, last_synced_at, last_sync_error",
+      ),
   ]);
   const users = (data ?? []) as unknown as UserListRow[];
+  const mailboxByUserId = new Map(
+    ((mailboxes ?? []) as unknown as (EmailAccountStatus & { user_id: string })[]).map((m) => [m.user_id, m]),
+  );
 
   return (
     <div>
@@ -60,12 +69,19 @@ export default async function UsersPage({ searchParams }: { searchParams: Promis
                 <th>Region</th>
                 <th>Role</th>
                 <th>Status</th>
+                <th>Mailbox</th>
                 <th></th>
               </tr>
             </thead>
             <tbody>
               {users.map((user) => (
-                <UserRow key={user.id} user={user} roles={roles ?? []} canManage={canManage} />
+                <UserRow
+                  key={user.id}
+                  user={user}
+                  roles={roles ?? []}
+                  canManage={canManage}
+                  mailbox={mailboxByUserId.get(user.id) ?? null}
+                />
               ))}
             </tbody>
           </table>
