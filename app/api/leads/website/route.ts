@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { recordAudit } from "@/lib/audit";
+import { sendTemplatedEmail } from "@/lib/emailTemplates";
 
 // Public website quote-form intake (Part 22). Authenticated by a per-brand
 // shared secret (brands.webhook_secret) rather than a Supabase session — the
@@ -48,7 +49,7 @@ export async function POST(request: Request) {
 
   const { data: brand } = await admin
     .from("brands")
-    .select("id, tenant_id, webhook_secret")
+    .select("id, tenant_id, name, webhook_secret")
     .eq("slug", body.brandSlug)
     .single();
 
@@ -121,7 +122,7 @@ export async function POST(request: Request) {
       referrer: body.referrer ?? null,
       raw_payload: body,
     })
-    .select("id")
+    .select("id, status, assigned_user_id")
     .single();
 
   if (leadError || !lead) {
@@ -137,6 +138,36 @@ export async function POST(request: Request) {
     entityId: lead.id,
     newValue: { source: "website", pickup: body.pickup, destination: body.destination },
   });
+
+  // route_lead() (the before-insert trigger on `leads`) may have already
+  // auto-assigned this lead to a staff member based on territory match — if
+  // so, they wouldn't otherwise know a new order landed until they happened
+  // to check the Leads list, so let them know by email straight away.
+  if (lead.status === "assigned" && lead.assigned_user_id) {
+    const { data: assignee } = await admin
+      .from("profiles")
+      .select("full_name, email")
+      .eq("id", lead.assigned_user_id)
+      .maybeSingle();
+
+    await sendTemplatedEmail(admin, {
+      tenantId: brand.tenant_id,
+      key: "lead_assigned",
+      to: assignee?.email,
+      variables: {
+        staff_name: assignee?.full_name ?? "there",
+        brand_name: brand.name,
+        source: "website",
+        pickup: body.pickup,
+        destination: body.destination,
+        travel_date: body.travelDate ?? "Not specified",
+        passenger_count: body.passengerCount ? String(body.passengerCount) : "Not specified",
+        vehicle_requested: body.vehicleRequested ?? "Not specified",
+        notes: body.notes ?? "",
+        link: `${process.env.NEXT_PUBLIC_APP_URL ?? ""}/leads?tab=mine`,
+      },
+    });
+  }
 
   return NextResponse.json({ id: lead.id }, { status: 201 });
 }

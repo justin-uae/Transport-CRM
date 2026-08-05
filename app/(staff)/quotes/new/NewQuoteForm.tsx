@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import clsx from "clsx";
 import { Panel } from "@/components/ui/Panel";
 import { SectionTitle } from "@/components/ui/SectionTitle";
@@ -9,7 +9,7 @@ import { ConfirmDetailModal } from "@/components/ui/ConfirmDetailModal";
 import { SearchableSelect } from "@/components/ui/SearchableSelect";
 import { JourneyLegDetail, type JourneyLeg } from "@/components/pages/JourneyLegDetail";
 import { CURRENCIES } from "@/lib/currencies";
-import { STRIPE_PRICE_THRESHOLD, paymentMethodsFor } from "@/lib/quoteMoney";
+import { STRIPE_PRICE_THRESHOLD, paymentMethodsForGbpValue } from "@/lib/quoteMoney";
 import { createQuoteAction } from "./actions";
 
 const STEPS = ["Enquiry", "Pricing", "Review & Send"];
@@ -82,8 +82,28 @@ export function NewQuoteForm({
   const [terms, setTerms] = useState("");
   const [sendNow, setSendNow] = useState(true);
 
+  // Fetched once on mount rather than per keystroke — the live "which
+  // payment method will this get" preview below just does the arithmetic
+  // itself from these cached rates. The authoritative conversion happens
+  // server-side at submit time (see createQuoteAction), so a stale or
+  // unavailable rate here only affects the preview, never the real decision.
+  const [gbpRates, setGbpRates] = useState<Record<string, number> | null>(null);
+  useEffect(() => {
+    fetch("/api/fx/rates")
+      .then((r) => r.json())
+      .then((data) => setGbpRates(data.rates ?? null))
+      .catch(() => setGbpRates(null));
+  }, []);
+
   const sellingPriceNum = Number(sellingPrice) || 0;
-  const methods = paymentMethodsFor(sellingPriceNum);
+  const currencyCode = currency.toUpperCase();
+  const sellingPriceGbp =
+    currencyCode === "GBP"
+      ? sellingPriceNum
+      : gbpRates?.[currencyCode]
+        ? sellingPriceNum / gbpRates[currencyCode]
+        : null;
+  const methods = sellingPriceGbp === null ? { stripe: false, bank_transfer: true } : paymentMethodsForGbpValue(sellingPriceGbp);
   const fullPayment = depositPercentage === null;
 
   const money = (amount: number) =>
@@ -158,7 +178,11 @@ export function NewQuoteForm({
           <div>
             <dt className="text-xs font-bold uppercase text-slate-400">Payment method</dt>
             <dd className="mt-0.5 font-semibold">
-              {methods.stripe ? `Online payment (Stripe) — price is below ${STRIPE_PRICE_THRESHOLD}` : `Bank transfer — price is ${STRIPE_PRICE_THRESHOLD} or above`}
+              {sellingPriceGbp === null
+                ? "Calculating — confirmed once the exchange rate loads"
+                : methods.stripe
+                  ? `Online payment (Stripe) — converts to under £${STRIPE_PRICE_THRESHOLD} GBP (≈ £${sellingPriceGbp.toFixed(2)})`
+                  : `Bank transfer — converts to £${STRIPE_PRICE_THRESHOLD} GBP or more (≈ £${sellingPriceGbp.toFixed(2)})`}
             </dd>
           </div>
           <div>
@@ -315,10 +339,16 @@ export function NewQuoteForm({
               </fieldset>
               <div className="rounded-xl bg-slate-50 p-3 text-sm font-normal md:col-span-2">
                 <span className="font-bold">Payment method: </span>
-                {methods.stripe ? (
-                  <span className="font-semibold text-emerald-700">Online payment (Stripe) — price is below {STRIPE_PRICE_THRESHOLD}</span>
+                {sellingPriceGbp === null ? (
+                  <span className="font-semibold text-slate-500">Calculating — confirmed once the exchange rate loads</span>
+                ) : methods.stripe ? (
+                  <span className="font-semibold text-emerald-700">
+                    Online payment (Stripe) — converts to under £{STRIPE_PRICE_THRESHOLD} GBP (≈ £{sellingPriceGbp.toFixed(2)})
+                  </span>
                 ) : (
-                  <span className="font-semibold text-emerald-700">Bank transfer — price is {STRIPE_PRICE_THRESHOLD} or above</span>
+                  <span className="font-semibold text-emerald-700">
+                    Bank transfer — converts to £{STRIPE_PRICE_THRESHOLD} GBP or more (≈ £{sellingPriceGbp.toFixed(2)})
+                  </span>
                 )}
                 <span className="ml-2 text-slate-400">Stripe and bank transfer are never both offered on the same quote.</span>
               </div>

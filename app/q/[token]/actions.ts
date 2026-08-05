@@ -12,7 +12,7 @@ async function loadDecidableQuote(admin: ReturnType<typeof createAdminClient>, t
   const { data: quote } = await admin
     .from("quotes")
     .select(
-      "id, tenant_id, status, quote_number, created_by, enquiries(assigned_user_id, customers(contact_name, company_name))",
+      "id, tenant_id, status, quote_number, created_by, brands(name), enquiries(assigned_user_id, customers(contact_name, company_name))",
     )
     .eq("public_token", token)
     .single();
@@ -140,6 +140,7 @@ export async function acceptQuoteAction(token: string) {
     assigned_user_id: string | null;
     customers: { contact_name: string; company_name: string | null } | null;
   } | null;
+  const brand = quote.brands as unknown as { name: string } | null;
   const staffEmail = await resolveStaffEmail(admin, enquiry?.assigned_user_id ?? null, quote.created_by);
   await sendTemplatedEmail(admin, {
     tenantId: quote.tenant_id,
@@ -148,6 +149,7 @@ export async function acceptQuoteAction(token: string) {
     variables: {
       customer_name: enquiry?.customers?.company_name || enquiry?.customers?.contact_name || "Customer",
       quote_number: quote.quote_number,
+      brand_name: brand?.name ?? "",
       link: `${process.env.NEXT_PUBLIC_APP_URL ?? ""}/quotes/${quote.id}`,
     },
   });
@@ -190,6 +192,7 @@ export async function rejectQuoteAction(token: string, reason: string | null) {
     assigned_user_id: string | null;
     customers: { contact_name: string; company_name: string | null } | null;
   } | null;
+  const brand = quote.brands as unknown as { name: string } | null;
   const staffEmail = await resolveStaffEmail(admin, enquiry?.assigned_user_id ?? null, quote.created_by);
   await sendTemplatedEmail(admin, {
     tenantId: quote.tenant_id,
@@ -198,6 +201,7 @@ export async function rejectQuoteAction(token: string, reason: string | null) {
     variables: {
       customer_name: enquiry?.customers?.company_name || enquiry?.customers?.contact_name || "Customer",
       quote_number: quote.quote_number,
+      brand_name: brand?.name ?? "",
       reason: reason ?? "No reason given",
       link: `${process.env.NEXT_PUBLIC_APP_URL ?? ""}/quotes/${quote.id}`,
     },

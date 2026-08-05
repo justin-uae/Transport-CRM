@@ -21,14 +21,16 @@ async function notifyJobCreator(
   if (!input.createdBy) return;
   const [{ data: profile }, { data: quote }] = await Promise.all([
     adminClient.from("profiles").select("email").eq("id", input.createdBy).maybeSingle(),
-    adminClient.from("quotes").select("quote_number").eq("id", input.quoteId).maybeSingle(),
+    adminClient.from("quotes").select("quote_number, brands(name)").eq("id", input.quoteId).maybeSingle(),
   ]);
+  const brand = quote?.brands as unknown as { name: string } | null;
   await sendTemplatedEmail(adminClient, {
     tenantId: input.tenantId,
     key: input.key,
     to: profile?.email,
     variables: {
       quote_number: quote?.quote_number ?? "—",
+      brand_name: brand?.name ?? "",
       link: `${process.env.NEXT_PUBLIC_APP_URL ?? ""}/dispatch/${input.jobId}`,
       ...input.extraVariables,
     },

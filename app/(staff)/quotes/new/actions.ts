@@ -5,7 +5,8 @@ import { createClient } from "@/lib/supabase/server";
 import { requireProfile } from "@/lib/auth";
 import { hasPermission, PERMISSIONS } from "@/lib/permissions";
 import { recordAudit } from "@/lib/audit";
-import { paymentMethodsFor } from "@/lib/quoteMoney";
+import { STRIPE_PRICE_THRESHOLD, paymentMethodsForGbpValue } from "@/lib/quoteMoney";
+import { convertToGbp } from "@/lib/fxRates";
 import { sendTemplatedEmail } from "@/lib/emailTemplates";
 import { generateQuotePdf } from "@/lib/quotePdf";
 
@@ -85,6 +86,21 @@ export async function createQuoteAction(
   const depositPercentageRaw = Number(formData.get("depositPercentage") ?? "");
   const depositPercentage = [25, 50, 75].includes(depositPercentageRaw) ? depositPercentageRaw : null;
 
+  // Stripe is only offered once the selling price converts to under £1000
+  // GBP, regardless of the quote's own currency — convert in the background
+  // here rather than showing Stripe based on the raw (possibly non-GBP)
+  // number. If the conversion can't be confirmed (rate source unreachable or
+  // an unrecognised currency code), fall back to the threshold itself so
+  // paymentMethodsForGbpValue resolves to bank-transfer-only rather than
+  // risk offering Stripe on an unverified amount.
+  let sellingPriceGbp: number;
+  try {
+    sellingPriceGbp = await convertToGbp(sellingPrice, currency);
+  } catch (err) {
+    console.error(`convertToGbp failed for ${sellingPrice} ${currency}:`, err);
+    sellingPriceGbp = STRIPE_PRICE_THRESHOLD;
+  }
+
   // Vehicle is chosen once, at lead/enquiry intake — the quote just inherits
   // whatever the enquiry's first leg already has, rather than asking staff
   // to pick it again.
@@ -102,9 +118,10 @@ export async function createQuoteAction(
       selling_price: sellingPrice,
       currency,
       deposit_percentage: depositPercentage,
-      // System-computed, never a manual staff toggle — below the threshold
-      // is Stripe-only, at or above it is bank-transfer-only.
-      payment_methods: paymentMethodsFor(sellingPrice),
+      // System-computed, never a manual staff toggle — below the
+      // GBP-converted threshold is Stripe-only, at or above it is
+      // bank-transfer-only.
+      payment_methods: paymentMethodsForGbpValue(sellingPriceGbp),
       customer_notes: String(formData.get("customerNotes") ?? "").trim() || null,
       terms_snapshot: String(formData.get("terms") ?? "").trim() || null,
       brand_snapshot: {

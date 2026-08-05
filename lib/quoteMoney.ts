@@ -18,13 +18,15 @@ export function amountDueNow(version: VersionForDue, alreadyPaid: number): numbe
 }
 
 /**
- * Below this, the customer pays online (Stripe) only; at or above it, bank
- * transfer only — the two are mutually exclusive, never both offered on the
- * same quote.
+ * GBP. The quote's selling price is converted to its GBP equivalent (see
+ * lib/fxRates.ts's convertToGbp — quotes are priced in whatever currency the
+ * brand/customer uses) before this is applied: below it, the customer pays
+ * online (Stripe) only; at or above it, bank transfer only — the two are
+ * mutually exclusive, never both offered on the same quote.
  */
 export const STRIPE_PRICE_THRESHOLD = 1000;
 
-export function paymentMethodsFor(sellingPrice: number): { stripe: boolean; bank_transfer: boolean } {
-  const stripeEligible = sellingPrice < STRIPE_PRICE_THRESHOLD;
+export function paymentMethodsForGbpValue(gbpValue: number): { stripe: boolean; bank_transfer: boolean } {
+  const stripeEligible = gbpValue < STRIPE_PRICE_THRESHOLD;
   return { stripe: stripeEligible, bank_transfer: !stripeEligible };
 }

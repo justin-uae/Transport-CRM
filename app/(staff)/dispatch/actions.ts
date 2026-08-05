@@ -27,7 +27,7 @@ export async function offerJobToSuppliersAction(jobId: string, supplierIds: stri
   const { data: job } = await supabase
     .from("jobs")
     .select(
-      "tenant_id, status, created_by, region, quotes(enquiries(enquiry_legs(sequence, pickup_date, pickup_time, passenger_count)))",
+      "tenant_id, status, created_by, region, quotes(brands(name), enquiries(enquiry_legs(sequence, pickup_date, pickup_time, passenger_count)))",
     )
     .eq("id", jobId)
     .single();
@@ -71,6 +71,7 @@ export async function offerJobToSuppliersAction(jobId: string, supplierIds: stri
 
   const { data: suppliers } = await supabase.from("suppliers").select("id, name, email").in("id", supplierIds);
   const quote = job.quotes as unknown as {
+    brands: { name: string } | null;
     enquiries: { enquiry_legs: { sequence: number; pickup_date: string | null; pickup_time: string | null; passenger_count: number | null }[] } | null;
   } | null;
   const leg = [...(quote?.enquiries?.enquiry_legs ?? [])].sort((a, b) => a.sequence - b.sequence)[0];
@@ -82,6 +83,7 @@ export async function offerJobToSuppliersAction(jobId: string, supplierIds: stri
       to: supplier.email,
       variables: {
         supplier_name: supplier.name,
+        brand_name: quote?.brands?.name ?? "",
         region: job.region ?? "—",
         pickup_date: leg?.pickup_date ?? "TBC",
         pickup_time: leg?.pickup_time ?? "",
