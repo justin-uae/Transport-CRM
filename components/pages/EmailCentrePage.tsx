@@ -215,39 +215,42 @@ export function EmailCentrePage({
                     <p className="whitespace-pre-wrap">{selected.body_text}</p>
                   )}
                 </div>
-                {/* Only messages you received can be replied to — a "Sent" row's
-                    from_address is your own account, so a reply box here would
-                    address the new message back to yourself. */}
-                {selected.direction === "inbound" && (
-                  <div className="rounded-2xl border p-4">
-                    <textarea
-                      value={replyText}
-                      onChange={(e) => setReplyText(e.target.value)}
-                      className="min-h-28 w-full resize-none outline-none"
-                      placeholder="Write a reply…"
-                    />
-                    <div className="flex items-center justify-between border-t pt-3">
-                      <button className="rounded-lg p-2 text-slate-300" disabled title="Attachments coming soon">
-                        <Paperclip size={18} />
-                      </button>
-                      <button
-                        disabled={pending || !replyText.trim()}
-                        onClick={() =>
-                          send({
-                            to: selected.from_address,
-                            subject: selected.subject?.startsWith("Re:") ? selected.subject : `Re: ${selected.subject ?? ""}`,
-                            bodyText: replyText,
-                            inReplyTo: selected.message_id,
-                          })
-                        }
-                        className="flex items-center gap-2 rounded-xl bg-primary-500 px-4 py-2.5 text-sm font-bold text-white disabled:opacity-60"
-                      >
-                        <Send size={16} />
-                        {pending ? "Sending…" : "Send"}
-                      </button>
-                    </div>
+                {/* The recipient depends on which way the original message went:
+                    replying to something you received goes back to its sender,
+                    while mailing again from something you sent goes back to the
+                    same recipients — from_address on a "Sent" row is your own
+                    account, so using that here would address it back to yourself. */}
+                <div className="rounded-2xl border p-4">
+                  <textarea
+                    value={replyText}
+                    onChange={(e) => setReplyText(e.target.value)}
+                    className="min-h-28 w-full resize-none outline-none"
+                    placeholder="Mail again…"
+                  />
+                  <div className="flex items-center justify-between border-t pt-3">
+                    <button className="rounded-lg p-2 text-slate-300" disabled title="Attachments coming soon">
+                      <Paperclip size={18} />
+                    </button>
+                    <button
+                      disabled={pending || !replyText.trim()}
+                      onClick={() =>
+                        send({
+                          to:
+                            selected.direction === "inbound"
+                              ? selected.from_address
+                              : selected.to_addresses.join(", "),
+                          subject: selected.subject?.startsWith("Re:") ? selected.subject : `Re: ${selected.subject ?? ""}`,
+                          bodyText: replyText,
+                          inReplyTo: selected.message_id,
+                        })
+                      }
+                      className="flex items-center gap-2 rounded-xl bg-primary-500 px-4 py-2.5 text-sm font-bold text-white disabled:opacity-60"
+                    >
+                      <Send size={16} />
+                      {pending ? "Sending…" : "Send"}
+                    </button>
                   </div>
-                )}
+                </div>
               </>
             ) : (
               <p className="py-8 text-center text-sm text-slate-500">Select a message to read it.</p>
