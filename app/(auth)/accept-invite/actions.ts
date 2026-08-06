@@ -43,7 +43,7 @@ export async function activateAccount() {
   // identity space (0003_operations.sql), which shares this same page. A
   // supplier's `status` tracks verification/approval, not account
   // activation, so there's nothing to flip here beyond the audit entry —
-  // they land on their verification form next.
+  // they land on Settings to fill in their business details next.
   const { data: supplier } = await supabase.from("suppliers").select("tenant_id, status").eq("id", user.id).single();
 
   if (supplier) {
@@ -55,7 +55,7 @@ export async function activateAccount() {
       entityId: user.id,
     });
 
-    return { error: null, redirectTo: "/supplier/verification" };
+    return { error: null, redirectTo: "/supplier/settings" };
   }
 
   return { error: "No account found for this invite.", redirectTo: null };

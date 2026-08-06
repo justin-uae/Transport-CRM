@@ -64,7 +64,7 @@ export async function acceptJobOfferAction(jobId: string) {
     extraVariables: { supplier_name: supplier.name },
   });
 
-  revalidatePath("/supplier/dashboard");
+  revalidatePath("/supplier/dashboard", "layout");
   revalidatePath("/dispatch");
 }
 
@@ -98,7 +98,7 @@ export async function rejectJobOfferAction(jobId: string) {
     });
   }
 
-  revalidatePath("/supplier/dashboard");
+  revalidatePath("/supplier/dashboard", "layout");
   revalidatePath("/dispatch");
 }
 
@@ -179,7 +179,7 @@ export async function uploadSupplierInvoiceAction(
     extraVariables: { supplier_name: supplier.name, currency, amount: amount.toFixed(2) },
   });
 
-  revalidatePath("/supplier/dashboard");
+  revalidatePath("/supplier/dashboard", "layout");
   revalidatePath("/dispatch");
 }
 
@@ -207,7 +207,7 @@ export async function confirmJobAction(jobId: string) {
     entityId: jobId,
   });
 
-  revalidatePath("/supplier/dashboard");
+  revalidatePath("/supplier/dashboard", "layout");
 }
 
 export async function completeJobAction(jobId: string) {
@@ -234,6 +234,6 @@ export async function completeJobAction(jobId: string) {
     entityId: jobId,
   });
 
-  revalidatePath("/supplier/dashboard");
+  revalidatePath("/supplier/dashboard", "layout");
   revalidatePath("/dispatch");
 }

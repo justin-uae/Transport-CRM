@@ -1,6 +1,7 @@
 import { requireSupplier } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
-import { SupplierDashboard } from "@/components/pages/SupplierDashboard";
+import { SupplierOverview } from "@/components/pages/SupplierOverview";
+import { isNewOffer, isActiveJob } from "@/lib/supplierJobStatus";
 import type { JobOfferView, JobSupplierInvoice } from "@/lib/supabase/database.types";
 
 export default async function SupplierDashboardPage() {
@@ -12,11 +13,18 @@ export default async function SupplierDashboardPage() {
     supabase.from("job_supplier_invoices").select("*").eq("supplier_id", supplier.id),
   ]);
 
+  const allJobs = (jobs ?? []) as JobOfferView[];
+  const invoicedJobIds = new Set(((invoices ?? []) as JobSupplierInvoice[]).map((inv) => inv.job_id));
+
+  const completedJobs = allJobs.filter((j) => j.job_status === "completed");
+
   return (
-    <SupplierDashboard
-      jobs={(jobs ?? []) as JobOfferView[]}
-      invoices={(invoices ?? []) as JobSupplierInvoice[]}
-      supplierId={supplier.id}
+    <SupplierOverview
+      newOffers={allJobs.filter(isNewOffer).length}
+      activeJobs={allJobs.filter(isActiveJob).length}
+      completedJobs={completedJobs.length}
+      pendingInvoices={completedJobs.filter((j) => !invoicedJobIds.has(j.job_id)).length}
+      recentJobs={allJobs.slice(0, 5)}
     />
   );
 }

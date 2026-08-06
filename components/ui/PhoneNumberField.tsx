@@ -8,6 +8,11 @@ import { detectVisitorCountry } from "@/lib/detectCountry";
 
 const FALLBACK_COUNTRY: Country = "AE";
 
+/** react-phone-number-input requires E.164 or throws — some legacy records predate that format. */
+function isE164(value?: string | null): value is string {
+  return !!value && /^\+[1-9]\d{1,14}$/.test(value);
+}
+
 /**
  * Dial-code phone input used everywhere a phone/WhatsApp number is
  * collected. Wraps react-phone-number-input with a searchable country
@@ -38,10 +43,13 @@ export function PhoneNumberField({
   className?: string;
 }) {
   const isControlled = value !== undefined;
-  const [internalValue, setInternalValue] = useState<string | undefined>(defaultValue ?? undefined);
+  const [internalValue, setInternalValue] = useState<string | undefined>(isE164(defaultValue) ? defaultValue : undefined);
   const [defaultCountry, setDefaultCountry] = useState<Country>(FALLBACK_COUNTRY);
 
   const current = isControlled ? value : internalValue;
+  // Surfaces a legacy non-E.164 number (can't be handed to the input as `value`
+  // without it throwing) so the field isn't silently blank for existing data.
+  const legacyValueHint = !isControlled && defaultValue && !isE164(defaultValue) ? `Current: ${defaultValue}` : undefined;
 
   useEffect(() => {
     if (current) return;
@@ -70,11 +78,14 @@ export function PhoneNumberField({
         value={current}
         onChange={handleChange}
         disabled={disabled}
-        placeholder={placeholder}
+        placeholder={placeholder ?? legacyValueHint}
         countrySelectComponent={SearchableCountrySelect}
         className="PhoneNumberField"
       />
-      {name && <input type="hidden" name={name} value={current ?? ""} />}
+      {/* Falls back to the raw legacy value (rather than "") so saving other
+          fields on this form doesn't wipe out a phone number the user never
+          touched, just because it predates E.164 formatting. */}
+      {name && <input type="hidden" name={name} value={current ?? (legacyValueHint ? defaultValue! : "")} />}
     </div>
   );
 }

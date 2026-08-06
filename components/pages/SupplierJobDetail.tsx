@@ -1,6 +1,6 @@
 "use client";
 
-import { useTransition } from "react";
+import { useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
@@ -8,8 +8,10 @@ import { PageHead } from "@/components/ui/PageHead";
 import { Panel } from "@/components/ui/Panel";
 import { SectionTitle } from "@/components/ui/SectionTitle";
 import { useToast } from "@/components/ui/Toast";
+import { ConfirmDetailModal } from "@/components/ui/ConfirmDetailModal";
 import { InvoiceUploadForm } from "@/app/supplier/dashboard/InvoiceUploadForm";
 import { acceptJobOfferAction, rejectJobOfferAction, confirmJobAction, completeJobAction } from "@/app/supplier/dashboard/actions";
+import { statusDetailText } from "@/lib/supplierJobStatus";
 import type { JobOfferView, JobSupplierInvoice, SupplierPaymentStatus } from "@/lib/supabase/database.types";
 
 const PAYMENT_STATUS_STYLE: Record<SupplierPaymentStatus, string> = {
@@ -23,24 +25,6 @@ const PAYMENT_STATUS_LABEL: Record<SupplierPaymentStatus, string> = {
   partially_paid: "Partially paid",
   paid: "Paid in full",
 };
-
-function statusLabel(job: JobOfferView) {
-  if (job.offer_status === "withdrawn") return "Offer withdrawn — assigned to another supplier";
-  if (job.offer_status === "rejected") return "You rejected this job";
-  if (job.offer_status === "sent") return "New offer — view details, then accept or reject";
-  switch (job.job_status) {
-    case "accepted_by_supplier":
-      return "Accepted — confirm to proceed";
-    case "confirmed":
-      return "Confirmed";
-    case "completed":
-      return "Completed";
-    case "cancelled":
-      return "Cancelled";
-    default:
-      return job.job_status;
-  }
-}
 
 function money(amount: number | null, currency: string) {
   if (amount == null) return null;
@@ -68,67 +52,88 @@ export function SupplierJobDetail({
   const notify = useToast();
   const router = useRouter();
   const [pending, startTransition] = useTransition();
+  const [modal, setModal] = useState<"accept" | "reject" | "confirm" | "complete" | null>(null);
+  const [modalError, setModalError] = useState<string | null>(null);
+
+  function closeModal() {
+    setModal(null);
+    setModalError(null);
+  }
 
   function accept() {
+    setModalError(null);
     startTransition(async () => {
       try {
         await acceptJobOfferAction(job.job_id);
+        closeModal();
         notify("Accepted — please confirm to proceed");
         router.refresh();
       } catch (err) {
-        notify(err instanceof Error ? err.message : "Could not accept this job.");
+        setModalError(err instanceof Error ? err.message : "Could not accept this job.");
       }
     });
   }
 
   function reject() {
+    setModalError(null);
     startTransition(async () => {
       try {
         await rejectJobOfferAction(job.job_id);
+        closeModal();
         notify("Job rejected");
         router.refresh();
       } catch (err) {
-        notify(err instanceof Error ? err.message : "Could not reject this job.");
+        setModalError(err instanceof Error ? err.message : "Could not reject this job.");
       }
     });
   }
 
   function confirm() {
+    setModalError(null);
     startTransition(async () => {
       try {
         await confirmJobAction(job.job_id);
+        closeModal();
         notify("Job confirmed");
         router.refresh();
       } catch (err) {
-        notify(err instanceof Error ? err.message : "Could not confirm this job.");
+        setModalError(err instanceof Error ? err.message : "Could not confirm this job.");
       }
     });
   }
 
   function complete() {
+    setModalError(null);
     startTransition(async () => {
       try {
         await completeJobAction(job.job_id);
+        closeModal();
         notify("Job marked as completed");
         router.refresh();
       } catch (err) {
-        notify(err instanceof Error ? err.message : "Could not complete this job.");
+        setModalError(err instanceof Error ? err.message : "Could not complete this job.");
       }
     });
   }
 
   const rate = money(job.supplier_estimated_cost, job.quote_currency);
+  const journeyDetails = [
+    { label: "Region", value: job.region ?? "—" },
+    { label: "Date & time", value: `${job.pickup_date ?? "TBC"} ${job.pickup_time ?? ""}`.trim() },
+    { label: "Passengers", value: job.passenger_count ?? "—" },
+    ...(rate ? [{ label: "Your rate", value: rate }] : []),
+  ];
 
   return (
     <div>
       <PageHead
         eyebrow="Supplier Portal"
         title={job.region ?? "Job details"}
-        text={statusLabel(job)}
+        text={statusDetailText(job)}
         action={
           <Link href="/supplier/dashboard" className="flex items-center gap-2 text-sm font-bold text-slate-500">
             <ArrowLeft size={16} />
-            Back to jobs
+            Back to dashboard
           </Link>
         }
       />
@@ -178,41 +183,80 @@ export function SupplierJobDetail({
           {job.offer_status === "sent" && (
             <>
               <button
-                disabled={pending}
-                onClick={accept}
-                className="rounded-xl bg-emerald-600 px-5 py-2.5 text-sm font-bold text-white disabled:opacity-60"
+                onClick={() => setModal("accept")}
+                className="rounded-xl bg-emerald-600 px-5 py-2.5 text-sm font-bold text-white"
               >
-                {pending ? "Please wait…" : "Accept job"}
+                Accept job
               </button>
               <button
-                disabled={pending}
-                onClick={reject}
-                className="rounded-xl border border-red-200 px-5 py-2.5 text-sm font-bold text-red-600 disabled:opacity-60"
+                onClick={() => setModal("reject")}
+                className="rounded-xl border border-red-200 px-5 py-2.5 text-sm font-bold text-red-600"
               >
                 Reject
               </button>
             </>
           )}
           {job.offer_status === "accepted" && job.job_status === "accepted_by_supplier" && (
-            <button
-              disabled={pending}
-              onClick={confirm}
-              className="rounded-xl bg-primary-500 px-5 py-2.5 text-sm font-bold text-white disabled:opacity-60"
-            >
-              {pending ? "Please wait…" : "Confirm this job"}
+            <button onClick={() => setModal("confirm")} className="rounded-xl bg-primary-500 px-5 py-2.5 text-sm font-bold text-white">
+              Confirm this job
             </button>
           )}
           {job.job_status === "confirmed" && (
-            <button
-              disabled={pending}
-              onClick={complete}
-              className="rounded-xl bg-emerald-600 px-5 py-2.5 text-sm font-bold text-white disabled:opacity-60"
-            >
-              {pending ? "Please wait…" : "Mark Completed"}
+            <button onClick={() => setModal("complete")} className="rounded-xl bg-emerald-600 px-5 py-2.5 text-sm font-bold text-white">
+              Mark Completed
             </button>
           )}
         </div>
       </Panel>
+
+      <ConfirmDetailModal
+        open={modal === "accept"}
+        onClose={closeModal}
+        title="Accept this job?"
+        description="You're committing to carry out this journey — the office will be notified."
+        details={journeyDetails}
+        pending={pending}
+        error={modalError}
+        confirmLabel="Accept job"
+        onConfirm={accept}
+      />
+
+      <ConfirmDetailModal
+        open={modal === "reject"}
+        onClose={closeModal}
+        title="Reject this job offer?"
+        description="This offer will go back to the office so they can send it to another supplier."
+        details={journeyDetails}
+        pending={pending}
+        error={modalError}
+        destructive
+        confirmLabel="Reject offer"
+        onConfirm={reject}
+      />
+
+      <ConfirmDetailModal
+        open={modal === "confirm"}
+        onClose={closeModal}
+        title="Confirm this job?"
+        description="Confirm once you're set to carry out this journey as scheduled."
+        details={journeyDetails}
+        pending={pending}
+        error={modalError}
+        confirmLabel="Confirm job"
+        onConfirm={confirm}
+      />
+
+      <ConfirmDetailModal
+        open={modal === "complete"}
+        onClose={closeModal}
+        title="Mark this job as completed?"
+        description="Once completed you'll be able to submit your invoice for this job."
+        details={journeyDetails}
+        pending={pending}
+        error={modalError}
+        confirmLabel="Mark completed"
+        onConfirm={complete}
+      />
 
       {job.job_status === "completed" && (job.supplier_invoice_note || job.supplier_invoice_url) && (
         <div className="mt-5">

@@ -24,7 +24,7 @@ export async function updateSupplierDetailsAction(_prevState: { error: string | 
 
   if (error) return { error: error.message };
 
-  revalidatePath("/supplier/verification");
+  revalidatePath("/supplier/settings", "layout");
   return { error: null };
 }
 
@@ -47,7 +47,7 @@ export async function addVehicleAction(_prevState: { error: string | null }, for
 
   if (error) return { error: error.message };
 
-  revalidatePath("/supplier/verification");
+  revalidatePath("/supplier/settings", "layout");
   return { error: null };
 }
 
@@ -56,7 +56,7 @@ export async function removeVehicleAction(vehicleId: string) {
   const supabase = await createClient();
 
   await supabase.from("supplier_vehicles").delete().eq("id", vehicleId).eq("supplier_id", supplier.id);
-  revalidatePath("/supplier/verification");
+  revalidatePath("/supplier/settings", "layout");
 }
 
 export async function submitVerificationAction() {
@@ -66,5 +66,5 @@ export async function submitVerificationAction() {
   const { error } = await supabase.from("suppliers").update({ status: "submitted" }).eq("id", supplier.id);
   if (error) throw new Error(error.message);
 
-  revalidatePath("/supplier/verification");
+  revalidatePath("/supplier/settings", "layout");
 }
