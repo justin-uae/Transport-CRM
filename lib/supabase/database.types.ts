@@ -738,6 +738,42 @@ export interface AttendanceEvent {
   created_at: string;
 }
 
+// -----------------------------------------------------------------------------
+// Documents (0025_documents.sql) — general document library, optionally
+// linked to one customer/supplier/quote record.
+// -----------------------------------------------------------------------------
+
+export type DocumentType =
+  | "contract"
+  | "nda"
+  | "customer_agreement"
+  | "supplier_licence"
+  | "insurance"
+  | "driver_licence"
+  | "vehicle_registration"
+  | "invoice"
+  | "receipt"
+  | "credit_note"
+  | "itinerary"
+  | "passenger_list"
+  | "other";
+
+export interface CrmDocument {
+  id: string;
+  tenant_id: string;
+  doc_type: DocumentType;
+  label: string;
+  notes: string | null;
+  storage_path: string;
+  file_name: string;
+  file_size: number | null;
+  customer_id: string | null;
+  supplier_id: string | null;
+  quote_id: string | null;
+  uploaded_by: string | null;
+  created_at: string;
+}
+
 // Minimal shape of a table entry as @supabase/postgrest-js's generics expect
 // it (Row/Insert/Update plus an empty Relationships tuple — we don't encode
 // foreign-key relationship metadata by hand, so embedded-resource selects
@@ -789,6 +825,7 @@ export interface Database {
       commission_plans: Table<CommissionPlan>;
       commissions: Table<Commission>;
       attendance_events: Table<AttendanceEvent>;
+      documents: Table<CrmDocument>;
     };
     Views: {
       job_offer_view: { Row: JobOfferView; Relationships: [] };
