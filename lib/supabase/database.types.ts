@@ -722,6 +722,22 @@ export interface Commission {
   created_at: string;
 }
 
+// -----------------------------------------------------------------------------
+// Attendance (0024_attendance.sql) — append-only clock event log; current
+// status/shift duration are always derived from this (see lib/attendance.ts),
+// never stored as a mutable column.
+// -----------------------------------------------------------------------------
+
+export type AttendanceEventType = "clock_in" | "break_start" | "break_end" | "clock_out";
+
+export interface AttendanceEvent {
+  id: string;
+  tenant_id: string;
+  user_id: string;
+  event: AttendanceEventType;
+  created_at: string;
+}
+
 // Minimal shape of a table entry as @supabase/postgrest-js's generics expect
 // it (Row/Insert/Update plus an empty Relationships tuple — we don't encode
 // foreign-key relationship metadata by hand, so embedded-resource selects
@@ -772,6 +788,7 @@ export interface Database {
       email_messages: Table<EmailMessage>;
       commission_plans: Table<CommissionPlan>;
       commissions: Table<Commission>;
+      attendance_events: Table<AttendanceEvent>;
     };
     Views: {
       job_offer_view: { Row: JobOfferView; Relationships: [] };

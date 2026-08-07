@@ -21,7 +21,15 @@ export function Header({
   canCreateQuote: boolean;
   canAddLead: boolean;
 }) {
-  const { clock, cycle } = useAttendance();
+  const { status, elapsedLabel, pending, clockIn, startBreak, endBreak } = useAttendance();
+
+  // Clocking out is deliberately not reachable from this shortcut — only
+  // the /attendance page's explicit button does that — so a stray header
+  // click can never end someone's shift. Every other transition is safe to
+  // one-click from anywhere in the app.
+  const nextAction = status === "working" ? startBreak : status === "on_break" ? endBreak : clockIn;
+  const statusLabel =
+    status === "working" ? "Working" : status === "on_break" ? "On Break" : status === "clocked_out" ? "Clocked Out" : "Clock In";
 
   return (
     <header className="sticky top-0 z-30 flex h-20 items-center gap-3 border-b border-slate-200 bg-white/90 px-4 backdrop-blur md:px-8">
@@ -42,18 +50,21 @@ export function Header({
       <div className="ml-auto flex items-center gap-2">
         <BrandSwitcher brands={brands} activeBrandId={activeBrandId} />
         <button
-          onClick={cycle}
+          onClick={nextAction}
+          disabled={pending}
+          title={status === "working" ? "Start break" : status === "on_break" ? "End break" : "Clock in"}
           className={clsx(
-            "hidden items-center gap-2 rounded-xl px-3 py-2 text-xs font-bold sm:flex",
-            clock === "Working"
+            "hidden items-center gap-2 rounded-xl px-3 py-2 text-xs font-bold sm:flex disabled:opacity-60",
+            status === "working"
               ? "bg-emerald-50 text-emerald-700"
-              : clock === "On break"
+              : status === "on_break"
                 ? "bg-amber-50 text-amber-700"
                 : "bg-slate-100 text-slate-600",
           )}
         >
           <Clock3 size={16} />
-          {clock}
+          {statusLabel}
+          {elapsedLabel && <span className="font-normal text-inherit opacity-70">· {elapsedLabel}</span>}
         </button>
         <button
           className="relative rounded-xl border border-slate-200 p-2.5 hover:bg-slate-50"

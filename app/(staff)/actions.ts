@@ -24,6 +24,15 @@ export async function signOut() {
         action: "logout",
         entityType: "session",
       });
+
+      // login_history's own check constraint and RLS already expect a
+      // 'logout' event (see login_history_select's session-duration intent,
+      // 0001_foundation.sql:216-228) — nothing ever wrote one until now.
+      await supabase.from("login_history").insert({
+        tenant_id: profile.tenant_id,
+        user_id: user.id,
+        event: "logout",
+      });
     }
   }
 

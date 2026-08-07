@@ -6,6 +6,7 @@ import { Header } from "./Header";
 import { ToastProvider } from "../ui/Toast";
 import { AttendanceProvider } from "../ui/AttendanceState";
 import type { Brand } from "@/lib/supabase/database.types";
+import type { AttendanceState } from "@/lib/attendanceState";
 
 export function StaffShell({
   userName,
@@ -16,6 +17,7 @@ export function StaffShell({
   canSeeSettings,
   canCreateQuote,
   canAddLead,
+  initialAttendance,
   children,
 }: {
   userName: string;
@@ -26,13 +28,14 @@ export function StaffShell({
   canSeeSettings: boolean;
   canCreateQuote: boolean;
   canAddLead: boolean;
+  initialAttendance: AttendanceState;
   children: React.ReactNode;
 }) {
   const [mobileOpen, setMobileOpen] = useState(false);
 
   return (
     <ToastProvider>
-      <AttendanceProvider>
+      <AttendanceProvider initialState={initialAttendance}>
         <div className="min-h-screen bg-appbg text-slate-800">
           <Sidebar
             mobileOpen={mobileOpen}

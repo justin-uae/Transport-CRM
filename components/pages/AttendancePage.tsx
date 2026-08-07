@@ -1,61 +1,104 @@
 "use client";
 
-import { Clock3, LogIn, Coffee, LogOut } from "lucide-react";
+import { LogIn, Coffee, LogOut, Clock3 } from "lucide-react";
+import clsx from "clsx";
 import { Panel } from "@/components/ui/Panel";
 import { PageHead } from "@/components/ui/PageHead";
 import { SectionTitle } from "@/components/ui/SectionTitle";
 import { useAttendance } from "@/components/ui/AttendanceState";
-import { teamPerformance } from "@/components/demo/demoData";
+import { legalNextEvents, formatDuration } from "@/lib/attendanceState";
 
-const CLOCK_IN_TIMES = ["08:57", "09:02", "08:49", "09:08"];
-const ACTIVE_TIMES = ["6h 14m", "6h 03m", "5h 52m", "5h 46m"];
+export interface DailySummary {
+  date: string;
+  clockInAt: string | null;
+  clockOutAt: string | null;
+  /** null means a past day with no clock_out — forgotten, not still running; shown as "Incomplete" rather than a fabricated duration. */
+  activeMs: number | null;
+}
 
-export function AttendancePage() {
-  const { clock, cycle } = useAttendance();
+export interface TeamRow {
+  profileId: string;
+  name: string;
+  status: string;
+  clockInAt: string | null;
+  activeMs: number;
+}
+
+const STATUS_STYLE: Record<string, string> = {
+  not_clocked_in: "bg-slate-100 text-slate-500",
+  working: "bg-emerald-50 text-emerald-600",
+  on_break: "bg-amber-50 text-amber-600",
+  clocked_out: "bg-slate-100 text-slate-500",
+};
+
+const STATUS_LABEL: Record<string, string> = {
+  not_clocked_in: "Not Clocked In",
+  working: "Working",
+  on_break: "On Break",
+  clocked_out: "Clocked Out",
+};
+
+function timeLabel(iso: string | null) {
+  if (!iso) return "—";
+  return new Date(iso).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+}
+
+function dateLabel(dateStr: string) {
+  return new Date(`${dateStr}T00:00:00Z`).toLocaleDateString("en-GB", {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    timeZone: "UTC",
+  });
+}
+
+export function AttendancePage({ recentDays, teamRows }: { recentDays: DailySummary[]; teamRows: TeamRow[] | null }) {
+  const { status, elapsedLabel, pending, clockIn, startBreak, endBreak, clockOut } = useAttendance();
+  const available = legalNextEvents(status);
 
   return (
     <div>
       <PageHead
         eyebrow="People Operations"
         title="Time & attendance"
-        text="Clock-in records, shifts, breaks, active time and payroll-ready timesheets."
+        text="Clock in, take breaks and clock out — your active time is tracked automatically."
       />
-      <div className="grid gap-6 xl:grid-cols-[.8fr_1.2fr]">
+      <div className={clsx("grid gap-6", teamRows && "xl:grid-cols-[.8fr_1.2fr]")}>
         <Panel>
           <div className="text-center">
-            <div
-              className={
-                "mx-auto grid h-24 w-24 place-items-center rounded-full " +
-                (clock === "Working"
-                  ? "bg-emerald-50 text-emerald-600"
-                  : clock === "On break"
-                    ? "bg-amber-50 text-amber-600"
-                    : "bg-slate-100 text-slate-500")
-              }
-            >
+            <div className={clsx("mx-auto grid h-24 w-24 place-items-center rounded-full", STATUS_STYLE[status])}>
               <Clock3 size={42} />
             </div>
-            <h2 className="mt-4 text-2xl font-black">{clock}</h2>
-            <div className="mt-6 flex justify-center gap-2">
+            <h2 className="mt-4 text-2xl font-black">{STATUS_LABEL[status]}</h2>
+            {elapsedLabel && <p className="mt-1 text-sm font-bold text-slate-500">{elapsedLabel} today</p>}
+            <div className="mt-6 flex flex-wrap justify-center gap-2">
               <button
-                onClick={cycle}
-                disabled={clock !== "Not clocked in"}
+                onClick={clockIn}
+                disabled={pending || !available.includes("clock_in")}
                 className="rounded-xl bg-emerald-600 px-4 py-3 text-sm font-bold text-white disabled:opacity-40"
               >
                 <LogIn className="mr-2 inline" size={17} />
                 Clock in
               </button>
               <button
-                onClick={cycle}
-                disabled={clock !== "Working"}
+                onClick={startBreak}
+                disabled={pending || !available.includes("break_start")}
                 className="rounded-xl bg-amber-500 px-4 py-3 text-sm font-bold text-white disabled:opacity-40"
               >
                 <Coffee className="mr-2 inline" size={17} />
-                Break
+                Start break
               </button>
               <button
-                onClick={cycle}
-                disabled={clock === "Not clocked in"}
+                onClick={endBreak}
+                disabled={pending || !available.includes("break_end")}
+                className="rounded-xl bg-amber-500 px-4 py-3 text-sm font-bold text-white disabled:opacity-40"
+              >
+                <Coffee className="mr-2 inline" size={17} />
+                End break
+              </button>
+              <button
+                onClick={clockOut}
+                disabled={pending || !available.includes("clock_out")}
                 className="rounded-xl bg-slate-900 px-4 py-3 text-sm font-bold text-white disabled:opacity-40"
               >
                 <LogOut className="mr-2 inline" size={17} />
@@ -64,41 +107,79 @@ export function AttendancePage() {
             </div>
           </div>
         </Panel>
-        <Panel className="min-w-0">
-          <SectionTitle title="Today's attendance overview" sub="Live team status" />
-          <div className="mt-4 overflow-x-auto">
-            <table className="w-full min-w-[480px] text-sm">
-              <thead className="text-left text-xs uppercase text-slate-400">
-                <tr>
-                  <th className="pb-3">User</th>
-                  <th>Clock in</th>
-                  <th>Active time</th>
-                  <th>Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {teamPerformance.map((u, i) => (
-                  <tr className="border-t" key={u.name}>
-                    <td className="whitespace-nowrap py-4 font-bold">{u.name}</td>
-                    <td className="whitespace-nowrap">{CLOCK_IN_TIMES[i]!}</td>
-                    <td className="whitespace-nowrap">{ACTIVE_TIMES[i]!}</td>
-                    <td className="whitespace-nowrap">
-                      <span
-                        className={
-                          "rounded-full px-2 py-1 text-xs font-bold " +
-                          (u.status === "Working" ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700")
-                        }
-                      >
-                        {u.status}
-                      </span>
-                    </td>
+
+        {teamRows && (
+          <Panel className="min-w-0">
+            <SectionTitle title="Today's attendance overview" sub="Live team status" />
+            <div className="mt-4 overflow-x-auto">
+              <table className="w-full min-w-[480px] text-sm">
+                <thead className="text-left text-xs uppercase text-slate-400">
+                  <tr>
+                    <th className="pb-3">User</th>
+                    <th>Clock in</th>
+                    <th>Active time</th>
+                    <th>Status</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </Panel>
+                </thead>
+                <tbody>
+                  {teamRows.map((u) => (
+                    <tr className="border-t" key={u.profileId}>
+                      <td className="whitespace-nowrap py-4 font-bold">{u.name}</td>
+                      <td className="whitespace-nowrap">{timeLabel(u.clockInAt)}</td>
+                      <td className="whitespace-nowrap">{u.clockInAt ? formatDuration(u.activeMs) : "—"}</td>
+                      <td className="whitespace-nowrap">
+                        <span className={clsx("rounded-full px-2 py-1 text-xs font-bold", STATUS_STYLE[u.status])}>
+                          {STATUS_LABEL[u.status]}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                  {teamRows.length === 0 && (
+                    <tr>
+                      <td colSpan={4} className="py-8 text-center text-sm text-slate-500">
+                        No team members yet.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </Panel>
+        )}
       </div>
+
+      <Panel className="mt-6">
+        <SectionTitle title="Your recent days" sub="Clock-in, clock-out and active time, grouped by day" />
+        <div className="mt-4 overflow-x-auto">
+          <table className="w-full min-w-[480px] text-sm">
+            <thead className="text-left text-xs uppercase text-slate-400">
+              <tr>
+                <th className="pb-3">Date</th>
+                <th>Clock in</th>
+                <th>Clock out</th>
+                <th>Active time</th>
+              </tr>
+            </thead>
+            <tbody>
+              {recentDays.map((d) => (
+                <tr className="border-t" key={d.date}>
+                  <td className="whitespace-nowrap py-4 font-bold">{dateLabel(d.date)}</td>
+                  <td className="whitespace-nowrap">{timeLabel(d.clockInAt)}</td>
+                  <td className="whitespace-nowrap">{timeLabel(d.clockOutAt)}</td>
+                  <td className="whitespace-nowrap">{d.activeMs == null ? "Incomplete" : formatDuration(d.activeMs)}</td>
+                </tr>
+              ))}
+              {recentDays.length === 0 && (
+                <tr>
+                  <td colSpan={4} className="py-8 text-center text-sm text-slate-500">
+                    No attendance recorded yet.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </Panel>
     </div>
   );
 }
