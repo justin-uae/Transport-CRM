@@ -681,6 +681,47 @@ export interface JobOfferView {
   customer_phone: string | null;
 }
 
+// -----------------------------------------------------------------------------
+// Commissions (0023_commissions.sql) — one row per completed job, created by
+// the completion hook in app/supplier/dashboard/actions.ts, then moved
+// through approval/payment/reversal by Finance. commission_plans holds the
+// percentage-of-gross-profit rate: one tenant-default row (profile_id null)
+// plus optional per-user overrides.
+// -----------------------------------------------------------------------------
+
+export interface CommissionPlan {
+  id: string;
+  tenant_id: string;
+  profile_id: string | null;
+  rate_percent: number;
+  updated_at: string;
+}
+
+export type CommissionStatus = "pending_approval" | "approved" | "paid" | "reversed";
+
+export interface Commission {
+  id: string;
+  tenant_id: string;
+  job_id: string;
+  quote_id: string;
+  profile_id: string | null;
+  selling_price: number;
+  supplier_cost: number;
+  gross_profit: number;
+  rate_percent: number;
+  amount: number;
+  currency: string;
+  status: CommissionStatus;
+  approved_by: string | null;
+  approved_at: string | null;
+  paid_at: string | null;
+  payroll_reference: string | null;
+  reversed_by: string | null;
+  reversed_at: string | null;
+  reversed_reason: string | null;
+  created_at: string;
+}
+
 // Minimal shape of a table entry as @supabase/postgrest-js's generics expect
 // it (Row/Insert/Update plus an empty Relationships tuple — we don't encode
 // foreign-key relationship metadata by hand, so embedded-resource selects
@@ -729,6 +770,8 @@ export interface Database {
       email_templates: Table<EmailTemplate>;
       email_accounts: Table<EmailAccount>;
       email_messages: Table<EmailMessage>;
+      commission_plans: Table<CommissionPlan>;
+      commissions: Table<Commission>;
     };
     Views: {
       job_offer_view: { Row: JobOfferView; Relationships: [] };

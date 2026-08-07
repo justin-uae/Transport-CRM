@@ -14,6 +14,12 @@ function compactGbp(amount: number) {
     style: "currency",
     currency: "GBP",
     notation: "compact",
+    // Without an explicit minimum, "compact" notation's trailing-zero
+    // trimming is inconsistent between Node's ICU (SSR) and the browser's
+    // (hydration) for the same number — e.g. "£25.7" vs "£25.70" — which
+    // React then flags as a hydration mismatch. Pinning both bounds makes
+    // the output deterministic across environments.
+    minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   }).format(amount);
 }

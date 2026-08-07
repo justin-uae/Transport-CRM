@@ -6,6 +6,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { requireSupplier } from "@/lib/auth";
 import { recordAudit } from "@/lib/audit";
 import { sendTemplatedEmail, type EmailTemplateKey } from "@/lib/emailTemplates";
+import { calculateAndRecordCommission } from "@/lib/commissions";
 
 // recordAudit() here always passes the admin client — a supplier has no
 // `profiles` row, so audit_log's RLS (which resolves tenant via
@@ -234,6 +235,13 @@ export async function completeJobAction(jobId: string) {
     entityId: jobId,
   });
 
+  // Commission is only ever calculated/recorded here — the canonical rule
+  // (projectContext.md §104) is that it's never final before completion.
+  // Runs on the admin client since a supplier session has no RLS access to
+  // commissions at all (it's an internal financial record, not theirs).
+  await calculateAndRecordCommission(admin(), jobId);
+
   revalidatePath("/supplier/dashboard", "layout");
   revalidatePath("/dispatch");
+  revalidatePath("/commissions", "layout");
 }
