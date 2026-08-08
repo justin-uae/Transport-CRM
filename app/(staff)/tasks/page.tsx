@@ -44,7 +44,7 @@ export default async function TasksRoutePage({
   let query = supabase
     .from("tasks")
     .select(
-      "id, title, description, status, priority, due_date, assignee_id, created_by, checklist, customer_id, supplier_id, quote_id, created_at, profiles(full_name), customers(contact_name, company_name), suppliers(name), quotes(quote_number)",
+      "id, title, description, status, priority, due_date, assignee_id, created_by, checklist, customer_id, supplier_id, quote_id, created_at, profiles!tasks_assignee_id_fkey(full_name), customers(contact_name, company_name), suppliers(name), quotes(quote_number)",
     );
   if (view === "mine") query = query.eq("assignee_id", profile.id);
   if (view === "team") query = query.neq("assignee_id", profile.id);
@@ -55,7 +55,7 @@ export default async function TasksRoutePage({
   const today = new Date().toISOString().slice(0, 10);
   const weekAhead = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
 
-  const [{ data }, { data: profiles }, { data: customers }, { data: suppliers }, { data: quotes }, overdue, dueSoon] =
+  const [{ data, error }, { data: profiles }, { data: customers }, { data: suppliers }, { data: quotes }, overdue, dueSoon, myOpen] =
     await Promise.all([
       query.order("due_date", { ascending: true, nullsFirst: false }).order("created_at", { ascending: false }),
       supabase.from("profiles").select("id, full_name").order("full_name"),
@@ -75,7 +75,13 @@ export default async function TasksRoutePage({
         .gte("due_date", today)
         .lte("due_date", weekAhead)
         .not("status", "in", "(done,cancelled)"),
+      supabase
+        .from("tasks")
+        .select("id", { count: "exact", head: true })
+        .eq("assignee_id", profile.id)
+        .not("status", "in", "(done,cancelled)"),
     ]);
+  if (error) throw new Error(error.message);
   const rows = (data ?? []) as unknown as TaskListRow[];
 
   const taskRows: TaskRow[] = rows.map((r) => ({
@@ -97,7 +103,7 @@ export default async function TasksRoutePage({
     canDelete: r.created_by === profile.id || profile.is_master_admin,
   }));
 
-  const myOpenCount = taskRows.filter((t) => t.assigneeId === profile.id && t.status !== "done" && t.status !== "cancelled").length;
+  const myOpenCount = myOpen.count ?? 0;
 
   const assigneeOptions: AssigneeOption[] = (profiles ?? []).map((p) => ({ id: p.id, name: p.full_name }));
   const customerOptions: PickerOption[] = (customers ?? []).map((c) => ({ id: c.id, label: c.company_name || c.contact_name }));
