@@ -774,6 +774,39 @@ export interface CrmDocument {
   created_at: string;
 }
 
+// -----------------------------------------------------------------------------
+// Tasks (0026_tasks.sql) — tenant-wide task tracker with a single assignee,
+// an inline checklist, and an optional link to one customer/supplier/quote.
+// -----------------------------------------------------------------------------
+
+export type TaskStatus = "todo" | "in_progress" | "done" | "cancelled";
+export type TaskPriority = "low" | "medium" | "high" | "urgent";
+
+export interface TaskChecklistItem {
+  id: string;
+  text: string;
+  done: boolean;
+}
+
+export interface CrmTask {
+  id: string;
+  tenant_id: string;
+  title: string;
+  description: string | null;
+  status: TaskStatus;
+  priority: TaskPriority;
+  due_date: string | null;
+  assignee_id: string | null;
+  created_by: string | null;
+  checklist: TaskChecklistItem[];
+  customer_id: string | null;
+  supplier_id: string | null;
+  quote_id: string | null;
+  completed_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 // Minimal shape of a table entry as @supabase/postgrest-js's generics expect
 // it (Row/Insert/Update plus an empty Relationships tuple — we don't encode
 // foreign-key relationship metadata by hand, so embedded-resource selects
@@ -826,6 +859,7 @@ export interface Database {
       commissions: Table<Commission>;
       attendance_events: Table<AttendanceEvent>;
       documents: Table<CrmDocument>;
+      tasks: Table<CrmTask>;
     };
     Views: {
       job_offer_view: { Row: JobOfferView; Relationships: [] };
