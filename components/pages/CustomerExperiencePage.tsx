@@ -7,6 +7,7 @@ import clsx from "clsx";
 import { Panel } from "@/components/ui/Panel";
 import { Kpi } from "@/components/ui/Kpi";
 import { PageHead } from "@/components/ui/PageHead";
+import { ConfirmDetailModal } from "@/components/ui/ConfirmDetailModal";
 import type { FeedbackCategory } from "@/lib/supabase/database.types";
 
 export interface FeedbackRow {
@@ -24,11 +25,17 @@ export interface FeedbackRow {
 
 type Tab = "all" | FeedbackCategory;
 
+const CATEGORY_LABEL: Record<FeedbackCategory, string> = {
+  promoter: "Happy",
+  passive: "Neutral",
+  detractor: "Unhappy",
+};
+
 const TABS: { key: Tab; label: string }[] = [
   { key: "all", label: "All" },
-  { key: "promoter", label: "Promoter" },
-  { key: "passive", label: "Passive" },
-  { key: "detractor", label: "Detractor" },
+  { key: "promoter", label: CATEGORY_LABEL.promoter },
+  { key: "passive", label: CATEGORY_LABEL.passive },
+  { key: "detractor", label: CATEGORY_LABEL.detractor },
 ];
 
 const CATEGORY_BADGE: Record<FeedbackCategory, string> = {
@@ -56,6 +63,7 @@ export function CustomerExperiencePage({
 }) {
   const [tab, setTab] = useState<Tab>("all");
   const [q, setQ] = useState("");
+  const [selected, setSelected] = useState<FeedbackRow | null>(null);
 
   const filtered = useMemo(() => {
     return rows.filter((r) => {
@@ -104,92 +112,88 @@ export function CustomerExperiencePage({
           />
         </div>
 
-        <div className="space-y-3 sm:hidden">
+        <div className="space-y-3">
           {filtered.map((row) => (
-            <FeedbackCard key={row.id} row={row} />
+            <FeedbackCard key={row.id} row={row} onSelect={() => setSelected(row)} />
           ))}
           {filtered.length === 0 && <p className="py-8 text-center text-sm text-slate-500">No feedback yet.</p>}
         </div>
-
-        <div className="hidden overflow-x-auto sm:block">
-          <table className="w-full min-w-[760px] text-left text-sm">
-            <thead className="text-xs uppercase text-slate-400">
-              <tr>
-                <th className="pb-3">Customer</th>
-                <th>Score</th>
-                <th>Comment</th>
-                <th>Requested</th>
-                <th>Follow-up</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map((row) => (
-                <tr key={row.id} className="border-t align-top">
-                  <td className="py-4">
-                    <div className="font-bold">{row.customerName}</div>
-                    {row.quoteNumber && <div className="text-xs text-slate-500">{row.quoteNumber}</div>}
-                  </td>
-                  <td className="whitespace-nowrap">
-                    {row.submittedAt && row.category ? (
-                      <span className={clsx("rounded-full px-2.5 py-1 text-xs font-bold", CATEGORY_BADGE[row.category])}>
-                        {row.score} · {row.category}
-                      </span>
-                    ) : (
-                      <span className="text-xs text-slate-400">Awaiting response</span>
-                    )}
-                  </td>
-                  <td className="max-w-xs truncate">{row.comment ?? "—"}</td>
-                  <td className="whitespace-nowrap">{new Date(row.requestedAt).toLocaleDateString()}</td>
-                  <td className="whitespace-nowrap">
-                    {row.followUpTaskId ? (
-                      <Link href={`/tasks`} className="text-xs font-bold text-primary-600">
-                        {row.followUpDone ? "Resolved" : "Task open"}
-                      </Link>
-                    ) : (
-                      "—"
-                    )}
-                  </td>
-                </tr>
-              ))}
-              {filtered.length === 0 && (
-                <tr>
-                  <td colSpan={5} className="py-8 text-center text-sm text-slate-500">
-                    No feedback yet.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
       </Panel>
+
+      {selected && (
+        <ConfirmDetailModal
+          open
+          onClose={() => setSelected(null)}
+          title={selected.customerName}
+          description={selected.quoteNumber ?? undefined}
+          details={[
+            {
+              label: "Score",
+              value:
+                selected.submittedAt && selected.category ? (
+                  <span className={clsx("rounded-full px-2.5 py-1 text-xs font-bold", CATEGORY_BADGE[selected.category])}>
+                    {selected.score} · {CATEGORY_LABEL[selected.category]}
+                  </span>
+                ) : (
+                  "Awaiting response"
+                ),
+            },
+            { label: "Requested", value: new Date(selected.requestedAt).toLocaleString() },
+            { label: "Submitted", value: selected.submittedAt ? new Date(selected.submittedAt).toLocaleString() : "—" },
+            {
+              label: "Follow-up",
+              value: selected.followUpTaskId ? (
+                <Link href="/tasks" className="font-bold text-primary-600">
+                  {selected.followUpDone ? "Resolved" : "Task open"}
+                </Link>
+              ) : (
+                "—"
+              ),
+            },
+          ]}
+        >
+          <div>
+            <div className="text-xs font-bold uppercase text-slate-400">Comment</div>
+            <p className="mt-1 whitespace-pre-wrap text-sm text-slate-700">{selected.comment ?? "No comment left."}</p>
+          </div>
+        </ConfirmDetailModal>
+      )}
     </div>
   );
 }
 
-function FeedbackCard({ row }: { row: FeedbackRow }) {
+function FeedbackCard({ row, onSelect }: { row: FeedbackRow; onSelect: () => void }) {
   return (
-    <div className="rounded-2xl border p-4">
-      <div className="flex items-start justify-between gap-2">
-        <div>
-          <div className="flex items-center gap-1.5 font-bold">
-            <Star size={14} className="text-slate-400" />
-            {row.customerName}
-          </div>
-          {row.quoteNumber && <div className="text-xs text-slate-500">{row.quoteNumber}</div>}
+    <div
+      onClick={onSelect}
+      className="flex cursor-pointer flex-col gap-3 rounded-2xl border p-4 hover:border-primary-300 sm:flex-row sm:items-start sm:justify-between sm:gap-6"
+    >
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-1.5 font-bold text-slate-800">
+          <Star size={14} className="shrink-0 text-slate-400" />
+          <span className="truncate">{row.customerName}</span>
+          {row.quoteNumber && <span className="shrink-0 text-xs font-normal text-slate-400">· {row.quoteNumber}</span>}
         </div>
+        <p className="mt-1.5 text-sm leading-relaxed text-slate-600">
+          {row.comment ?? <span className="italic text-slate-400">No comment left.</span>}
+        </p>
+      </div>
+
+      <div className="flex shrink-0 flex-row items-center gap-3 sm:flex-col sm:items-end sm:gap-1.5">
         {row.submittedAt && row.category ? (
-          <span className={clsx("shrink-0 rounded-full px-2.5 py-1 text-xs font-bold", CATEGORY_BADGE[row.category])}>
-            {row.score} · {row.category}
+          <span className={clsx("whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-bold", CATEGORY_BADGE[row.category])}>
+            {row.score} · {CATEGORY_LABEL[row.category]}
           </span>
         ) : (
-          <span className="shrink-0 text-xs text-slate-400">Awaiting</span>
+          <span className="whitespace-nowrap text-xs font-semibold text-slate-400">Awaiting response</span>
         )}
-      </div>
-      {row.comment && <p className="mt-2 text-sm text-slate-600">{row.comment}</p>}
-      <div className="mt-2 flex items-center justify-between text-xs text-slate-500">
-        <span>{new Date(row.requestedAt).toLocaleDateString()}</span>
+        <span className="whitespace-nowrap text-xs text-slate-400">{new Date(row.requestedAt).toLocaleDateString()}</span>
         {row.followUpTaskId && (
-          <Link href="/tasks" className="font-bold text-primary-600">
+          <Link
+            href="/tasks"
+            onClick={(e) => e.stopPropagation()}
+            className="whitespace-nowrap text-xs font-bold text-primary-600"
+          >
             {row.followUpDone ? "Follow-up resolved" : "Follow-up task open"}
           </Link>
         )}
