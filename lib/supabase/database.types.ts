@@ -827,6 +827,45 @@ export interface Target {
   updated_at: string;
 }
 
+// -----------------------------------------------------------------------------
+// Team Chat (0028_team_chat.sql) — public tenant-wide channels + direct
+// messages (a DM is just a private 2-person chat_channels row).
+// -----------------------------------------------------------------------------
+
+export type ChatChannelType = "channel" | "dm";
+
+export interface ChatChannel {
+  id: string;
+  tenant_id: string;
+  type: ChatChannelType;
+  name: string | null;
+  created_by: string | null;
+  created_at: string;
+}
+
+export interface ChatChannelMember {
+  id: string;
+  channel_id: string;
+  profile_id: string;
+  last_read_at: string;
+  joined_at: string;
+}
+
+export interface ChatMessage {
+  id: string;
+  tenant_id: string;
+  channel_id: string;
+  sender_id: string | null;
+  body: string;
+  attachment_storage_path: string | null;
+  attachment_file_name: string | null;
+  customer_id: string | null;
+  supplier_id: string | null;
+  quote_id: string | null;
+  task_id: string | null;
+  created_at: string;
+}
+
 // Minimal shape of a table entry as @supabase/postgrest-js's generics expect
 // it (Row/Insert/Update plus an empty Relationships tuple — we don't encode
 // foreign-key relationship metadata by hand, so embedded-resource selects
@@ -881,6 +920,9 @@ export interface Database {
       documents: Table<CrmDocument>;
       tasks: Table<CrmTask>;
       targets: Table<Target>;
+      chat_channels: Table<ChatChannel>;
+      chat_channel_members: Table<ChatChannelMember>;
+      chat_messages: Table<ChatMessage>;
     };
     Views: {
       job_offer_view: { Row: JobOfferView; Relationships: [] };
