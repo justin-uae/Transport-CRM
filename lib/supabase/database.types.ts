@@ -807,6 +807,26 @@ export interface CrmTask {
   updated_at: string;
 }
 
+// -----------------------------------------------------------------------------
+// KPIs & Targets (0027_kpi_targets.sql) — individual, monthly, manager-
+// assigned targets. Actuals are always derived live from quotes/payments
+// (see lib/kpiSummary.ts), never stored here.
+// -----------------------------------------------------------------------------
+
+export type TargetMetric = "revenue_gbp" | "gross_profit_gbp" | "quotes_sent" | "paid_bookings";
+
+export interface Target {
+  id: string;
+  tenant_id: string;
+  profile_id: string;
+  metric: TargetMetric;
+  period_month: string;
+  target_value: number;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 // Minimal shape of a table entry as @supabase/postgrest-js's generics expect
 // it (Row/Insert/Update plus an empty Relationships tuple — we don't encode
 // foreign-key relationship metadata by hand, so embedded-resource selects
@@ -860,6 +880,7 @@ export interface Database {
       attendance_events: Table<AttendanceEvent>;
       documents: Table<CrmDocument>;
       tasks: Table<CrmTask>;
+      targets: Table<Target>;
     };
     Views: {
       job_offer_view: { Row: JobOfferView; Relationships: [] };
