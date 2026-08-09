@@ -9,19 +9,19 @@ import { PageHead } from "@/components/ui/PageHead";
 import { SectionTitle } from "@/components/ui/SectionTitle";
 import type { AccountingSummary } from "@/lib/accountingSummary";
 
+// Built by hand rather than Intl's `notation: "compact"` — that option
+// disagrees between Node's ICU (SSR) and the browser's (hydration) on both
+// trailing-zero trimming ("£25.7" vs "£25.70") and the unit suffix's case
+// ("2.14k" vs "2.14K") for the same number, either of which trips a
+// hydration mismatch. This is fully deterministic in both environments.
 function compactGbp(amount: number) {
-  return new Intl.NumberFormat("en-GB", {
-    style: "currency",
-    currency: "GBP",
-    notation: "compact",
-    // Without an explicit minimum, "compact" notation's trailing-zero
-    // trimming is inconsistent between Node's ICU (SSR) and the browser's
-    // (hydration) for the same number — e.g. "£25.7" vs "£25.70" — which
-    // React then flags as a hydration mismatch. Pinning both bounds makes
-    // the output deterministic across environments.
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(amount);
+  const abs = Math.abs(amount);
+  const sign = amount < 0 ? "-" : "";
+  if (abs >= 1_000_000) return `${sign}£${(abs / 1_000_000).toFixed(2)}m`;
+  if (abs >= 1_000) return `${sign}£${(abs / 1_000).toFixed(2)}k`;
+  return new Intl.NumberFormat("en-GB", { style: "currency", currency: "GBP", minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(
+    amount,
+  );
 }
 
 function money(amount: number, currency: string) {

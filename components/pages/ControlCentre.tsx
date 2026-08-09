@@ -22,18 +22,57 @@ import {
   Download,
   Sparkles,
   MapPin,
+  ShieldAlert,
 } from "lucide-react";
 import { Panel } from "@/components/ui/Panel";
 import { Kpi } from "@/components/ui/Kpi";
 import { SectionTitle } from "@/components/ui/SectionTitle";
 import { Alert } from "@/components/ui/Alert";
 import { useToast } from "@/components/ui/Toast";
-import { revenueData, channelData, CHANNEL_COLORS, teamPerformance, seedLeads } from "@/components/demo/demoData";
 import { LiveOperationsMap, type CountryLeadCluster } from "@/components/pages/LiveOperationsMap";
+import type { ControlCentreSummary } from "@/lib/controlCentreSummary";
 
-export function ControlCentre({ firstName, leadClusters }: { firstName: string; leadClusters: CountryLeadCluster[] }) {
+const CHANNEL_COLORS = ["#f97316", "#fb923c", "#fdba74", "#172033", "#94a3b8", "#38bdf8", "#a855f7", "#ef4444"];
+
+// Built by hand rather than Intl's `notation: "compact"` — that option
+// disagrees between Node's ICU (SSR) and the browser's (hydration) on both
+// trailing-zero trimming ("£25.7" vs "£25.70") and the unit suffix's case
+// ("2.14k" vs "2.14K") for the same number, either of which trips a
+// hydration mismatch. This is fully deterministic in both environments.
+function compactGbp(amount: number) {
+  const abs = Math.abs(amount);
+  const sign = amount < 0 ? "-" : "";
+  if (abs >= 1_000_000) return `${sign}£${(abs / 1_000_000).toFixed(2)}m`;
+  if (abs >= 1_000) return `${sign}£${(abs / 1_000).toFixed(2)}k`;
+  return new Intl.NumberFormat("en-GB", { style: "currency", currency: "GBP", minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(
+    amount,
+  );
+}
+
+function formatAge(minutes: number) {
+  if (minutes < 60) return `${minutes} min`;
+  const hours = Math.floor(minutes / 60);
+  const mins = minutes % 60;
+  return `${hours}h ${mins}m`;
+}
+
+const STATUS_BADGE: Record<string, string> = {
+  Working: "bg-emerald-50 text-emerald-700",
+  "On Break": "bg-amber-50 text-amber-700",
+  "Off Shift": "bg-slate-100 text-slate-500",
+};
+
+export function ControlCentre({
+  firstName,
+  leadClusters,
+  summary,
+}: {
+  firstName: string;
+  leadClusters: CountryLeadCluster[];
+  summary: ControlCentreSummary;
+}) {
   const notify = useToast();
-  const openLeads = seedLeads.filter((l) => !l.assigned);
+  const { kpis, trend, channelMix, team, openPool, alerts } = summary;
 
   return (
     <div className="space-y-6">
@@ -68,10 +107,22 @@ export function ControlCentre({ firstName, leadClusters }: { firstName: string; 
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <Kpi title="Revenue today" value="AED 154,800" delta="+12.4%" icon={CircleDollarSign} />
-        <Kpi title="Gross profit" value="AED 42,500" delta="+8.1%" icon={TrendingUp} />
-        <Kpi title="New leads" value="47" delta="9 waiting" icon={Users} />
-        <Kpi title="Jobs operating" value="28" delta="3 need attention" icon={Bus} warn />
+        <Kpi title="Revenue today" value={compactGbp(kpis.revenueTodayGbp)} icon={CircleDollarSign} />
+        <Kpi title="Gross profit today" value={compactGbp(kpis.profitTodayGbp)} icon={TrendingUp} />
+        <Kpi
+          title="New leads today"
+          value={String(kpis.newLeadsToday)}
+          delta={`${kpis.openPoolCount} waiting`}
+          icon={Users}
+          warn={kpis.openPoolCount > 0}
+        />
+        <Kpi
+          title="Jobs operating"
+          value={String(kpis.jobsOperating)}
+          delta={`${kpis.jobsNeedingAttention} need attention`}
+          icon={Bus}
+          warn={kpis.jobsNeedingAttention > 0}
+        />
       </div>
 
       <div className="grid gap-6 2xl:grid-cols-[1.45fr_.85fr]">
@@ -87,16 +138,15 @@ export function ControlCentre({ firstName, leadClusters }: { firstName: string; 
         <Panel>
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="font-black">AI priority feed</h2>
-              <p className="text-sm text-slate-500">High-impact actions</p>
+              <h2 className="font-black">Priority alerts</h2>
+              <p className="text-sm text-slate-500">Computed from what needs attention right now</p>
             </div>
-            <Sparkles className="text-primary-500" />
+            <ShieldAlert className="text-primary-500" />
           </div>
           <div className="mt-5 space-y-3">
-            <Alert type="danger" title="High-value lead waiting" text="UAE corporate enquiry worth AED 24,500 has waited 11 minutes." />
-            <Alert type="warning" title="Margin risk detected" text="Three London bookings are below the 22% target margin." />
-            <Alert type="success" title="Revenue opportunity" text="Raise Paris airport transfer pricing by 4% based on strong conversion." />
-            <Alert type="info" title="Supplier compliance" text="Two insurance documents expire within seven days." />
+            {alerts.map((a, i) => (
+              <Alert key={i} type={a.type} title={a.title} text={a.text} />
+            ))}
           </div>
           <Link
             href="/ai-optimisation"
@@ -112,7 +162,7 @@ export function ControlCentre({ firstName, leadClusters }: { firstName: string; 
           <SectionTitle title="Revenue & profit trend" sub="Last 7 days" />
           <div className="mt-4 h-72">
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={revenueData}>
+              <AreaChart data={trend}>
                 <defs>
                   <linearGradient id="rev" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="5%" stopColor="#f97316" stopOpacity={0.35} />
@@ -130,57 +180,59 @@ export function ControlCentre({ firstName, leadClusters }: { firstName: string; 
           </div>
         </Panel>
         <Panel>
-          <SectionTitle title="Lead channels" sub="Conversion mix" />
-          <div className="mt-4 h-56">
-            <ResponsiveContainer>
-              <PieChart>
-                <Pie data={channelData} innerRadius={58} outerRadius={88} paddingAngle={3} dataKey="value">
-                  {channelData.map((_, i) => (
-                    <Cell key={i} fill={CHANNEL_COLORS[i]!} />
-                  ))}
-                </Pie>
-                <Tooltip />
-              </PieChart>
-            </ResponsiveContainer>
-          </div>
-          <div className="grid grid-cols-2 gap-2 text-xs">
-            {channelData.map((x, i) => (
-              <div key={x.name} className="flex items-center gap-2">
-                <i className="h-2.5 w-2.5 rounded-full" style={{ background: CHANNEL_COLORS[i]! }} />
-                {x.name} <b className="ml-auto">{x.value}%</b>
+          <SectionTitle title="Lead channels" sub="Mix over the last 30 days" />
+          {channelMix.length > 0 ? (
+            <>
+              <div className="mt-4 h-56">
+                <ResponsiveContainer>
+                  <PieChart>
+                    <Pie data={channelMix} innerRadius={58} outerRadius={88} paddingAngle={3} dataKey="value">
+                      {channelMix.map((_, i) => (
+                        <Cell key={i} fill={CHANNEL_COLORS[i % CHANNEL_COLORS.length]!} />
+                      ))}
+                    </Pie>
+                    <Tooltip />
+                  </PieChart>
+                </ResponsiveContainer>
               </div>
-            ))}
-          </div>
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                {channelMix.map((x, i) => (
+                  <div key={x.name} className="flex items-center gap-2">
+                    <i className="h-2.5 w-2.5 rounded-full" style={{ background: CHANNEL_COLORS[i % CHANNEL_COLORS.length]! }} />
+                    {x.name} <b className="ml-auto">{x.value}%</b>
+                  </div>
+                ))}
+              </div>
+            </>
+          ) : (
+            <p className="mt-8 text-center text-sm text-slate-500">No leads in the last 30 days.</p>
+          )}
         </Panel>
       </div>
 
       <div className="grid gap-6 xl:grid-cols-2">
         <Panel className="min-w-0">
-          <SectionTitle title="Team performance" sub="Live sales activity" />
+          <SectionTitle title="Team performance" sub="Last 30 days, live status" />
           <div className="mt-4 space-y-3 sm:hidden">
-            {teamPerformance.map((u) => (
+            {team.map((u) => (
               <div key={u.name} className="rounded-2xl border p-3">
                 <div className="flex items-center justify-between gap-2">
                   <div>
                     <b>{u.name}</b>
-                    <div className="text-xs text-slate-400">{u.territory}</div>
+                    <div className="text-xs text-slate-400">{u.role}</div>
                   </div>
-                  <span
-                    className={
-                      "rounded-full px-2 py-1 text-xs font-bold " +
-                      (u.status === "Working" ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700")
-                    }
-                  >
+                  <span className={"rounded-full px-2 py-1 text-xs font-bold " + (STATUS_BADGE[u.status] ?? "bg-slate-100 text-slate-500")}>
                     {u.status}
                   </span>
                 </div>
                 <div className="mt-2 flex justify-between text-xs text-slate-500">
                   <span>{u.leads} leads</span>
-                  <span>{u.conversion} conversion</span>
-                  <span className="font-bold text-slate-700">{u.revenue}</span>
+                  <span>{u.conversionPct}% conversion</span>
+                  <span className="font-bold text-slate-700">{compactGbp(u.revenueGbp)}</span>
                 </div>
               </div>
             ))}
+            {team.length === 0 && <p className="py-4 text-center text-sm text-slate-500">No recent sales activity yet.</p>}
           </div>
           <div className="mt-4 hidden overflow-x-auto sm:block">
             <table className="w-full min-w-[560px] text-sm">
@@ -194,35 +246,37 @@ export function ControlCentre({ firstName, leadClusters }: { firstName: string; 
                 </tr>
               </thead>
               <tbody>
-                {teamPerformance.map((u) => (
+                {team.map((u) => (
                   <tr key={u.name} className="border-t">
                     <td className="whitespace-nowrap py-3">
                       <b>{u.name}</b>
-                      <div className="text-xs text-slate-400">{u.territory}</div>
+                      <div className="text-xs text-slate-400">{u.role}</div>
                     </td>
                     <td className="whitespace-nowrap">{u.leads}</td>
-                    <td className="whitespace-nowrap">{u.conversion}</td>
-                    <td className="whitespace-nowrap font-bold">{u.revenue}</td>
+                    <td className="whitespace-nowrap">{u.conversionPct}%</td>
+                    <td className="whitespace-nowrap font-bold">{compactGbp(u.revenueGbp)}</td>
                     <td className="whitespace-nowrap">
-                      <span
-                        className={
-                          "rounded-full px-2 py-1 text-xs font-bold " +
-                          (u.status === "Working" ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700")
-                        }
-                      >
+                      <span className={"rounded-full px-2 py-1 text-xs font-bold " + (STATUS_BADGE[u.status] ?? "bg-slate-100 text-slate-500")}>
                         {u.status}
                       </span>
                     </td>
                   </tr>
                 ))}
+                {team.length === 0 && (
+                  <tr>
+                    <td colSpan={5} className="py-8 text-center text-sm text-slate-500">
+                      No recent sales activity yet.
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>
         </Panel>
         <Panel>
-          <SectionTitle title="Open lead pool" sub={`${openLeads.length} available leads`} />
+          <SectionTitle title="Open lead pool" sub={`${openPool.length} available leads`} />
           <div className="mt-4 space-y-3">
-            {openLeads.map((l) => (
+            {openPool.map((l) => (
               <div key={l.id} className="flex items-center gap-3 rounded-2xl border p-3">
                 <div className="grid h-10 w-10 place-items-center rounded-xl bg-primary-50 text-primary-600">
                   <MapPin size={18} />
@@ -230,7 +284,7 @@ export function ControlCentre({ firstName, leadClusters }: { firstName: string; 
                 <div className="min-w-0 flex-1">
                   <b className="text-sm">{l.route}</b>
                   <div className="text-xs text-slate-500">
-                    {l.source} • {l.age} • {l.value}
+                    {l.source} • {formatAge(l.ageMinutes)}
                   </div>
                 </div>
                 <Link href="/leads" className="rounded-xl bg-slate-900 px-3 py-2 text-xs font-bold text-white">
@@ -238,6 +292,7 @@ export function ControlCentre({ firstName, leadClusters }: { firstName: string; 
                 </Link>
               </div>
             ))}
+            {openPool.length === 0 && <p className="py-4 text-center text-sm text-slate-500">The open pool is empty.</p>}
           </div>
         </Panel>
       </div>
