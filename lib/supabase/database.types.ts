@@ -866,6 +866,30 @@ export interface ChatMessage {
   created_at: string;
 }
 
+// -----------------------------------------------------------------------------
+// Customer Experience (0030_customer_feedback.sql) — one NPS-style request
+// per completed job, submitted via a public no-login link. A detractor
+// score auto-creates a follow-up Task (see lib/customerFeedback.ts).
+// -----------------------------------------------------------------------------
+
+export type FeedbackCategory = "promoter" | "passive" | "detractor";
+
+export interface CustomerFeedback {
+  id: string;
+  tenant_id: string;
+  job_id: string;
+  quote_id: string;
+  customer_id: string | null;
+  public_token: string;
+  requested_at: string;
+  submitted_at: string | null;
+  score: number | null;
+  category: FeedbackCategory | null;
+  comment: string | null;
+  follow_up_task_id: string | null;
+  created_at: string;
+}
+
 // Minimal shape of a table entry as @supabase/postgrest-js's generics expect
 // it (Row/Insert/Update plus an empty Relationships tuple — we don't encode
 // foreign-key relationship metadata by hand, so embedded-resource selects
@@ -923,6 +947,7 @@ export interface Database {
       chat_channels: Table<ChatChannel>;
       chat_channel_members: Table<ChatChannelMember>;
       chat_messages: Table<ChatMessage>;
+      customer_feedback: Table<CustomerFeedback>;
     };
     Views: {
       job_offer_view: { Row: JobOfferView; Relationships: [] };

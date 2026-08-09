@@ -10,7 +10,6 @@ import {
   Mail,
   MessageCircle,
   Phone,
-  Headphones,
   WalletCards,
   BadgeDollarSign,
   Clock3,
@@ -107,7 +106,6 @@ export const NAV: NavItem[] = [
   { label: "Email Centre", href: "/email", icon: Mail, anyOf: WORKSPACE },
   { label: "WhatsApp", href: "/whatsapp", icon: MessageCircle, anyOf: WORKSPACE },
   { label: "Calls", href: "/calls", icon: Phone, anyOf: WORKSPACE },
-  { label: "Live Chat", href: "/live-chat", icon: Headphones, anyOf: WORKSPACE },
   { label: "Accounting", href: "/accounting", icon: WalletCards, anyOf: [PERMISSIONS.FINANCE_VIEW_INVOICES] },
   {
     label: "Customer Payments",

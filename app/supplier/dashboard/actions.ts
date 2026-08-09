@@ -7,6 +7,7 @@ import { requireSupplier } from "@/lib/auth";
 import { recordAudit } from "@/lib/audit";
 import { sendTemplatedEmail, type EmailTemplateKey } from "@/lib/emailTemplates";
 import { calculateAndRecordCommission } from "@/lib/commissions";
+import { createFeedbackRequest } from "@/lib/customerFeedback";
 
 // recordAudit() here always passes the admin client — a supplier has no
 // `profiles` row, so audit_log's RLS (which resolves tenant via
@@ -240,6 +241,10 @@ export async function completeJobAction(jobId: string) {
   // Runs on the admin client since a supplier session has no RLS access to
   // commissions at all (it's an internal financial record, not theirs).
   await calculateAndRecordCommission(admin(), jobId);
+
+  // Kicks off the customer-experience feedback loop (Part 25, §153) — a
+  // public, no-login feedback link, emailed once per completed job.
+  await createFeedbackRequest(admin(), jobId);
 
   revalidatePath("/supplier/dashboard", "layout");
   revalidatePath("/dispatch");
