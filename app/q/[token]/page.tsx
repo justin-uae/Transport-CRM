@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { Bus } from "lucide-react";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { amountDueNow } from "@/lib/quotePayments";
+import { formatDateTime, formatDateAndTime } from "@/lib/formatDate";
 import { QuoteDecisionButtons } from "./QuoteDecisionButtons";
 import { PaymentChooser, type BankAccountRow } from "./PaymentChooser";
 
@@ -112,9 +113,9 @@ export default async function PublicQuotePage({ params }: { params: Promise<{ to
               <span className="text-slate-500">Journey</span>
               <b>{leg ? `${leg.pickup_address} → ${leg.destination_address}` : "—"}</b>
             </div>
-            <div className="flex justify-between border-b py-2">
+            <div className="flex flex-wrap justify-between gap-x-3 gap-y-1 border-b py-2">
               <span className="text-slate-500">Date</span>
-              <b>{leg?.pickup_date ?? "—"} {leg?.pickup_time ?? ""}</b>
+              <b>{leg?.pickup_date ? formatDateAndTime(leg.pickup_date, leg.pickup_time) : "—"}</b>
             </div>
             <div className="flex justify-between border-b py-2">
               <span className="text-slate-500">Passengers</span>
@@ -125,9 +126,9 @@ export default async function PublicQuotePage({ params }: { params: Promise<{ to
               <b>{version?.vehicle_description ?? "—"}</b>
             </div>
             {quote.expiry_at && (
-              <div className="flex justify-between border-b py-2">
+              <div className="flex flex-wrap justify-between gap-x-3 gap-y-1 border-b py-2">
                 <span className="text-slate-500">Valid until</span>
-                <b>{new Date(quote.expiry_at).toLocaleDateString()}</b>
+                <b>{formatDateTime(quote.expiry_at)}</b>
               </div>
             )}
             <div className="flex justify-between py-2">
@@ -203,9 +204,9 @@ function InvoiceView({
           <span className="text-slate-500">Invoice number</span>
           <b>{invoiceNumber ?? "—"}</b>
         </div>
-        <div className="flex justify-between border-b py-1.5">
+        <div className="flex flex-wrap justify-between gap-x-3 gap-y-1 border-b py-1.5">
           <span className="text-slate-500">Date</span>
-          <b>{invoicedAt ? new Date(invoicedAt).toLocaleDateString() : "—"}</b>
+          <b>{invoicedAt ? formatDateTime(invoicedAt) : "—"}</b>
         </div>
         <div className="flex justify-between py-1.5">
           <span className="text-slate-500">Amount paid</span>

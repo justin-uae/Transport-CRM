@@ -4,6 +4,7 @@ import { Panel } from "@/components/ui/Panel";
 import { SearchInput } from "@/components/ui/SearchInput";
 import { Pagination } from "@/components/ui/Pagination";
 import { statusLabel, statusBadgeStyle } from "@/lib/supplierJobStatus";
+import { formatDateAndTime } from "@/lib/formatDate";
 import type { JobOfferView } from "@/lib/supabase/database.types";
 
 /** Shared list shell for the New/Active/History job pages — search + responsive card/table + pagination. */
@@ -44,14 +45,14 @@ export function SupplierJobListPage({
                 <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${statusBadgeStyle(job)}`}>{statusLabel(job)}</span>
               </div>
               <div className="mt-1 text-xs text-slate-500">
-                {job.pickup_date ?? "Date TBC"} {job.pickup_time ?? ""} · {job.passenger_count ?? "?"} passengers
+                {job.pickup_date ? formatDateAndTime(job.pickup_date, job.pickup_time) : "Date TBC"} · {job.passenger_count ?? "?"} passengers
               </div>
             </Link>
           ))}
           {jobs.length === 0 && <p className="py-8 text-center text-sm text-slate-500">{emptyText}</p>}
         </div>
         <div className="hidden overflow-x-auto sm:block">
-          <table className="w-full min-w-[640px] text-left text-sm">
+          <table className="w-full min-w-[760px] text-left text-sm">
             <thead className="text-xs uppercase text-slate-400">
               <tr>
                 <th className="pb-3">Region</th>
@@ -65,9 +66,7 @@ export function SupplierJobListPage({
               {jobs.map((job) => (
                 <tr key={job.offer_id} className="border-t">
                   <td className="whitespace-nowrap py-4 font-bold">{job.region ?? "Region not set"}</td>
-                  <td className="whitespace-nowrap">
-                    {job.pickup_date ?? "Date TBC"} {job.pickup_time ?? ""}
-                  </td>
+                  <td className="min-w-[11rem]">{job.pickup_date ? formatDateAndTime(job.pickup_date, job.pickup_time) : "Date TBC"}</td>
                   <td className="whitespace-nowrap">{job.passenger_count ?? "—"}</td>
                   <td className="whitespace-nowrap">
                     <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${statusBadgeStyle(job)}`}>{statusLabel(job)}</span>

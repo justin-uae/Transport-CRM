@@ -16,6 +16,7 @@ import {
   transferSupplierInvoiceToAccountingAction,
 } from "@/app/(staff)/dispatch/actions";
 import { JourneyLegDetail, type JourneyLeg } from "@/components/pages/JourneyLegDetail";
+import { formatDateTime, formatDateAndTime } from "@/lib/formatDate";
 import type { JobOfferStatus, JobStatus, JobSupplierInvoice, SupplierPaymentStatus } from "@/lib/supabase/database.types";
 import type { SupplierOption } from "@/components/pages/DispatchBoard";
 
@@ -302,9 +303,9 @@ export function DispatchJobDetail({
               </div>
               <div className="mt-3 space-y-2 text-sm">
                 {supplierPayments.map((p) => (
-                  <div key={p.id} className="flex justify-between border-b py-1.5 last:border-0">
+                  <div key={p.id} className="flex flex-wrap justify-between gap-x-3 gap-y-1 border-b py-1.5 last:border-0">
                     <span className="text-slate-500">
-                      {new Date(p.paid_at).toLocaleDateString()}
+                      {formatDateTime(p.paid_at)}
                       {p.bank_reference ? ` · ${p.bank_reference}` : ""}
                     </span>
                     <b>{money(p.amount, p.currency)}</b>
@@ -396,7 +397,7 @@ export function DispatchJobDetail({
         error={modalError}
         details={[
           { label: "Journey", value: firstLeg ? `${firstLeg.pickup_address} → ${firstLeg.destination_address}` : "—" },
-          { label: "Date", value: firstLeg?.pickup_date ?? "—" },
+          { label: "Date", value: firstLeg?.pickup_date ? formatDateAndTime(firstLeg.pickup_date, firstLeg.pickup_time) : "—" },
           { label: "Suppliers", value: selectedNames.join(", ") || "—" },
         ]}
         confirmLabel="Send offers"

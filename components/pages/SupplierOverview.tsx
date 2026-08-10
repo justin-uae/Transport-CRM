@@ -4,6 +4,7 @@ import { PageHead } from "@/components/ui/PageHead";
 import { Panel } from "@/components/ui/Panel";
 import { Kpi } from "@/components/ui/Kpi";
 import { statusLabel, statusBadgeStyle } from "@/lib/supplierJobStatus";
+import { formatDateAndTime } from "@/lib/formatDate";
 import type { JobOfferView } from "@/lib/supabase/database.types";
 
 export function SupplierOverview({
@@ -53,7 +54,7 @@ export function SupplierOverview({
               <div>
                 <b>{job.region ?? "Region not set"}</b>
                 <div className="text-xs text-slate-500">
-                  {job.pickup_date ?? "Date TBC"} {job.pickup_time ?? ""} · {job.passenger_count ?? "?"} passengers
+                  {job.pickup_date ? formatDateAndTime(job.pickup_date, job.pickup_time) : "Date TBC"} · {job.passenger_count ?? "?"} passengers
                 </div>
               </div>
               <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${statusBadgeStyle(job)}`}>{statusLabel(job)}</span>

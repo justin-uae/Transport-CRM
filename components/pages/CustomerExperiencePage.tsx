@@ -8,6 +8,7 @@ import { Panel } from "@/components/ui/Panel";
 import { Kpi } from "@/components/ui/Kpi";
 import { PageHead } from "@/components/ui/PageHead";
 import { ConfirmDetailModal } from "@/components/ui/ConfirmDetailModal";
+import { formatDateTime } from "@/lib/formatDate";
 import type { FeedbackCategory } from "@/lib/supabase/database.types";
 
 export interface FeedbackRow {
@@ -138,8 +139,8 @@ export function CustomerExperiencePage({
                   "Awaiting response"
                 ),
             },
-            { label: "Requested", value: new Date(selected.requestedAt).toLocaleString() },
-            { label: "Submitted", value: selected.submittedAt ? new Date(selected.submittedAt).toLocaleString() : "—" },
+            { label: "Requested", value: formatDateTime(selected.requestedAt) },
+            { label: "Submitted", value: selected.submittedAt ? formatDateTime(selected.submittedAt) : "—" },
             {
               label: "Follow-up",
               value: selected.followUpTaskId ? (
@@ -179,7 +180,7 @@ function FeedbackCard({ row, onSelect }: { row: FeedbackRow; onSelect: () => voi
         </p>
       </div>
 
-      <div className="flex shrink-0 flex-row items-center gap-3 sm:flex-col sm:items-end sm:gap-1.5">
+      <div className="flex shrink-0 flex-row flex-wrap items-center gap-x-3 gap-y-1.5 sm:max-w-[11rem] sm:flex-col sm:items-end">
         {row.submittedAt && row.category ? (
           <span className={clsx("whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-bold", CATEGORY_BADGE[row.category])}>
             {row.score} · {CATEGORY_LABEL[row.category]}
@@ -187,7 +188,7 @@ function FeedbackCard({ row, onSelect }: { row: FeedbackRow; onSelect: () => voi
         ) : (
           <span className="whitespace-nowrap text-xs font-semibold text-slate-400">Awaiting response</span>
         )}
-        <span className="whitespace-nowrap text-xs text-slate-400">{new Date(row.requestedAt).toLocaleDateString()}</span>
+        <span className="text-right text-xs text-slate-400">{formatDateTime(row.requestedAt)}</span>
         {row.followUpTaskId && (
           <Link
             href="/tasks"

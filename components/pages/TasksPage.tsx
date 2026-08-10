@@ -11,6 +11,7 @@ import { PageHead } from "@/components/ui/PageHead";
 import { SearchInput } from "@/components/ui/SearchInput";
 import { ConfirmDetailModal } from "@/components/ui/ConfirmDetailModal";
 import { useToast } from "@/components/ui/Toast";
+import { formatDate } from "@/lib/formatDate";
 import { createTaskAction, updateTaskAction, setTaskStatusAction, deleteTaskAction } from "@/app/(staff)/tasks/actions";
 import type { TaskChecklistItem, TaskPriority, TaskStatus } from "@/lib/supabase/database.types";
 
@@ -351,7 +352,7 @@ export function TasksPage({
                       <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
                         {row.dueDate && (
                           <span className={clsx("font-semibold", overdue ? "text-red-600" : "text-slate-500")}>
-                            {new Date(row.dueDate).toLocaleDateString()}
+                            {formatDate(row.dueDate)}
                           </span>
                         )}
                         {row.checklist.length > 0 && (

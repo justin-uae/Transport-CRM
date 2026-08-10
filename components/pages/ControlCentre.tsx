@@ -30,6 +30,7 @@ import { SectionTitle } from "@/components/ui/SectionTitle";
 import { Alert } from "@/components/ui/Alert";
 import { useToast } from "@/components/ui/Toast";
 import { LiveOperationsMap, type CountryLeadCluster } from "@/components/pages/LiveOperationsMap";
+import { formatDateTime } from "@/lib/formatDate";
 import type { ControlCentreSummary } from "@/lib/controlCentreSummary";
 
 const CHANNEL_COLORS = ["#f97316", "#fb923c", "#fdba74", "#172033", "#94a3b8", "#38bdf8", "#a855f7", "#ef4444"];
@@ -47,13 +48,6 @@ function compactGbp(amount: number) {
   return new Intl.NumberFormat("en-GB", { style: "currency", currency: "GBP", minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(
     amount,
   );
-}
-
-function formatAge(minutes: number) {
-  if (minutes < 60) return `${minutes} min`;
-  const hours = Math.floor(minutes / 60);
-  const mins = minutes % 60;
-  return `${hours}h ${mins}m`;
 }
 
 const STATUS_BADGE: Record<string, string> = {
@@ -284,7 +278,7 @@ export function ControlCentre({
                 <div className="min-w-0 flex-1">
                   <b className="text-sm">{l.route}</b>
                   <div className="text-xs text-slate-500">
-                    {l.source} • {formatAge(l.ageMinutes)}
+                    {l.source} • {formatDateTime(l.createdAt)}
                   </div>
                 </div>
                 <Link href="/leads" className="rounded-xl bg-slate-900 px-3 py-2 text-xs font-bold text-white">

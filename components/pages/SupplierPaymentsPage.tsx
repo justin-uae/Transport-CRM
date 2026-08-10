@@ -7,6 +7,7 @@ import { PageHead } from "@/components/ui/PageHead";
 import { useToast } from "@/components/ui/Toast";
 import { ConfirmDetailModal } from "@/components/ui/ConfirmDetailModal";
 import { createClient } from "@/lib/supabase/client";
+import { formatDateTime } from "@/lib/formatDate";
 import { recordSupplierPaymentAction } from "@/app/(staff)/accounting/supplier-payments/actions";
 import type { SupplierPaymentStatus } from "@/lib/supabase/database.types";
 
@@ -197,9 +198,9 @@ export function SupplierPaymentsPage({
                 {(row.jobs?.supplier_payments?.length ?? 0) > 0 && (
                   <div className="mt-3 space-y-1 border-t pt-3 text-xs text-slate-500">
                     {row.jobs!.supplier_payments.map((p) => (
-                      <div key={p.id} className="flex items-center justify-between gap-2">
+                      <div key={p.id} className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
                         <span>
-                          {money(p.amount, row.currency)} · {new Date(p.paid_at).toLocaleDateString()}
+                          {money(p.amount, row.currency)} · {formatDateTime(p.paid_at)}
                           {p.bank_reference && ` · ${p.bank_reference}`}
                         </span>
                         {proofUrls[p.id] && (

@@ -7,6 +7,7 @@ import { PageHead } from "@/components/ui/PageHead";
 import { SectionTitle } from "@/components/ui/SectionTitle";
 import { useAttendance } from "@/components/ui/AttendanceState";
 import { legalNextEvents, formatDuration } from "@/lib/attendanceState";
+import { formatDate, formatTime } from "@/lib/formatDate";
 
 export interface DailySummary {
   date: string;
@@ -40,16 +41,11 @@ const STATUS_LABEL: Record<string, string> = {
 
 function timeLabel(iso: string | null) {
   if (!iso) return "—";
-  return new Date(iso).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+  return formatTime(iso);
 }
 
 function dateLabel(dateStr: string) {
-  return new Date(`${dateStr}T00:00:00Z`).toLocaleDateString("en-GB", {
-    weekday: "short",
-    day: "numeric",
-    month: "short",
-    timeZone: "UTC",
-  });
+  return formatDate(dateStr);
 }
 
 export function AttendancePage({ recentDays, teamRows }: { recentDays: DailySummary[]; teamRows: TeamRow[] | null }) {
@@ -151,7 +147,7 @@ export function AttendancePage({ recentDays, teamRows }: { recentDays: DailySumm
       <Panel className="mt-6">
         <SectionTitle title="Your recent days" sub="Clock-in, clock-out and active time, grouped by day" />
         <div className="mt-4 overflow-x-auto">
-          <table className="w-full min-w-[480px] text-sm">
+          <table className="w-full min-w-[560px] text-sm">
             <thead className="text-left text-xs uppercase text-slate-400">
               <tr>
                 <th className="pb-3">Date</th>
@@ -163,7 +159,7 @@ export function AttendancePage({ recentDays, teamRows }: { recentDays: DailySumm
             <tbody>
               {recentDays.map((d) => (
                 <tr className="border-t" key={d.date}>
-                  <td className="whitespace-nowrap py-4 font-bold">{dateLabel(d.date)}</td>
+                  <td className="min-w-[11rem] py-4 font-bold">{dateLabel(d.date)}</td>
                   <td className="whitespace-nowrap">{timeLabel(d.clockInAt)}</td>
                   <td className="whitespace-nowrap">{timeLabel(d.clockOutAt)}</td>
                   <td className="whitespace-nowrap">{d.activeMs == null ? "Incomplete" : formatDuration(d.activeMs)}</td>

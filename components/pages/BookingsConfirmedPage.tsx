@@ -2,6 +2,7 @@ import Link from "next/link";
 import { PageHead } from "@/components/ui/PageHead";
 import { Panel } from "@/components/ui/Panel";
 import { BookingTabs } from "@/components/pages/BookingTabs";
+import { formatDate } from "@/lib/formatDate";
 import type { JobStatus } from "@/lib/supabase/database.types";
 
 type CustomerRef = { company_name: string | null; contact_name: string } | null;
@@ -74,7 +75,7 @@ export function BookingsConfirmedPage({ jobs }: { jobs: ConfirmedBookingJob[] })
                 <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-sm text-slate-600">
                   <span>
                     {journeySummary(job.quotes?.enquiries ?? null)}
-                    {leg?.pickup_date && <span className="text-slate-400"> · {leg.pickup_date}</span>}
+                    {leg?.pickup_date && <span className="text-slate-400"> · {formatDate(leg.pickup_date)}</span>}
                   </span>
                   <span className="font-bold">{money(job.quotes?.quote_versions?.selling_price, job.quotes?.currency ?? "EUR")}</span>
                 </div>

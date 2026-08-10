@@ -9,6 +9,7 @@ import { ConfirmDetailModal } from "@/components/ui/ConfirmDetailModal";
 import { createClient } from "@/lib/supabase/client";
 import { recordCustomerPaymentAction } from "@/app/(staff)/quotes/actions";
 import { amountDueNow } from "@/lib/quoteMoney";
+import { formatDateTime } from "@/lib/formatDate";
 import type { QuoteStatus, CustomerPaymentMethod } from "@/lib/supabase/database.types";
 
 export interface PaymentRow {
@@ -168,9 +169,9 @@ export function CustomerPaymentsPage({
                 {(q.customer_payments ?? []).length > 0 && (
                   <div className="mt-2 space-y-1 text-xs text-slate-500">
                     {(q.customer_payments ?? []).map((p) => (
-                      <div key={p.id} className="flex items-center justify-between">
+                      <div key={p.id} className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
                         <span className="capitalize">
-                          {p.method.replace("_", " ")} · {money(p.amount, q.currency)} · {new Date(p.paid_at).toLocaleDateString()}
+                          {p.method.replace("_", " ")} · {money(p.amount, q.currency)} · {formatDateTime(p.paid_at)}
                         </span>
                         {proofUrls[p.id] && (
                           <a href={proofUrls[p.id] ?? undefined} target="_blank" rel="noreferrer" className="font-bold text-primary-600">

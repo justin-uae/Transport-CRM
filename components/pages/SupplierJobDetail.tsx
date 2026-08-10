@@ -12,6 +12,7 @@ import { ConfirmDetailModal } from "@/components/ui/ConfirmDetailModal";
 import { InvoiceUploadForm } from "@/app/supplier/dashboard/InvoiceUploadForm";
 import { acceptJobOfferAction, rejectJobOfferAction, confirmJobAction, completeJobAction } from "@/app/supplier/dashboard/actions";
 import { statusDetailText } from "@/lib/supplierJobStatus";
+import { formatDateAndTime } from "@/lib/formatDate";
 import type { JobOfferView, JobSupplierInvoice, SupplierPaymentStatus } from "@/lib/supabase/database.types";
 
 const PAYMENT_STATUS_STYLE: Record<SupplierPaymentStatus, string> = {
@@ -119,7 +120,7 @@ export function SupplierJobDetail({
   const rate = money(job.supplier_estimated_cost, job.quote_currency);
   const journeyDetails = [
     { label: "Region", value: job.region ?? "—" },
-    { label: "Date & time", value: `${job.pickup_date ?? "TBC"} ${job.pickup_time ?? ""}`.trim() },
+    { label: "Date & time", value: job.pickup_date ? formatDateAndTime(job.pickup_date, job.pickup_time) : "TBC" },
     { label: "Passengers", value: job.passenger_count ?? "—" },
     ...(rate ? [{ label: "Your rate", value: rate }] : []),
   ];
@@ -151,9 +152,7 @@ export function SupplierJobDetail({
           </div>
           <div>
             <dt className="text-xs font-bold uppercase text-slate-400">Date &amp; time</dt>
-            <dd className="mt-0.5 font-semibold">
-              {job.pickup_date ?? "TBC"} {job.pickup_time ?? ""}
-            </dd>
+            <dd className="mt-0.5 font-semibold">{job.pickup_date ? formatDateAndTime(job.pickup_date, job.pickup_time) : "TBC"}</dd>
           </div>
           <div>
             <dt className="text-xs font-bold uppercase text-slate-400">Passengers</dt>

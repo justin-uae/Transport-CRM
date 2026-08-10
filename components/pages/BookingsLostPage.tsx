@@ -2,6 +2,7 @@ import Link from "next/link";
 import { PageHead } from "@/components/ui/PageHead";
 import { Panel } from "@/components/ui/Panel";
 import { BookingTabs } from "@/components/pages/BookingTabs";
+import { formatDate, formatDateTime } from "@/lib/formatDate";
 import type { QuoteStatus } from "@/lib/supabase/database.types";
 
 export interface LostBookingQuote {
@@ -53,7 +54,7 @@ export function BookingsLostPage({ quotes }: { quotes: LostBookingQuote[] }) {
                 <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-sm text-slate-600">
                   <span>
                     {leg ? `${leg.pickup_address} → ${leg.destination_address}` : "—"}
-                    {leg?.pickup_date && <span className="text-slate-400"> · {leg.pickup_date}</span>}
+                    {leg?.pickup_date && <span className="text-slate-400"> · {formatDate(leg.pickup_date)}</span>}
                   </span>
                   <span className="font-bold">{money(q.quote_versions?.selling_price, q.currency)}</span>
                 </div>
@@ -65,7 +66,7 @@ export function BookingsLostPage({ quotes }: { quotes: LostBookingQuote[] }) {
                   </p>
                 )}
                 {isExpired && q.expiry_at && (
-                  <p className="mt-2 text-xs text-slate-500">Expired {new Date(q.expiry_at).toLocaleDateString()}</p>
+                  <p className="mt-2 text-xs text-slate-500">Expired {formatDateTime(q.expiry_at)}</p>
                 )}
                 <Link
                   href={`/quotes/${q.id}`}

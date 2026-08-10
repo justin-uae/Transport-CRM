@@ -37,7 +37,7 @@ export interface OpenPoolLead {
   id: string;
   route: string;
   source: string;
-  ageMinutes: number;
+  createdAt: string;
 }
 
 export interface PriorityAlert {
@@ -252,7 +252,7 @@ export async function getControlCentreSummary(tenantId: string): Promise<Control
     id: l.id,
     route: l.pickup_text && l.destination_text ? `${l.pickup_text} → ${l.destination_text}` : "Route not specified",
     source: SOURCE_LABEL[l.source] ?? l.source,
-    ageMinutes: Math.max(0, Math.round((Date.now() - new Date(l.created_at).getTime()) / 60000)),
+    createdAt: l.created_at,
   }));
 
   // --- Jobs ---------------------------------------------------------------

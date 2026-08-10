@@ -8,6 +8,7 @@ import { PageHead } from "@/components/ui/PageHead";
 import { SectionTitle } from "@/components/ui/SectionTitle";
 import { QuoteDetailActions } from "@/components/pages/QuoteDetailActions";
 import { JourneyLegDetail, type JourneyLeg } from "@/components/pages/JourneyLegDetail";
+import { formatDateTime } from "@/lib/formatDate";
 import type { QuoteStatus, QuoteEventType, QuoteDecisionType, CustomerPaymentMethod } from "@/lib/supabase/database.types";
 
 interface VersionRow {
@@ -156,7 +157,7 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
               </div>
               <div>
                 <dt className="text-xs font-bold uppercase text-slate-400">Valid until</dt>
-                <dd className="mt-0.5 font-semibold">{quote.expiry_at ? new Date(quote.expiry_at).toLocaleDateString() : "—"}</dd>
+                <dd className="mt-0.5 font-semibold">{quote.expiry_at ? formatDateTime(quote.expiry_at) : "—"}</dd>
               </div>
               <div>
                 <dt className="text-xs font-bold uppercase text-slate-400">Supplier cost (est.)</dt>
@@ -188,9 +189,9 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
             <SectionTitle title="Timeline" sub="Every recorded event on this quote" />
             <ol className="mt-4 space-y-3">
               {events.map((e, i) => (
-                <li key={i} className="flex items-center justify-between border-b pb-3 text-sm last:border-0">
+                <li key={i} className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-b pb-3 text-sm last:border-0">
                   <span className="font-semibold">{EVENT_LABEL[e.event]}</span>
-                  <span className="text-xs text-slate-400">{new Date(e.created_at).toLocaleString()}</span>
+                  <span className="text-xs text-slate-400">{formatDateTime(e.created_at)}</span>
                 </li>
               ))}
               {events.length === 0 && <p className="text-sm text-slate-500">No events recorded yet.</p>}
@@ -200,7 +201,7 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
                 <div className="font-bold capitalize">Customer {decision.decision}</div>
                 {decision.reason && <p className="mt-1 text-slate-600">Reason: {decision.reason}</p>}
                 {decision.free_text && <p className="mt-1 text-slate-600">&ldquo;{decision.free_text}&rdquo;</p>}
-                <p className="mt-1 text-xs text-slate-400">{new Date(decision.decided_at).toLocaleString()}</p>
+                <p className="mt-1 text-xs text-slate-400">{formatDateTime(decision.decided_at)}</p>
               </div>
             )}
           </Panel>
@@ -209,7 +210,7 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
             <Panel>
               <SectionTitle title="Version history" />
               <div className="mt-4 overflow-x-auto">
-                <table className="w-full min-w-[360px] text-left text-sm">
+                <table className="w-full min-w-[520px] text-left text-sm">
                   <thead className="text-xs uppercase text-slate-400">
                     <tr>
                       <th className="pb-2">Version</th>
@@ -222,7 +223,7 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
                       <tr key={v.id} className="border-t">
                         <td className="whitespace-nowrap py-2 font-bold">v{v.version_number}</td>
                         <td className="whitespace-nowrap py-2">{money(v.selling_price, v.currency)}</td>
-                        <td className="whitespace-nowrap py-2 text-slate-500">{new Date(v.created_at).toLocaleDateString()}</td>
+                        <td className="min-w-[11rem] py-2 text-slate-500">{formatDateTime(v.created_at)}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -240,9 +241,9 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
                 <span className="text-slate-500">Invoice number</span>
                 <b>{quote.invoice_number ?? "—"}</b>
               </div>
-              <div className="flex justify-between py-1.5">
+              <div className="flex flex-wrap justify-between gap-x-3 gap-y-1 py-1.5">
                 <span className="text-slate-500">Invoiced</span>
-                <b>{quote.invoiced_at ? new Date(quote.invoiced_at).toLocaleDateString() : "—"}</b>
+                <b>{quote.invoiced_at ? formatDateTime(quote.invoiced_at) : "—"}</b>
               </div>
             </dl>
             <div className="mt-4">
@@ -272,9 +273,9 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
             />
             <div className="mt-4 space-y-2 text-sm">
               {payments.map((p) => (
-                <div key={p.id} className="flex justify-between border-b py-1.5 last:border-0">
+                <div key={p.id} className="flex flex-wrap justify-between gap-x-3 gap-y-1 border-b py-1.5 last:border-0">
                   <span className="capitalize text-slate-500">
-                    {p.method.replace("_", " ")} · {new Date(p.paid_at).toLocaleDateString()}
+                    {p.method.replace("_", " ")} · {formatDateTime(p.paid_at)}
                   </span>
                   <b>{money(p.amount, quote.currency)}</b>
                 </div>

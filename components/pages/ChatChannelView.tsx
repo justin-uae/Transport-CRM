@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { Hash, Paperclip, Send, Link2, X } from "lucide-react";
 import clsx from "clsx";
 import { createClient } from "@/lib/supabase/client";
+import { formatDateTime } from "@/lib/formatDate";
 import { sendMessageAction, markChannelReadAction } from "@/app/(staff)/team-chat/actions";
 import type { ChatMessage } from "@/lib/supabase/database.types";
 
@@ -235,9 +236,9 @@ export function ChatChannelView({
               {initials(m.senderName)}
             </span>
             <div className="min-w-0 flex-1">
-              <div className="flex items-baseline gap-2">
+              <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
                 <span className="text-sm font-bold text-slate-800">{m.senderId === currentProfileId ? "You" : m.senderName}</span>
-                <span className="text-xs text-slate-400">{new Date(m.createdAt).toLocaleString()}</span>
+                <span className="text-xs text-slate-400">{formatDateTime(m.createdAt)}</span>
               </div>
               {m.body && <p className="mt-0.5 whitespace-pre-wrap text-sm text-slate-700">{renderBody(m.body, memberNames)}</p>}
               {m.attachmentFileName && (

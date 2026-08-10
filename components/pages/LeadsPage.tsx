@@ -13,6 +13,7 @@ import { Pagination } from "@/components/ui/Pagination";
 import { useToast } from "@/components/ui/Toast";
 import { ConfirmDetailModal } from "@/components/ui/ConfirmDetailModal";
 import { claimLeadAction, createEnquiryFromLeadAction, releaseLeadAction } from "@/app/(staff)/leads/actions";
+import { formatDate } from "@/lib/formatDate";
 import type { LeadSource, LeadStatus } from "@/lib/supabase/database.types";
 
 export type LeadTab = "mine" | "pool" | "all";
@@ -212,7 +213,7 @@ export function LeadsPage({
               </div>
               <div className="mt-1 text-sm">
                 <JourneyCell pickup={l.pickup_text} destination={l.destination_text} maxWidth="100%" />
-                <div className="text-xs text-slate-400">{l.travel_date ?? ""}</div>
+                <div className="text-xs text-slate-400">{l.travel_date ? formatDate(l.travel_date) : ""}</div>
               </div>
               <div className="mt-2 flex items-center justify-between text-xs text-slate-500">
                 <span>
@@ -267,7 +268,7 @@ export function LeadsPage({
                   </td>
                   <td>
                     <JourneyCell pickup={l.pickup_text} destination={l.destination_text} />
-                    <div className="text-xs text-slate-400">{l.travel_date ?? ""}</div>
+                    <div className="text-xs text-slate-400">{l.travel_date ? formatDate(l.travel_date) : ""}</div>
                   </td>
                   <td className="whitespace-nowrap">
                     <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold capitalize">{l.source}</span>
@@ -328,7 +329,7 @@ export function LeadsPage({
             { label: "Brand / website", value: detailLead.brands?.name ?? "—" },
             { label: "Pickup", value: detailLead.pickup_text ?? "—" },
             { label: "Destination", value: detailLead.destination_text ?? "—" },
-            { label: "Travel date", value: detailLead.travel_date ?? "—" },
+            { label: "Travel date", value: detailLead.travel_date ? formatDate(detailLead.travel_date) : "—" },
             { label: "Passengers", value: detailLead.passenger_count ?? "—" },
             { label: "Vehicle requested", value: detailLead.vehicle_requested ?? "—" },
             { label: "Priority", value: detailLead.priority === "high" ? "High" : "Normal" },

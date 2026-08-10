@@ -11,6 +11,7 @@ import { Pagination } from "@/components/ui/Pagination";
 import { ConfirmDetailModal } from "@/components/ui/ConfirmDetailModal";
 import { useToast } from "@/components/ui/Toast";
 import { createClient } from "@/lib/supabase/client";
+import { formatDateTime } from "@/lib/formatDate";
 import { createDocumentAction, deleteDocumentAction } from "@/app/(staff)/documents/actions";
 import type { DocumentType } from "@/lib/supabase/database.types";
 
@@ -234,7 +235,7 @@ export function DocumentsPage({
               </div>
               <div className="mt-2 text-xs text-slate-500">
                 {row.linkedLabel && <span>{row.linkedLabel} · </span>}
-                {row.uploaderName} · {new Date(row.createdAt).toLocaleDateString()} · {formatSize(row.fileSize)}
+                {row.uploaderName} · {formatDateTime(row.createdAt)} · {formatSize(row.fileSize)}
               </div>
               <div className="mt-3 flex items-center gap-3">
                 {row.downloadUrl && (
@@ -288,7 +289,7 @@ export function DocumentsPage({
                   </td>
                   <td className="whitespace-nowrap">{row.linkedLabel ?? "—"}</td>
                   <td className="whitespace-nowrap">{row.uploaderName}</td>
-                  <td className="whitespace-nowrap">{new Date(row.createdAt).toLocaleDateString()}</td>
+                  <td className="min-w-[11rem]">{formatDateTime(row.createdAt)}</td>
                   <td className="whitespace-nowrap text-right">
                     <div className="flex justify-end gap-2">
                       {row.downloadUrl && (

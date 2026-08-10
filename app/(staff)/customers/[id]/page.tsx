@@ -6,6 +6,7 @@ import { Panel } from "@/components/ui/Panel";
 import { SectionTitle } from "@/components/ui/SectionTitle";
 import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
+import { formatDateTime } from "@/lib/formatDate";
 import type { EnquiryStatus, QuoteStatus } from "@/lib/supabase/database.types";
 
 const ENQUIRY_STATUS_STYLE: Record<EnquiryStatus, string> = {
@@ -128,7 +129,7 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
                       <div className="truncate font-bold">
                         {leg ? `${leg.pickup_address} → ${leg.destination_address}` : "No journey recorded"}
                       </div>
-                      <div className="text-xs text-slate-500">{new Date(e.created_at).toLocaleDateString()}</div>
+                      <div className="text-xs text-slate-500">{formatDateTime(e.created_at)}</div>
                     </div>
                     <span
                       className={`shrink-0 whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-bold capitalize ${ENQUIRY_STATUS_STYLE[e.status]}`}
@@ -155,7 +156,7 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
                   <div className="min-w-0 flex-1">
                     <div className="truncate font-bold">{q.quote_number}</div>
                     <div className="text-xs text-slate-500">
-                      {money(q.quote_versions?.selling_price, q.currency)} · {new Date(q.created_at).toLocaleDateString()}
+                      {money(q.quote_versions?.selling_price, q.currency)} · {formatDateTime(q.created_at)}
                     </div>
                   </div>
                   <span

@@ -1,3 +1,5 @@
+import { formatDateAndTime } from "@/lib/formatDate";
+
 export interface JourneyLeg {
   sequence: number;
   journey_type: string;
@@ -42,16 +44,12 @@ export function JourneyLegDetail({ leg, index, total }: { leg: JourneyLeg; index
         )}
         <div>
           <dt className="text-xs font-bold uppercase text-slate-400">Date</dt>
-          <dd className="mt-0.5 font-semibold">
-            {leg.pickup_date ?? "—"} {leg.pickup_time ?? ""}
-          </dd>
+          <dd className="mt-0.5 font-semibold">{leg.pickup_date ? formatDateAndTime(leg.pickup_date, leg.pickup_time) : "—"}</dd>
         </div>
         {leg.journey_type === "return" && (leg.return_date || leg.return_time) && (
           <div>
             <dt className="text-xs font-bold uppercase text-slate-400">Return</dt>
-            <dd className="mt-0.5 font-semibold">
-              {leg.return_date ?? "—"} {leg.return_time ?? ""}
-            </dd>
+            <dd className="mt-0.5 font-semibold">{leg.return_date ? formatDateAndTime(leg.return_date, leg.return_time) : "—"}</dd>
           </div>
         )}
         <div>

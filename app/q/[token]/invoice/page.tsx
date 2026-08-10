@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, Bus } from "lucide-react";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { formatDateTime, formatDateAndTime } from "@/lib/formatDate";
 import { PrintButton } from "./PrintButton";
 
 interface BrandSnapshot {
@@ -93,7 +94,7 @@ export default async function InvoiceDownloadPage({ params }: { params: Promise<
               <div className="text-xs font-black uppercase tracking-[.18em] text-primary-500">Invoice</div>
               <div className="text-lg font-black">{quote.invoice_number ?? "—"}</div>
               <div className="text-xs text-slate-400">
-                {quote.invoiced_at ? new Date(quote.invoiced_at).toLocaleDateString() : "—"}
+                {quote.invoiced_at ? formatDateTime(quote.invoiced_at) : "—"}
               </div>
             </div>
           </div>
@@ -130,7 +131,7 @@ export default async function InvoiceDownloadPage({ params }: { params: Promise<
                   </div>
                   <div className="text-xs text-slate-500">
                     {version?.vehicle_description ?? ""}
-                    {leg?.pickup_date && ` · ${leg.pickup_date}${leg.pickup_time ? ` ${leg.pickup_time}` : ""}`}
+                    {leg?.pickup_date && ` · ${formatDateAndTime(leg.pickup_date, leg.pickup_time)}`}
                     {leg?.passenger_count ? ` · ${leg.passenger_count} passengers` : ""}
                   </div>
                 </td>

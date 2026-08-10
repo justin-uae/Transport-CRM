@@ -3,6 +3,7 @@ import { Panel } from "@/components/ui/Panel";
 import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { hasPermission, PERMISSIONS } from "@/lib/permissions";
+import { formatDateTime } from "@/lib/formatDate";
 
 export default async function AuditLogPage() {
   const profile = await requireProfile();
@@ -37,7 +38,7 @@ export default async function AuditLogPage() {
       />
       <Panel>
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[640px] text-left text-sm">
+          <table className="w-full min-w-[760px] text-left text-sm">
             <thead className="text-xs uppercase text-slate-400">
               <tr>
                 <th className="pb-3">When</th>
@@ -49,8 +50,8 @@ export default async function AuditLogPage() {
             <tbody>
               {(entries ?? []).map((entry) => (
                 <tr key={entry.id} className="border-t">
-                  <td className="whitespace-nowrap py-3 text-slate-500">
-                    {new Date(entry.created_at).toLocaleString()}
+                  <td className="min-w-[11rem] py-3 text-slate-500">
+                    {formatDateTime(entry.created_at)}
                   </td>
                   <td className="whitespace-nowrap font-semibold">
                     {(entry.actor as unknown as { full_name: string } | null)?.full_name ?? "System"}

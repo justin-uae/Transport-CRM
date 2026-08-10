@@ -3,6 +3,7 @@ import { PageHead } from "@/components/ui/PageHead";
 import { Panel } from "@/components/ui/Panel";
 import { Pagination } from "@/components/ui/Pagination";
 import { BookingTabs } from "@/components/pages/BookingTabs";
+import { formatDateTime } from "@/lib/formatDate";
 
 export interface CompletedBookingJob {
   id: string;
@@ -58,7 +59,7 @@ export function BookingsCompletedPage({
                   <span className="font-bold">{money(job.quotes?.quote_versions?.selling_price, job.quotes?.currency ?? "EUR")}</span>
                 </div>
                 {job.completed_at && (
-                  <p className="mt-1 text-xs text-slate-400">Completed {new Date(job.completed_at).toLocaleDateString()}</p>
+                  <p className="mt-1 text-xs text-slate-400">Completed {formatDateTime(job.completed_at)}</p>
                 )}
                 <Link
                   href={`/dispatch/${job.id}`}
