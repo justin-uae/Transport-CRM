@@ -81,6 +81,13 @@ export function SearchableCountrySelect({
               <button
                 key={o.value ?? "ZZ"}
                 type="button"
+                // Selecting an option blurs the auto-focused search input first
+                // — on mobile that blur (closing the on-screen keyboard) can
+                // race with the click that's supposed to follow it, so the tap
+                // visibly changes the value but the panel doesn't close.
+                // preventDefault on mousedown stops that blur from happening
+                // at all, so the click below always fires cleanly.
+                onMouseDown={(e) => e.preventDefault()}
                 onClick={() => {
                   onChange(o.value);
                   setOpen(false);

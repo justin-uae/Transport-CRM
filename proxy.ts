@@ -54,9 +54,18 @@ async function grantedPermissionsFor(
   return granted as Set<PermissionKey>;
 }
 
+/** Same path + query string, but on the main CRM host (NEXT_PUBLIC_APP_URL) instead of whatever host this request actually came in on. */
+function crmUrl(request: NextRequest) {
+  const url = new URL(process.env.NEXT_PUBLIC_APP_URL ?? request.url);
+  url.pathname = request.nextUrl.pathname;
+  url.search = request.nextUrl.search;
+  return url;
+}
+
 export async function proxy(request: NextRequest) {
   const path = request.nextUrl.pathname;
   const isPublic = PUBLIC_PATHS.some((p) => path.startsWith(p));
+  const isSupplierPortalHost = !!SUPPLIER_PORTAL_HOST && request.headers.get("host") === SUPPLIER_PORTAL_HOST;
 
   // Every other branch below only exists to decide (a) whether to bounce an
   // unauthenticated visitor away from a protected path, or (b) whether to
@@ -93,7 +102,7 @@ export async function proxy(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  if (!user && path === "/" && SUPPLIER_PORTAL_HOST && request.headers.get("host") === SUPPLIER_PORTAL_HOST) {
+  if (!user && path === "/" && isSupplierPortalHost) {
     return NextResponse.rewrite(new URL("/join", request.url));
   }
 
@@ -116,7 +125,19 @@ export async function proxy(request: NextRequest) {
     .maybeSingle();
 
   if (path === "/login") {
-    if (profile) return NextResponse.redirect(new URL("/dashboard", request.url));
+    // A staff member landing on the supplier-facing domain's /login (rather
+    // than typing it there by mistake) still has no business staying on
+    // that host afterwards — send them to the real CRM domain instead of
+    // just continuing on suppliers.<domain>/dashboard.
+    if (profile) {
+      if (isSupplierPortalHost) {
+        const target = crmUrl(request);
+        target.pathname = "/dashboard";
+        target.search = "";
+        return NextResponse.redirect(target);
+      }
+      return NextResponse.redirect(new URL("/dashboard", request.url));
+    }
     const { data: supplier } = await supabase.from("suppliers").select("id").eq("id", user.id).maybeSingle();
     if (supplier) return NextResponse.redirect(new URL("/supplier/dashboard", request.url));
     return NextResponse.redirect(new URL("/dashboard", request.url));
@@ -125,6 +146,15 @@ export async function proxy(request: NextRequest) {
   const navItem = matchingNavItem(path);
 
   if (profile) {
+    // Staff have no business on the supplier-facing domain at all (even
+    // signed in there directly, e.g. by mistake) — every staff page bounces
+    // to the equivalent URL on the real CRM domain instead of rendering
+    // under suppliers.<domain>.
+    if (isSupplierPortalHost) {
+      const target = crmUrl(request);
+      target.pathname = path === "/" ? "/dashboard" : path;
+      return NextResponse.redirect(target);
+    }
     // This is the actual authorization gate for every staff page that maps
     // to a NAV entry — hiding a sidebar link (or an individual page's own
     // ad-hoc hasPermission() check, easy to forget on a new route) was never
