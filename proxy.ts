@@ -79,10 +79,15 @@ export async function proxy(request: NextRequest) {
 
   let response = NextResponse.next({ request });
 
+  // See lib/supabase/server.ts for what NEXT_PUBLIC_AUTH_COOKIE_DOMAIN is
+  // for — must match here too, or middleware won't recognize a session
+  // cookie set with that wider domain scope as belonging to this app.
+  const cookieDomain = process.env.NEXT_PUBLIC_AUTH_COOKIE_DOMAIN;
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
+      cookieOptions: cookieDomain ? { domain: cookieDomain } : undefined,
       cookies: {
         getAll() {
           return request.cookies.getAll();
