@@ -20,11 +20,16 @@ type SupplierListRow = Pick<Supplier, "id" | "name" | "type" | "region" | "statu
 
 const PAGE_SIZE = 25;
 
-export default async function SuppliersPage({ searchParams }: { searchParams: Promise<{ q?: string; page?: string }> }) {
+export default async function SuppliersPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ q?: string; page?: string; tab?: string }>;
+}) {
   const params = await searchParams;
   await requireProfile();
   const supabase = await createClient();
 
+  const tab = params.tab === "requests" ? "requests" : "all";
   const q = params.q?.trim() || "";
   const page = Math.max(1, Number(params.page) || 1);
   const from = (page - 1) * PAGE_SIZE;
@@ -33,11 +38,17 @@ export default async function SuppliersPage({ searchParams }: { searchParams: Pr
   let query = supabase
     .from("suppliers")
     .select("id, name, type, region, status, email, phone, created_at", { count: "exact" });
+  if (tab === "requests") {
+    query = query.eq("status", "submitted");
+  }
   if (q) {
     query = query.or(`name.ilike.%${q}%,region.ilike.%${q}%,email.ilike.%${q}%`);
   }
 
-  const { data, count } = await query.order("created_at", { ascending: false }).range(from, to);
+  const [{ data, count }, { count: requestsCount }] = await Promise.all([
+    query.order("created_at", { ascending: false }).range(from, to),
+    supabase.from("suppliers").select("id", { count: "exact", head: true }).eq("status", "submitted"),
+  ]);
   const suppliers = (data ?? []) as unknown as SupplierListRow[];
 
   return (
@@ -49,7 +60,28 @@ export default async function SuppliersPage({ searchParams }: { searchParams: Pr
         action={<AddSupplierForm />}
       />
       <Panel>
-        <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center">
+        <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div className="flex gap-2">
+            <Link
+              href="/suppliers"
+              className={`rounded-xl px-4 py-2 text-sm font-bold ${tab === "all" ? "bg-primary-500 text-white" : "bg-slate-100 text-slate-500"}`}
+            >
+              All suppliers
+            </Link>
+            <Link
+              href="/suppliers?tab=requests"
+              className={`flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-bold ${tab === "requests" ? "bg-primary-500 text-white" : "bg-slate-100 text-slate-500"}`}
+            >
+              New Requests
+              {(requestsCount ?? 0) > 0 && (
+                <span
+                  className={`rounded-full px-2 py-0.5 text-xs ${tab === "requests" ? "bg-white/20" : "bg-primary-500 text-white"}`}
+                >
+                  {requestsCount}
+                </span>
+              )}
+            </Link>
+          </div>
           <SearchInput placeholder="Search suppliers by name, region or email…" />
         </div>
         <div className="space-y-3 sm:hidden">

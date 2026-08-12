@@ -9,7 +9,15 @@ import { PERMISSIONS, type PermissionKey } from "@/lib/permissionKeys";
 // own terms (an unguessable token / a per-brand shared secret / the
 // CRON_SECRET bearer token) rather than a Supabase session, so none of them
 // have one to gate on here.
-const PUBLIC_PATHS = ["/login", "/reset-password", "/accept-invite", "/auth/confirm", "/q", "/api/leads/website", "/api/stripe/webhook", "/api/cron"];
+const PUBLIC_PATHS = ["/login", "/reset-password", "/accept-invite", "/auth/confirm", "/q", "/join", "/api/leads/website", "/api/stripe/webhook", "/api/cron"];
+
+// Set to the supplier-facing domain (e.g. "suppliers.globalbusrental.com")
+// once it's pointed at this same deployment as a second custom domain — an
+// anonymous visit to "/" there gets the marketing landing page
+// (app/join/page.tsx) instead of the staff-CRM redirect in app/page.tsx.
+// Everything else (login, application form, supplier dashboard) already
+// works unchanged on either hostname since both sit on the same app/DB.
+const SUPPLIER_PORTAL_HOST = process.env.SUPPLIER_PORTAL_HOST;
 
 /** Most specific (longest-href) NAV item whose route this path falls under, if any — mirrors the highlighting logic in Sidebar.tsx. Paths matching no NAV item (settings/*, api/*, ...) are left to their own page/layout-level gates. */
 function matchingNavItem(pathname: string): NavItem | null {
@@ -84,6 +92,10 @@ export async function proxy(request: NextRequest) {
   const {
     data: { user },
   } = await supabase.auth.getUser();
+
+  if (!user && path === "/" && SUPPLIER_PORTAL_HOST && request.headers.get("host") === SUPPLIER_PORTAL_HOST) {
+    return NextResponse.rewrite(new URL("/join", request.url));
+  }
 
   if (!user && !isPublic) {
     const redirectUrl = new URL("/login", request.url);
