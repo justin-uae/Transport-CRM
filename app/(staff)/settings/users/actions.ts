@@ -304,6 +304,42 @@ export async function upsertEmailAccountAction(userId: string, data: EmailAccoun
 }
 
 /**
+ * Removes a staff member's mailbox connection entirely — e.g. it was set up
+ * for the wrong person, or they're leaving. Deletes the stored (encrypted)
+ * credentials and, via email_messages' own FK (on delete cascade), every
+ * message that had been synced for it; the person's Email Centre just goes
+ * back to showing "No mailbox connected yet" afterwards. Doesn't touch the
+ * profile itself.
+ */
+export async function disconnectEmailAccountAction(userId: string) {
+  const actor = await requireUserManager();
+  const supabase = await createClient();
+
+  const { data: target } = await supabase.from("profiles").select("tenant_id").eq("id", userId).single();
+  if (!target || target.tenant_id !== actor.tenant_id) {
+    return { error: "User not found." };
+  }
+
+  const { data: existing } = await supabase.from("email_accounts").select("id, email_address").eq("user_id", userId).maybeSingle();
+  if (!existing) return { error: "This user has no mailbox connected." };
+
+  const { error } = await supabase.from("email_accounts").delete().eq("id", existing.id);
+  if (error) return { error: error.message };
+
+  await recordAudit({
+    tenantId: actor.tenant_id,
+    actorId: actor.id,
+    action: "email_account_disconnected",
+    entityType: "email_account",
+    entityId: existing.id,
+    previousValue: { emailAddress: existing.email_address },
+  });
+
+  revalidatePath("/settings/users");
+  return { error: null };
+}
+
+/**
  * Tries connecting with the values currently in the form, before they're
  * saved — surfaces a typo'd host/port/password immediately instead of at
  * the next cron sync. Never persists anything.

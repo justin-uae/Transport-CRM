@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { Mail } from "lucide-react";
 import { useToast } from "@/components/ui/Toast";
 import { ConfirmDetailModal } from "@/components/ui/ConfirmDetailModal";
-import { upsertEmailAccountAction, testEmailConnectionAction } from "./actions";
+import { upsertEmailAccountAction, testEmailConnectionAction, disconnectEmailAccountAction } from "./actions";
 import type { EmailSecurity } from "@/lib/supabase/database.types";
 
 export interface EmailAccountStatus {
@@ -88,6 +88,7 @@ function EmailAccountForm({
   const notify = useToast();
   const [pending, startTransition] = useTransition();
   const [testPending, startTest] = useTransition();
+  const [disconnectPending, startDisconnect] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [testResult, setTestResult] = useState<{ imapError: string | null; smtpError: string | null } | null>(null);
 
@@ -148,6 +149,23 @@ function EmailAccountForm({
         return;
       }
       notify(`Mailbox saved for ${userName}`);
+      router.refresh();
+      onClose();
+    });
+  }
+
+  function disconnect() {
+    if (!window.confirm(`Disconnect the mailbox for ${userName}? Their synced mail history will be removed — this can't be undone.`)) {
+      return;
+    }
+    setError(null);
+    startDisconnect(async () => {
+      const result = await disconnectEmailAccountAction(userId);
+      if (result?.error) {
+        setError(result.error);
+        return;
+      }
+      notify(`Mailbox disconnected for ${userName}`);
       router.refresh();
       onClose();
     });
@@ -264,6 +282,23 @@ function EmailAccountForm({
       {account?.last_sync_error && (
         <div className="mt-3 rounded-xl bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">
           Last sync error: {account.last_sync_error}
+        </div>
+      )}
+
+      {account && (
+        <div className="mt-4 flex items-center justify-between rounded-xl border border-red-100 bg-red-50/50 p-3">
+          <div className="text-xs text-red-700">
+            <div className="font-bold">Disconnect this mailbox</div>
+            <div className="mt-0.5 text-red-600">Removes the connection and all synced mail for {userName}.</div>
+          </div>
+          <button
+            type="button"
+            disabled={disconnectPending || pending}
+            onClick={disconnect}
+            className="shrink-0 rounded-lg border border-red-200 bg-white px-3 py-2 text-xs font-bold text-red-600 disabled:opacity-60"
+          >
+            {disconnectPending ? "Disconnecting…" : "Disconnect"}
+          </button>
         </div>
       )}
     </ConfirmDetailModal>
