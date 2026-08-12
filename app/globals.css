@@ -49,7 +49,9 @@ body {
   min-width: 0;
   border: none;
   outline: none;
-  font-size: 0.875rem;
+  /* 16px, not 14px — anything smaller makes iOS Safari auto-zoom the page
+     when this input is focused. */
+  font-size: 1rem;
   background: transparent;
 }
 

@@ -34,22 +34,25 @@ export function ApplyForm() {
       <div className="mt-6 grid gap-4 sm:grid-cols-2">
         <label className="text-sm font-bold">
           Business / driver name
-          <input name="name" required className="mt-2 w-full rounded-xl border px-3 py-2.5 font-normal" />
+          <input name="name" required className="mt-2 w-full rounded-xl border px-3 py-2.5 text-base font-normal" />
         </label>
         <label className="text-sm font-bold">
           Type
-          <select name="type" className="mt-2 w-full rounded-xl border px-3 py-2.5 font-normal">
+          <select name="type" required defaultValue="" className="mt-2 w-full rounded-xl border px-3 py-2.5 text-base font-normal">
+            <option value="" disabled>
+              Select type…
+            </option>
             <option value="company">Company / travel agency</option>
             <option value="individual">Individual driver</option>
           </select>
         </label>
         <label className="text-sm font-bold">
           Contact name
-          <input name="contactName" className="mt-2 w-full rounded-xl border px-3 py-2.5 font-normal" />
+          <input name="contactName" className="mt-2 w-full rounded-xl border px-3 py-2.5 text-base font-normal" />
         </label>
         <label className="text-sm font-bold">
           Email
-          <input name="email" type="email" required className="mt-2 w-full rounded-xl border px-3 py-2.5 font-normal" />
+          <input name="email" type="email" required className="mt-2 w-full rounded-xl border px-3 py-2.5 text-base font-normal" />
         </label>
         <label className="text-sm font-bold">
           Phone
@@ -61,11 +64,11 @@ export function ApplyForm() {
         </label>
         <label className="text-sm font-bold sm:col-span-2">
           Region / area covered
-          <input name="region" placeholder="e.g. Dubai" className="mt-2 w-full rounded-xl border px-3 py-2.5 font-normal" />
+          <input name="region" placeholder="e.g. Dubai" className="mt-2 w-full rounded-xl border px-3 py-2.5 text-base font-normal" />
         </label>
         <label className="text-sm font-bold sm:col-span-2">
           Tell us about your fleet / experience
-          <textarea name="notes" className="mt-2 min-h-24 w-full rounded-xl border px-3 py-2.5 font-normal" />
+          <textarea name="notes" className="mt-2 min-h-24 w-full rounded-xl border px-3 py-2.5 text-base font-normal" />
         </label>
       </div>
 

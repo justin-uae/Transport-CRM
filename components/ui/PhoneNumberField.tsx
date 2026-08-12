@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import PhoneInput, { type Country } from "react-phone-number-input";
+import flags from "react-phone-number-input/flags";
 import "react-phone-number-input/style.css";
 import { SearchableCountrySelect } from "./SearchableCountrySelect";
 import { detectVisitorCountry } from "@/lib/detectCountry";
@@ -80,6 +81,7 @@ export function PhoneNumberField({
         disabled={disabled}
         placeholder={placeholder ?? legacyValueHint}
         countrySelectComponent={SearchableCountrySelect}
+        flags={flags}
         className="PhoneNumberField"
       />
       {/* Falls back to the raw legacy value (rather than "") so saving other

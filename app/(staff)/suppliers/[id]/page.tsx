@@ -45,6 +45,7 @@ export default async function SupplierDetailPage({ params }: { params: Promise<{
           <SectionTitle title="Business details" sub="Submitted by the supplier during verification" />
           <div className="mt-4 space-y-2 text-sm">
             <Row label="Status" value={supplier.status} />
+            <Row label="Source" value={supplier.applied_publicly ? "Applied online" : "Added by staff"} />
             <Row label="Contact" value={supplier.contact_name} />
             <Row label="Email" value={supplier.email} />
             <Row label="Phone" value={supplier.phone} />

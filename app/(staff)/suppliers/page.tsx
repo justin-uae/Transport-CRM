@@ -3,6 +3,7 @@ import { PageHead } from "@/components/ui/PageHead";
 import { Panel } from "@/components/ui/Panel";
 import { SearchInput } from "@/components/ui/SearchInput";
 import { Pagination } from "@/components/ui/Pagination";
+import { OriginBadge } from "@/components/ui/OriginBadge";
 import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { AddSupplierForm } from "./AddSupplierForm";
@@ -16,7 +17,10 @@ const STATUS_STYLE: Record<SupplierStatus, string> = {
   suspended: "bg-amber-50 text-amber-700",
 };
 
-type SupplierListRow = Pick<Supplier, "id" | "name" | "type" | "region" | "status" | "email" | "phone" | "created_at">;
+type SupplierListRow = Pick<
+  Supplier,
+  "id" | "name" | "type" | "region" | "status" | "email" | "phone" | "created_at" | "applied_publicly"
+>;
 
 const PAGE_SIZE = 25;
 
@@ -37,7 +41,7 @@ export default async function SuppliersPage({
 
   let query = supabase
     .from("suppliers")
-    .select("id, name, type, region, status, email, phone, created_at", { count: "exact" });
+    .select("id, name, type, region, status, email, phone, created_at, applied_publicly", { count: "exact" });
   if (tab === "requests") {
     query = query.eq("status", "submitted");
   }
@@ -99,6 +103,9 @@ export default async function SuppliersPage({
               <div className="mt-2 text-xs text-slate-500">
                 <span className="capitalize">{s.type}</span> · {s.region ?? "No region"}
               </div>
+              <div className="mt-1.5">
+                <OriginBadge appliedPublicly={s.applied_publicly} />
+              </div>
               <Link
                 href={`/suppliers/${s.id}`}
                 className="mt-3 inline-block rounded-lg border px-3 py-2 text-xs font-bold"
@@ -118,6 +125,7 @@ export default async function SuppliersPage({
                 <th className="pb-3">Supplier</th>
                 <th>Type</th>
                 <th>Region</th>
+                <th>Source</th>
                 <th>Status</th>
                 <th></th>
               </tr>
@@ -132,6 +140,9 @@ export default async function SuppliersPage({
                   <td className="whitespace-nowrap capitalize">{s.type}</td>
                   <td className="whitespace-nowrap">{s.region ?? "—"}</td>
                   <td className="whitespace-nowrap">
+                    <OriginBadge appliedPublicly={s.applied_publicly} />
+                  </td>
+                  <td className="whitespace-nowrap">
                     <span className={`rounded-full px-2.5 py-1 text-xs font-bold capitalize ${STATUS_STYLE[s.status]}`}>
                       {s.status}
                     </span>
@@ -145,7 +156,7 @@ export default async function SuppliersPage({
               ))}
               {suppliers.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="py-8 text-center text-sm text-slate-500">
+                  <td colSpan={6} className="py-8 text-center text-sm text-slate-500">
                     No suppliers yet — add one to get started.
                   </td>
                 </tr>
