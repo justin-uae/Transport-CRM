@@ -14,6 +14,7 @@ import { useToast } from "@/components/ui/Toast";
 import { ConfirmDetailModal } from "@/components/ui/ConfirmDetailModal";
 import { claimLeadAction, createEnquiryFromLeadAction, releaseLeadAction } from "@/app/(staff)/leads/actions";
 import { formatDate } from "@/lib/formatDate";
+import { SOURCE_LABEL } from "@/lib/leadSource";
 import type { LeadSource, LeadStatus } from "@/lib/supabase/database.types";
 
 export type LeadTab = "mine" | "pool" | "all";
@@ -46,6 +47,11 @@ const STATUS_LABEL: Record<LeadStatus, string> = {
   spam: "Spam",
   duplicate: "Duplicate",
 };
+
+/** A lead with no pickup/destination came in through a general enquiry (e.g. a Contact Us form) rather than a journey-specific quote request — nothing to show in the Journey column, and the journey-only detail rows would just be a wall of "—". */
+function isGeneralEnquiry(l: Pick<LeadRow, "pickup_text" | "destination_text">) {
+  return !l.pickup_text && !l.destination_text;
+}
 
 function timeAgo(iso: string) {
   const diffMs = Date.now() - new Date(iso).getTime();
@@ -152,6 +158,8 @@ export function LeadsPage({
   const isOwnActiveLead = (l: LeadRow) =>
     l.assigned_user_id === currentUserId && l.status !== "converted" && l.status !== "closed";
 
+  const detailIsGeneralEnquiry = detailLead ? isGeneralEnquiry(detailLead) : false;
+
   return (
     <div>
       <PageHead
@@ -207,13 +215,19 @@ export function LeadsPage({
                   )}
                 </b>
                 <span className="shrink-0 text-right">
-                  <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold capitalize">{l.source}</span>
+                  <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold">{SOURCE_LABEL[l.source]}</span>
                   {l.brands?.name && <div className="mt-1 text-[10px] text-slate-400">{l.brands.name}</div>}
                 </span>
               </div>
               <div className="mt-1 text-sm">
-                <JourneyCell pickup={l.pickup_text} destination={l.destination_text} maxWidth="100%" />
-                <div className="text-xs text-slate-400">{l.travel_date ? formatDate(l.travel_date) : ""}</div>
+                {isGeneralEnquiry(l) ? (
+                  <p className="line-clamp-2 text-slate-600">{l.notes || "General enquiry"}</p>
+                ) : (
+                  <>
+                    <JourneyCell pickup={l.pickup_text} destination={l.destination_text} maxWidth="100%" />
+                    <div className="text-xs text-slate-400">{l.travel_date ? formatDate(l.travel_date) : ""}</div>
+                  </>
+                )}
               </div>
               <div className="mt-2 flex items-center justify-between text-xs text-slate-500">
                 <span>
@@ -267,11 +281,19 @@ export function LeadsPage({
                     )}
                   </td>
                   <td>
-                    <JourneyCell pickup={l.pickup_text} destination={l.destination_text} />
-                    <div className="text-xs text-slate-400">{l.travel_date ? formatDate(l.travel_date) : ""}</div>
+                    {isGeneralEnquiry(l) ? (
+                      <p className="max-w-[240px] truncate text-slate-600" title={l.notes ?? undefined}>
+                        {l.notes || "General enquiry"}
+                      </p>
+                    ) : (
+                      <>
+                        <JourneyCell pickup={l.pickup_text} destination={l.destination_text} />
+                        <div className="text-xs text-slate-400">{l.travel_date ? formatDate(l.travel_date) : ""}</div>
+                      </>
+                    )}
                   </td>
                   <td className="whitespace-nowrap">
-                    <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold capitalize">{l.source}</span>
+                    <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold">{SOURCE_LABEL[l.source]}</span>
                     {l.brands?.name && <div className="mt-1 text-[10px] text-slate-400">{l.brands.name}</div>}
                   </td>
                   <td className="whitespace-nowrap">{STATUS_LABEL[l.status]}</td>
@@ -318,20 +340,24 @@ export function LeadsPage({
           open
           onClose={closeDetail}
           title={detailLead.customers?.company_name || detailLead.customers?.contact_name || "Lead details"}
-          description={`${STATUS_LABEL[detailLead.status]} · captured ${timeAgo(detailLead.created_at)} ago via ${detailLead.source}`}
+          description={`${STATUS_LABEL[detailLead.status]} · captured ${timeAgo(detailLead.created_at)} ago via ${SOURCE_LABEL[detailLead.source]}`}
           pending={pending}
           error={modalError}
           cancelLabel={
             detailLead.status === "open_pool" || isOwnActiveLead(detailLead) ? "Cancel" : "Close"
           }
           details={[
-            { label: "Source", value: <span className="capitalize">{detailLead.source}</span> },
+            { label: "Source", value: SOURCE_LABEL[detailLead.source] },
             { label: "Brand / website", value: detailLead.brands?.name ?? "—" },
-            { label: "Pickup", value: detailLead.pickup_text ?? "—" },
-            { label: "Destination", value: detailLead.destination_text ?? "—" },
+            ...(detailIsGeneralEnquiry
+              ? []
+              : [
+                  { label: "Pickup", value: detailLead.pickup_text ?? "—" },
+                  { label: "Destination", value: detailLead.destination_text ?? "—" },
+                ]),
             { label: "Travel date", value: detailLead.travel_date ? formatDate(detailLead.travel_date) : "—" },
             { label: "Passengers", value: detailLead.passenger_count ?? "—" },
-            { label: "Vehicle requested", value: detailLead.vehicle_requested ?? "—" },
+            ...(detailIsGeneralEnquiry ? [] : [{ label: "Vehicle requested", value: detailLead.vehicle_requested ?? "—" }]),
             { label: "Priority", value: detailLead.priority === "high" ? "High" : "Normal" },
             {
               label: "Owner",
@@ -341,7 +367,7 @@ export function LeadsPage({
             },
             { label: "Customer phone", value: detailLead.customers?.phone ?? "—" },
             { label: "Customer email", value: detailLead.customers?.email ?? "—" },
-            { label: "Notes", value: detailLead.notes ?? "—" },
+            { label: detailIsGeneralEnquiry ? "Message" : "Notes", value: detailLead.notes ?? "—" },
           ]}
           confirmLabel={
             detailLead.status === "open_pool" && canClaim

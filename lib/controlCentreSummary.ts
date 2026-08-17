@@ -3,6 +3,8 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { getGbpRates } from "@/lib/fxRates";
 import { startOfTodayIso } from "@/lib/attendance";
 import { deriveAttendanceState, type AttendanceEventLike } from "@/lib/attendanceState";
+import { SOURCE_LABEL } from "@/lib/leadSource";
+import type { LeadSource } from "@/lib/supabase/database.types";
 
 export interface ControlCentreKpis {
   revenueTodayGbp: number;
@@ -54,20 +56,6 @@ export interface ControlCentreSummary {
   openPool: OpenPoolLead[];
   alerts: PriorityAlert[];
 }
-
-const SOURCE_LABEL: Record<string, string> = {
-  website: "Website",
-  email: "Email",
-  whatsapp: "WhatsApp",
-  phone: "Phone",
-  live_chat: "Live Chat",
-  manual: "Manual",
-  social: "Social",
-  partner: "Partner",
-  affiliate: "Affiliate",
-  api: "API",
-  ad_form: "Ad Form",
-};
 
 const DAY_LABEL = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
@@ -245,13 +233,16 @@ export async function getControlCentreSummary(tenantId: string): Promise<Control
     channelCounts.set(l.source, (channelCounts.get(l.source) ?? 0) + 1);
   }
   const channelMix: ChannelSlice[] = [...channelCounts.entries()]
-    .map(([source, count]) => ({ name: SOURCE_LABEL[source] ?? source, value: Math.round((count / Math.max(1, leads30.length)) * 100) }))
+    .map(([source, count]) => ({
+      name: SOURCE_LABEL[source as LeadSource] ?? source,
+      value: Math.round((count / Math.max(1, leads30.length)) * 100),
+    }))
     .sort((a, b) => b.value - a.value);
 
   const openPool: OpenPoolLead[] = openPoolLeads.slice(0, 6).map((l) => ({
     id: l.id,
     route: l.pickup_text && l.destination_text ? `${l.pickup_text} → ${l.destination_text}` : "Route not specified",
-    source: SOURCE_LABEL[l.source] ?? l.source,
+    source: SOURCE_LABEL[l.source as LeadSource] ?? l.source,
     createdAt: l.created_at,
   }));
 

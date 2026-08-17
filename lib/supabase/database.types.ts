@@ -193,6 +193,7 @@ export interface LoginHistoryEntry {
 
 export type LeadSource =
   | "website"
+  | "website_contact"
   | "email"
   | "whatsapp"
   | "phone"
