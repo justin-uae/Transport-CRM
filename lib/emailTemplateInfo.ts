@@ -11,9 +11,7 @@ export type EmailTemplateKey =
   | "job_rejected_by_supplier"
   | "supplier_invoice_submitted"
   | "lead_assigned"
-  | "feedback_request"
-  | "supplier_application_approved"
-  | "supplier_application_rejected";
+  | "feedback_request";
 
 /** Friendly labels + the {{variable}} tokens each template supports — shown as an editing hint in Email Centre -> Templates. */
 export const EMAIL_TEMPLATE_INFO: Record<EmailTemplateKey, { label: string; description: string; variables: string[] }> = {
@@ -72,15 +70,5 @@ export const EMAIL_TEMPLATE_INFO: Record<EmailTemplateKey, { label: string; desc
     label: "Feedback request",
     description: "Sent to the customer when their job is marked completed.",
     variables: ["customer_name", "brand_name", "link"],
-  },
-  supplier_application_approved: {
-    label: "Supplier application approved",
-    description: "Sent to a supplier who applied publicly once staff approve their application — the first time they receive a password-setup link.",
-    variables: ["supplier_name", "brand_name", "link"],
-  },
-  supplier_application_rejected: {
-    label: "Supplier application rejected",
-    description: "Sent to a supplier who applied publicly if staff reject their application.",
-    variables: ["supplier_name", "brand_name"],
   },
 };

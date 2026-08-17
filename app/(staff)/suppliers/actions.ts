@@ -6,7 +6,6 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { requireProfile } from "@/lib/auth";
 import { hasPermission, PERMISSIONS } from "@/lib/permissions";
 import { recordAudit } from "@/lib/audit";
-import { sendTemplatedEmail } from "@/lib/emailTemplates";
 import type { SupplierType } from "@/lib/supabase/database.types";
 
 export async function createSupplierAction(
@@ -84,11 +83,7 @@ export async function decideSupplierAction(supplierId: string, decision: "approv
   if (!allowed) throw new Error("You do not have permission to approve suppliers.");
 
   const supabase = await createClient();
-  const { data: supplier } = await supabase
-    .from("suppliers")
-    .select("status, tenant_id, name, email, applied_publicly")
-    .eq("id", supplierId)
-    .single();
+  const { data: supplier } = await supabase.from("suppliers").select("status, tenant_id").eq("id", supplierId).single();
   if (!supplier || supplier.tenant_id !== actor.tenant_id) throw new Error("Supplier not found.");
 
   const { error } = await supabase
@@ -106,42 +101,6 @@ export async function decideSupplierAction(supplierId: string, decision: "approv
     previousValue: { status: supplier.status },
     newValue: { status: decision },
   });
-
-  // A staff-invited supplier already got their password-setup link at
-  // invite time (createSupplierAction) — nothing more to email them here.
-  // A publicly-applied supplier never had one: approval is their first
-  // chance to log in at all, so this is where that link finally goes out.
-  if (supplier.applied_publicly) {
-    const admin = createAdminClient();
-    const { data: tenant } = await admin.from("tenants").select("name").eq("id", actor.tenant_id).maybeSingle();
-    const brandName = tenant?.name ?? "";
-
-    if (decision === "approved") {
-      const { data: invited, error: inviteError } = await admin.auth.admin.generateLink({
-        type: "invite",
-        email: supplier.email,
-        options: { redirectTo: `${process.env.NEXT_PUBLIC_APP_URL ?? ""}/accept-invite` },
-      });
-      if (inviteError) {
-        console.error(`decideSupplierAction: could not generate an invite link for ${supplier.email}:`, inviteError.message);
-      } else {
-        const link = `${process.env.NEXT_PUBLIC_APP_URL ?? ""}/auth/confirm?token_hash=${invited.properties.hashed_token}&type=invite&next=/accept-invite`;
-        await sendTemplatedEmail(admin, {
-          tenantId: actor.tenant_id,
-          key: "supplier_application_approved",
-          to: supplier.email,
-          variables: { supplier_name: supplier.name, brand_name: brandName, link },
-        });
-      }
-    } else {
-      await sendTemplatedEmail(admin, {
-        tenantId: actor.tenant_id,
-        key: "supplier_application_rejected",
-        to: supplier.email,
-        variables: { supplier_name: supplier.name, brand_name: brandName },
-      });
-    }
-  }
 
   revalidatePath("/suppliers");
   revalidatePath(`/suppliers/${supplierId}`);

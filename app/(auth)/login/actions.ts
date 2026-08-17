@@ -5,24 +5,6 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { landingHrefForProfile } from "@/lib/landing";
 
-/**
- * A staff member who signed in directly on the supplier-facing domain
- * (SUPPLIER_PORTAL_HOST) needs to land back on the real CRM domain, not
- * just a different path on the same host. redirect() from a Server Action
- * turns into a client-side router transition, which never crosses origins
- * on its own — proxy.ts's equivalent check only catches this on the *next*
- * real request (e.g. a refresh). Building an absolute URL here instead of a
- * relative path forces an actual cross-origin browser navigation, so it
- * takes effect immediately.
- */
-async function staffRedirectTarget(path: string) {
-  const host = (await headers()).get("host");
-  if (process.env.SUPPLIER_PORTAL_HOST && host === process.env.SUPPLIER_PORTAL_HOST && process.env.NEXT_PUBLIC_APP_URL) {
-    return new URL(path, process.env.NEXT_PUBLIC_APP_URL).toString();
-  }
-  return path;
-}
-
 export async function signInAction(_prevState: { error: string | null }, formData: FormData) {
   const email = String(formData.get("email") ?? "").trim();
   const password = String(formData.get("password") ?? "");
@@ -56,7 +38,7 @@ export async function signInAction(_prevState: { error: string | null }, formDat
       return { error: "This account has been suspended. Contact your administrator." };
     }
 
-    redirect(await staffRedirectTarget(next || (await landingHrefForProfile(profile))));
+    redirect(next || (await landingHrefForProfile(profile)));
   }
 
   // No staff profile — this login might belong to the separate supplier

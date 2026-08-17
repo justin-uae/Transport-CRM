@@ -54,33 +54,3 @@ body {
   font-size: 1rem;
   background: transparent;
 }
-
-/* Partner-domain marquee (app/join/PartnersMarquee.tsx) — each row's content
-   is duplicated once in the markup so translating exactly -50% loops
-   seamlessly. Pauses on hover so a domain can actually be read. */
-@keyframes marquee-left {
-  from {
-    transform: translateX(0);
-  }
-  to {
-    transform: translateX(-50%);
-  }
-}
-@keyframes marquee-right {
-  from {
-    transform: translateX(-50%);
-  }
-  to {
-    transform: translateX(0);
-  }
-}
-.marquee-track {
-  animation: marquee-left 46s linear infinite;
-}
-.marquee-track-reverse {
-  animation: marquee-right 46s linear infinite;
-}
-.marquee-row:hover .marquee-track,
-.marquee-row:hover .marquee-track-reverse {
-  animation-play-state: paused;
-}
