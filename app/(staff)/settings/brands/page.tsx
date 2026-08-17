@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/server";
 import { NewCompanyForm } from "./NewCompanyForm";
 import { NewBrandForm } from "./NewBrandForm";
 import { NewBankAccountForm } from "./NewBankAccountForm";
+import { BrandCredentials } from "./BrandCredentials";
 
 export default async function BrandsPage() {
   await requireProfile();
@@ -15,7 +16,7 @@ export default async function BrandsPage() {
     supabase
       .from("companies")
       .select(
-        "id, legal_name, trading_name, default_currency, brands(id, name, slug, default_currency, primary_color, is_active, bank_accounts(id, account_name, bank_name, currency, iban, account_number))",
+        "id, legal_name, trading_name, default_currency, brands(id, name, slug, webhook_secret, default_currency, primary_color, is_active, bank_accounts(id, account_name, bank_name, currency, iban, account_number))",
       )
       .order("legal_name"),
     supabase.from("brands").select("id, name, default_currency").order("name"),
@@ -72,6 +73,7 @@ export default async function BrandsPage() {
                       ))}
                     </div>
                   )}
+                  <BrandCredentials slug={brand.slug} secret={brand.webhook_secret} />
                 </div>
               ))}
               {(company.brands ?? []).length === 0 && (
