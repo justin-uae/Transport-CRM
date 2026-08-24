@@ -86,9 +86,9 @@ export function ConfirmDetailModal({
             {details && details.length > 0 && (
               <dl className="mt-4 grid grid-cols-1 gap-x-4 gap-y-3 rounded-2xl bg-slate-50 p-4 sm:grid-cols-2">
                 {details.map((d, i) => (
-                  <div key={i}>
+                  <div key={i} className="min-w-0">
                     <dt className="text-xs font-bold uppercase text-slate-400">{d.label}</dt>
-                    <dd className="mt-0.5 text-sm font-semibold text-slate-800">{d.value}</dd>
+                    <dd className="mt-0.5 break-words text-sm font-semibold text-slate-800">{d.value}</dd>
                   </div>
                 ))}
               </dl>
