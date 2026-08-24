@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Bell, Clock3, FileText, Menu, Plus, Search, LogOut } from "lucide-react";
+import { Clock3, FileText, Menu, Plus, LogOut } from "lucide-react";
 import clsx from "clsx";
 import type { Brand } from "@/lib/supabase/database.types";
 import { BrandSwitcher } from "./BrandSwitcher";
@@ -40,13 +40,6 @@ export function Header({
       >
         <Menu />
       </button>
-      <div className="relative hidden max-w-xl flex-1 md:block">
-        <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-        <input
-          placeholder="Search leads, bookings, customers or invoices…"
-          className="w-full rounded-2xl border border-slate-200 bg-slate-50 py-3 pl-11 pr-4 outline-none focus:border-primary-300 focus:ring-4 focus:ring-primary-100"
-        />
-      </div>
       <div className="ml-auto flex items-center gap-2">
         <BrandSwitcher brands={brands} activeBrandId={activeBrandId} />
         <button
@@ -65,13 +58,6 @@ export function Header({
           <Clock3 size={16} />
           {statusLabel}
           {elapsedLabel && <span className="font-normal text-inherit opacity-70">· {elapsedLabel}</span>}
-        </button>
-        <button
-          className="relative rounded-xl border border-slate-200 p-2.5 hover:bg-slate-50"
-          aria-label="Notifications"
-        >
-          <Bell size={19} />
-          <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-primary-500" />
         </button>
         {canCreateQuote && (
           <Link
