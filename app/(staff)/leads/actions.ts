@@ -120,13 +120,24 @@ export async function createEnquiryFromLeadAction(leadId: string) {
     return { error: enquiryError?.message ?? "Could not create the enquiry." };
   }
 
+  // Website-submitted pickup/return time is free text (sites send whatever
+  // their <input type="time"> gives them, usually "HH:MM" but not
+  // guaranteed) — enquiry_legs.pickup_time/return_time are a real Postgres
+  // `time`, so only carry a value across when it actually parses as one;
+  // anything else stays visible on the lead itself rather than breaking
+  // quote creation.
+  const asPgTime = (value: string | null) => (value && /^\d{2}:\d{2}(:\d{2})?$/.test(value) ? value : null);
+
   const { error: legError } = await supabase.from("enquiry_legs").insert({
     enquiry_id: enquiry.id,
     sequence: 1,
-    journey_type: "one_way",
+    journey_type: lead.return_trip ? "return" : "one_way",
     pickup_address: lead.pickup_text ?? "Unknown",
     destination_address: lead.destination_text ?? "Unknown",
     pickup_date: lead.travel_date,
+    pickup_time: asPgTime(lead.pickup_time),
+    return_date: lead.return_trip ? lead.return_date : null,
+    return_time: lead.return_trip ? asPgTime(lead.return_time) : null,
     passenger_count: lead.passenger_count,
     special_requirements:
       [lead.vehicle_requested ? `Vehicle requested: ${lead.vehicle_requested}` : null, lead.notes]

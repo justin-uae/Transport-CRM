@@ -293,6 +293,10 @@ export interface Lead {
   pickup_text: string | null;
   destination_text: string | null;
   travel_date: string | null;
+  pickup_time: string | null;
+  return_trip: boolean;
+  return_date: string | null;
+  return_time: string | null;
   passenger_count: number | null;
   vehicle_requested: string | null;
   notes: string | null;

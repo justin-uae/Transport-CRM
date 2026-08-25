@@ -27,6 +27,10 @@ export interface LeadRow {
   pickup_text: string | null;
   destination_text: string | null;
   travel_date: string | null;
+  pickup_time: string | null;
+  return_trip: boolean;
+  return_date: string | null;
+  return_time: string | null;
   passenger_count: number | null;
   vehicle_requested: string | null;
   notes: string | null;
@@ -51,6 +55,23 @@ const STATUS_LABEL: Record<LeadStatus, string> = {
 /** A lead with no pickup/destination came in through a general enquiry (e.g. a Contact Us form) rather than a journey-specific quote request — nothing to show in the Journey column, and the journey-only detail rows would just be a wall of "—". */
 function isGeneralEnquiry(l: Pick<LeadRow, "pickup_text" | "destination_text">) {
   return !l.pickup_text && !l.destination_text;
+}
+
+/** Date and time shown together as one line — for compact spots like the list rows, where a second line isn't worth the space. */
+function formatWhen(date: string | null, time: string | null) {
+  if (!date) return null;
+  return time ? `${formatDate(date)} · ${time}` : formatDate(date);
+}
+
+/** Date on its own line, time stacked underneath in smaller muted text — for the detail popup's Travel date/Return rows, where there's room to make the time easy to spot rather than trailing after the date. */
+function WhenValue({ date, time }: { date: string | null; time: string | null }) {
+  if (!date) return <>—</>;
+  return (
+    <>
+      {formatDate(date)}
+      {time && <div className="mt-0.5 text-xs font-normal text-slate-500">{time}</div>}
+    </>
+  );
 }
 
 function timeAgo(iso: string) {
@@ -225,7 +246,7 @@ export function LeadsPage({
                 ) : (
                   <>
                     <JourneyCell pickup={l.pickup_text} destination={l.destination_text} maxWidth="100%" />
-                    <div className="text-xs text-slate-400">{l.travel_date ? formatDate(l.travel_date) : ""}</div>
+                    <div className="text-xs text-slate-400">{formatWhen(l.travel_date, l.pickup_time)}</div>
                   </>
                 )}
               </div>
@@ -288,7 +309,7 @@ export function LeadsPage({
                     ) : (
                       <>
                         <JourneyCell pickup={l.pickup_text} destination={l.destination_text} />
-                        <div className="text-xs text-slate-400">{l.travel_date ? formatDate(l.travel_date) : ""}</div>
+                        <div className="text-xs text-slate-400">{formatWhen(l.travel_date, l.pickup_time)}</div>
                       </>
                     )}
                   </td>
@@ -355,9 +376,21 @@ export function LeadsPage({
                   { label: "Pickup", value: detailLead.pickup_text ?? "—" },
                   { label: "Destination", value: detailLead.destination_text ?? "—" },
                 ]),
-            { label: "Travel date", value: detailLead.travel_date ? formatDate(detailLead.travel_date) : "—" },
+            { label: "Travel date", value: <WhenValue date={detailLead.travel_date} time={detailLead.pickup_time} /> },
             { label: "Passengers", value: detailLead.passenger_count ?? "—" },
             ...(detailIsGeneralEnquiry ? [] : [{ label: "Vehicle requested", value: detailLead.vehicle_requested ?? "—" }]),
+            ...(detailLead.return_trip
+              ? [
+                  {
+                    label: "Return",
+                    value: detailLead.return_date ? (
+                      <WhenValue date={detailLead.return_date} time={detailLead.return_time} />
+                    ) : (
+                      "Yes — date/time not specified"
+                    ),
+                  },
+                ]
+              : []),
             { label: "Priority", value: detailLead.priority === "high" ? "High" : "Normal" },
             {
               label: "Owner",

@@ -68,21 +68,18 @@ const ContactLeadSchema = z.object({
   ...UtmFields,
 });
 
-/**
- * `leads` has no return_date/return_time columns — the public intake API is
- * deliberately "structured outbound journey + everything else as notes for
- * the salesperson to read" (the same reason pickup time, service category
- * etc. also fold into notes rather than getting their own columns). A real
- * return leg only becomes structured data later, when staff convert the
- * lead into an enquiry (enquiry_legs already supports one there).
- */
-function returnTripLine(body: { returnTrip?: boolean; returnDate?: string; returnTime?: string }) {
-  if (!body.returnTrip && !body.returnDate && !body.returnTime) return null;
-  const when = [body.returnDate, body.returnTime].filter(Boolean).join(" at ");
-  return `Return trip: ${when || "yes, date/time not specified"}`;
+const HIGH_PRIORITY_PASSENGER_THRESHOLD = 50;
+
+/** `returnTrip` can arrive true with no date/time yet (customer knows they need a return leg, hasn't picked one) — infer it from either signal so a bare returnDate/returnTime still counts as a return trip even if the flag itself was left out. */
+function isReturnTrip(body: { returnTrip?: boolean; returnDate?: string; returnTime?: string }) {
+  return Boolean(body.returnTrip || body.returnDate || body.returnTime);
 }
 
-const HIGH_PRIORITY_PASSENGER_THRESHOLD = 50;
+/** Combined "date at time" for the lead_assigned email, since the template has one {{travel_date}} slot rather than a separate time variable. */
+function formatWhen(date?: string, time?: string) {
+  const when = [date, time].filter(Boolean).join(" at ");
+  return when || "Not specified";
+}
 
 async function resolveBrand(admin: AdminClient, brandSlug: string, secret: string) {
   const { data: brand } = await admin
@@ -173,14 +170,7 @@ async function handleContactSubmission(json: unknown) {
 
   const customerId = await resolveCustomerId(admin, brand.tenant_id, brand.id, body);
 
-  const notes = [
-    body.serviceNeeded ? `Service needed: ${body.serviceNeeded}` : null,
-    body.pickupTime ? `Pickup time: ${body.pickupTime}` : null,
-    returnTripLine(body),
-    body.message,
-  ]
-    .filter(Boolean)
-    .join("\n");
+  const notes = [body.serviceNeeded ? `Service needed: ${body.serviceNeeded}` : null, body.message].filter(Boolean).join("\n");
 
   const { data: lead, error: leadError } = await admin
     .from("leads")
@@ -191,6 +181,10 @@ async function handleContactSubmission(json: unknown) {
       status: "new",
       customer_id: customerId,
       travel_date: body.travelDate ?? null,
+      pickup_time: body.pickupTime ?? null,
+      return_trip: isReturnTrip(body),
+      return_date: body.returnDate ?? null,
+      return_time: body.returnTime ?? null,
       passenger_count: body.passengerCount ?? null,
       notes,
       utm_source: body.utmSource ?? null,
@@ -222,7 +216,7 @@ async function handleContactSubmission(json: unknown) {
     source: "Website contact form",
     pickup: "Not specified",
     destination: "Not specified",
-    travel_date: body.travelDate ?? "Not specified",
+    travel_date: formatWhen(body.travelDate, body.pickupTime),
     passenger_count: body.passengerCount ? String(body.passengerCount) : "Not specified",
     vehicle_requested: "Not specified",
     notes,
@@ -243,14 +237,6 @@ async function handleQuoteSubmission(json: unknown) {
   if (!brand) return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
 
   const customerId = await resolveCustomerId(admin, brand.tenant_id, brand.id, body);
-
-  const notes = [
-    body.pickupTime ? `Pickup time: ${body.pickupTime}` : null,
-    returnTripLine(body),
-    body.notes ?? null,
-  ]
-    .filter(Boolean)
-    .join("\n\n") || null;
 
   // Simple duplicate guard (Part 27): same brand, same route and travel date,
   // submitted again within the last 24 hours.
@@ -276,9 +262,13 @@ async function handleQuoteSubmission(json: unknown) {
       pickup_text: body.pickup,
       destination_text: body.destination,
       travel_date: body.travelDate ?? null,
+      pickup_time: body.pickupTime ?? null,
+      return_trip: isReturnTrip(body),
+      return_date: body.returnDate ?? null,
+      return_time: body.returnTime ?? null,
       passenger_count: body.passengerCount ?? null,
       vehicle_requested: body.vehicleRequested ?? null,
-      notes,
+      notes: body.notes ?? null,
       priority: (body.passengerCount ?? 0) >= HIGH_PRIORITY_PASSENGER_THRESHOLD ? "high" : "normal",
       utm_source: body.utmSource ?? null,
       utm_medium: body.utmMedium ?? null,
@@ -309,10 +299,10 @@ async function handleQuoteSubmission(json: unknown) {
     source: "Website",
     pickup: body.pickup,
     destination: body.destination,
-    travel_date: body.travelDate ?? "Not specified",
+    travel_date: formatWhen(body.travelDate, body.pickupTime),
     passenger_count: body.passengerCount ? String(body.passengerCount) : "Not specified",
     vehicle_requested: body.vehicleRequested ?? "Not specified",
-    notes: notes ?? "",
+    notes: body.notes ?? "",
   });
 
   return NextResponse.json({ id: lead.id }, { status: 201 });
