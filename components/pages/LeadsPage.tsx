@@ -377,8 +377,9 @@ export function LeadsPage({
                   { label: "Destination", value: detailLead.destination_text ?? "—" },
                 ]),
             { label: "Travel date", value: <WhenValue date={detailLead.travel_date} time={detailLead.pickup_time} /> },
-            { label: "Passengers", value: detailLead.passenger_count ?? "—" },
-            ...(detailIsGeneralEnquiry ? [] : [{ label: "Vehicle requested", value: detailLead.vehicle_requested ?? "—" }]),
+            // Placed right after Travel date (not down with Priority/Owner
+            // etc.) so a return journey's date/time lands in the same row,
+            // right next to the outbound leg — the two read as a pair.
             ...(detailLead.return_trip
               ? [
                   {
@@ -391,6 +392,8 @@ export function LeadsPage({
                   },
                 ]
               : []),
+            { label: "Passengers", value: detailLead.passenger_count ?? "—" },
+            ...(detailIsGeneralEnquiry ? [] : [{ label: "Vehicle requested", value: detailLead.vehicle_requested ?? "—" }]),
             { label: "Priority", value: detailLead.priority === "high" ? "High" : "Normal" },
             {
               label: "Owner",

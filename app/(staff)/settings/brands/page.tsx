@@ -42,7 +42,10 @@ export default async function BrandsPage({
 
   const [{ data: companies }, { data: brands, count }, { data: allBrands }] = await Promise.all([
     supabase.from("companies").select("id, legal_name, trading_name, default_currency").order("legal_name"),
-    brandsQuery.order("name").range(from, to),
+    // Newest-first while brands are still being bulk-added (easiest to spot
+    // the one you just created) — switch to .order("name") once onboarding
+    // settles down and alphabetical is more useful for finding a brand.
+    brandsQuery.order("created_at", { ascending: false }).range(from, to),
     supabase.from("brands").select("id, name, default_currency").order("name"),
   ]);
 
