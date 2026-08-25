@@ -39,8 +39,12 @@ const QuoteLeadSchema = z.object({
   pickup: z.string().min(1),
   destination: z.string().min(1),
   travelDate: z.string().optional(),
+  pickupTime: z.string().optional(),
   passengerCount: z.coerce.number().int().positive().optional(),
   vehicleRequested: z.string().optional(),
+  returnTrip: z.boolean().optional(),
+  returnDate: z.string().optional(),
+  returnTime: z.string().optional(),
   notes: z.string().optional(),
   ...UtmFields,
 });
@@ -58,9 +62,25 @@ const ContactLeadSchema = z.object({
   travelDate: z.string().optional(),
   pickupTime: z.string().optional(),
   returnTrip: z.boolean().optional(),
+  returnDate: z.string().optional(),
+  returnTime: z.string().optional(),
   message: z.string().min(1),
   ...UtmFields,
 });
+
+/**
+ * `leads` has no return_date/return_time columns — the public intake API is
+ * deliberately "structured outbound journey + everything else as notes for
+ * the salesperson to read" (the same reason pickup time, service category
+ * etc. also fold into notes rather than getting their own columns). A real
+ * return leg only becomes structured data later, when staff convert the
+ * lead into an enquiry (enquiry_legs already supports one there).
+ */
+function returnTripLine(body: { returnTrip?: boolean; returnDate?: string; returnTime?: string }) {
+  if (!body.returnTrip && !body.returnDate && !body.returnTime) return null;
+  const when = [body.returnDate, body.returnTime].filter(Boolean).join(" at ");
+  return `Return trip: ${when || "yes, date/time not specified"}`;
+}
 
 const HIGH_PRIORITY_PASSENGER_THRESHOLD = 50;
 
@@ -156,7 +176,7 @@ async function handleContactSubmission(json: unknown) {
   const notes = [
     body.serviceNeeded ? `Service needed: ${body.serviceNeeded}` : null,
     body.pickupTime ? `Pickup time: ${body.pickupTime}` : null,
-    body.returnTrip ? "Return trip: Yes" : null,
+    returnTripLine(body),
     body.message,
   ]
     .filter(Boolean)
@@ -224,6 +244,14 @@ async function handleQuoteSubmission(json: unknown) {
 
   const customerId = await resolveCustomerId(admin, brand.tenant_id, brand.id, body);
 
+  const notes = [
+    body.pickupTime ? `Pickup time: ${body.pickupTime}` : null,
+    returnTripLine(body),
+    body.notes ?? null,
+  ]
+    .filter(Boolean)
+    .join("\n\n") || null;
+
   // Simple duplicate guard (Part 27): same brand, same route and travel date,
   // submitted again within the last 24 hours.
   const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
@@ -250,7 +278,7 @@ async function handleQuoteSubmission(json: unknown) {
       travel_date: body.travelDate ?? null,
       passenger_count: body.passengerCount ?? null,
       vehicle_requested: body.vehicleRequested ?? null,
-      notes: body.notes ?? null,
+      notes,
       priority: (body.passengerCount ?? 0) >= HIGH_PRIORITY_PASSENGER_THRESHOLD ? "high" : "normal",
       utm_source: body.utmSource ?? null,
       utm_medium: body.utmMedium ?? null,
@@ -284,7 +312,7 @@ async function handleQuoteSubmission(json: unknown) {
     travel_date: body.travelDate ?? "Not specified",
     passenger_count: body.passengerCount ? String(body.passengerCount) : "Not specified",
     vehicle_requested: body.vehicleRequested ?? "Not specified",
-    notes: body.notes ?? "",
+    notes: notes ?? "",
   });
 
   return NextResponse.json({ id: lead.id }, { status: 201 });
