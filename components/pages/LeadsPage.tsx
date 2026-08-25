@@ -13,7 +13,7 @@ import { Pagination } from "@/components/ui/Pagination";
 import { useToast } from "@/components/ui/Toast";
 import { ConfirmDetailModal } from "@/components/ui/ConfirmDetailModal";
 import { claimLeadAction, createEnquiryFromLeadAction, releaseLeadAction } from "@/app/(staff)/leads/actions";
-import { formatDate } from "@/lib/formatDate";
+import { formatDate, formatTimeOnly } from "@/lib/formatDate";
 import { SOURCE_LABEL } from "@/lib/leadSource";
 import type { LeadSource, LeadStatus } from "@/lib/supabase/database.types";
 
@@ -57,10 +57,17 @@ function isGeneralEnquiry(l: Pick<LeadRow, "pickup_text" | "destination_text">) 
   return !l.pickup_text && !l.destination_text;
 }
 
+const TIME_RE = /^\d{2}:\d{2}(:\d{2})?$/;
+
+/** Website-submitted pickup/return time is free text, not guaranteed to be a clean "HH:MM" — format it 12-hour with AM/PM when it parses as one, otherwise fall back to showing whatever the site actually sent rather than garbling it. */
+function displayTime(time: string) {
+  return TIME_RE.test(time) ? formatTimeOnly(time) : time;
+}
+
 /** Date and time shown together as one line — for compact spots like the list rows, where a second line isn't worth the space. */
 function formatWhen(date: string | null, time: string | null) {
   if (!date) return null;
-  return time ? `${formatDate(date)} · ${time}` : formatDate(date);
+  return time ? `${formatDate(date)} · ${displayTime(time)}` : formatDate(date);
 }
 
 /** Date on its own line, time stacked underneath in smaller muted text — for the detail popup's Travel date/Return rows, where there's room to make the time easy to spot rather than trailing after the date. */
@@ -69,7 +76,7 @@ function WhenValue({ date, time }: { date: string | null; time: string | null })
   return (
     <>
       {formatDate(date)}
-      {time && <div className="mt-0.5 text-xs font-normal text-slate-500">{time}</div>}
+      {time && <div className="mt-0.5 text-xs font-normal text-slate-500">{displayTime(time)}</div>}
     </>
   );
 }
