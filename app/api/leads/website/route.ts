@@ -106,7 +106,23 @@ async function resolveCustomerId(
       .or([contact.email ? `email.eq.${contact.email}` : null, contact.phone ? `phone.eq.${contact.phone}` : null].filter(Boolean).join(","))
       .limit(1)
       .maybeSingle();
-    if (existing) return existing.id;
+    if (existing) {
+      // Matching on email OR phone means a submission that only shares one
+      // of the two (e.g. same email, new phone number) still resolves to
+      // this same customer — keep their record current with whatever the
+      // visitor just told us instead of silently ignoring it once matched.
+      await admin
+        .from("customers")
+        .update({
+          contact_name: contact.name,
+          ...(contact.email ? { email: contact.email } : {}),
+          ...(contact.phone ? { phone: contact.phone } : {}),
+          ...(contact.whatsapp ? { whatsapp: contact.whatsapp } : {}),
+          ...(contact.country ? { country: contact.country } : {}),
+        })
+        .eq("id", existing.id);
+      return existing.id;
+    }
   }
 
   const { data: created } = await admin
