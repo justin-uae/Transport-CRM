@@ -32,6 +32,7 @@ export interface LeadRow {
   return_date: string | null;
   return_time: string | null;
   passenger_count: number | null;
+  luggage_count: number | null;
   vehicle_requested: string | null;
   notes: string | null;
   assigned_user_id: string | null;
@@ -400,6 +401,7 @@ export function LeadsPage({
                 ]
               : []),
             { label: "Passengers", value: detailLead.passenger_count ?? "—" },
+            ...(detailLead.luggage_count !== null ? [{ label: "Luggage", value: detailLead.luggage_count }] : []),
             ...(detailIsGeneralEnquiry ? [] : [{ label: "Vehicle requested", value: detailLead.vehicle_requested ?? "—" }]),
             { label: "Priority", value: detailLead.priority === "high" ? "High" : "Normal" },
             {

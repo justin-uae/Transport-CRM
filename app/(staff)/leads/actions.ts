@@ -139,6 +139,7 @@ export async function createEnquiryFromLeadAction(leadId: string) {
     return_date: lead.return_trip ? lead.return_date : null,
     return_time: lead.return_trip ? asPgTime(lead.return_time) : null,
     passenger_count: lead.passenger_count,
+    luggage_count: lead.luggage_count,
     special_requirements:
       [lead.vehicle_requested ? `Vehicle requested: ${lead.vehicle_requested}` : null, lead.notes]
         .filter(Boolean)

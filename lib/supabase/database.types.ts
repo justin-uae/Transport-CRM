@@ -298,6 +298,7 @@ export interface Lead {
   return_date: string | null;
   return_time: string | null;
   passenger_count: number | null;
+  luggage_count: number | null;
   vehicle_requested: string | null;
   notes: string | null;
   utm_source: string | null;
