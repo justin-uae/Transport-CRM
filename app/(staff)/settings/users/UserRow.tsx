@@ -8,6 +8,7 @@ import {
   updateUserRoleAction,
   addUserRegionAction,
   removeUserRegionAction,
+  resendUserInviteAction,
 } from "./actions";
 import { MailboxBadge, type EmailAccountStatus } from "./EmailAccountForm";
 import type { ProfileStatus } from "@/lib/supabase/database.types";
@@ -85,6 +86,17 @@ export function UserRow({
       } catch (err) {
         notify(err instanceof Error ? err.message : "Could not update status");
       }
+    });
+  }
+
+  function resendInvite() {
+    startTransition(async () => {
+      const result = await resendUserInviteAction(user.id);
+      if (result.error) {
+        notify(`Could not send the invite email (${result.error}) — link: ${result.link ?? "none"}`);
+        return;
+      }
+      notify(`Invite email resent to ${user.email}`);
     });
   }
 
@@ -191,20 +203,32 @@ export function UserRow({
         <MailboxBadge userId={user.id} userName={user.full_name} account={mailbox} canManage={canManage} />
       </td>
       <td className="whitespace-nowrap text-right">
-        {canManage && !user.is_master_admin && (
-          <select
-            disabled={pending}
-            value=""
-            onChange={(e) => e.target.value && changeStatus(e.target.value as ProfileStatus)}
-            className="rounded-lg border px-2 py-1.5 text-xs font-bold"
-          >
-            <option value="">Change status…</option>
-            <option value="active">Activate</option>
-            <option value="suspended">Suspend</option>
-            <option value="disabled">Disable</option>
-            <option value="archived">Archive</option>
-          </select>
-        )}
+        <div className="flex items-center justify-end gap-2">
+          {canManage && user.status === "invited" && (
+            <button
+              type="button"
+              disabled={pending}
+              onClick={resendInvite}
+              className="rounded-lg border px-2 py-1.5 text-xs font-bold disabled:opacity-60"
+            >
+              Resend invite
+            </button>
+          )}
+          {canManage && !user.is_master_admin && (
+            <select
+              disabled={pending}
+              value=""
+              onChange={(e) => e.target.value && changeStatus(e.target.value as ProfileStatus)}
+              className="rounded-lg border px-2 py-1.5 text-xs font-bold"
+            >
+              <option value="">Change status…</option>
+              <option value="active">Activate</option>
+              <option value="suspended">Suspend</option>
+              <option value="disabled">Disable</option>
+              <option value="archived">Archive</option>
+            </select>
+          )}
+        </div>
       </td>
     </tr>
   );

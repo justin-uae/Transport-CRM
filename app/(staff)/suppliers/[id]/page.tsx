@@ -6,6 +6,7 @@ import { SectionTitle } from "@/components/ui/SectionTitle";
 import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { SupplierDecisionButtons } from "./SupplierDecisionButtons";
+import { ResendSupplierInviteButton } from "./ResendSupplierInviteButton";
 
 export default async function SupplierDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -35,7 +36,12 @@ export default async function SupplierDetailPage({ params }: { params: Promise<{
         text={`${supplier.type === "individual" ? "Individual driver" : "Company / travel agency"} · ${supplier.region ?? "No region set"}`}
         action={
           supplier.status === "submitted" || supplier.status === "invited" ? (
-            <SupplierDecisionButtons supplierId={supplier.id} />
+            <div className="flex flex-wrap gap-2">
+              {supplier.status === "invited" && (
+                <ResendSupplierInviteButton supplierId={supplier.id} email={supplier.email} />
+              )}
+              <SupplierDecisionButtons supplierId={supplier.id} />
+            </div>
           ) : undefined
         }
       />

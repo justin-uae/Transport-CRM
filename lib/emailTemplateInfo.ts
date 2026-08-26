@@ -11,7 +11,9 @@ export type EmailTemplateKey =
   | "job_rejected_by_supplier"
   | "supplier_invoice_submitted"
   | "lead_assigned"
-  | "feedback_request";
+  | "feedback_request"
+  | "staff_invited"
+  | "supplier_invited";
 
 /** Friendly labels + the {{variable}} tokens each template supports — shown as an editing hint in Email Centre -> Templates. */
 export const EMAIL_TEMPLATE_INFO: Record<EmailTemplateKey, { label: string; description: string; variables: string[] }> = {
@@ -70,5 +72,15 @@ export const EMAIL_TEMPLATE_INFO: Record<EmailTemplateKey, { label: string; desc
     label: "Feedback request",
     description: "Sent to the customer when their job is marked completed.",
     variables: ["customer_name", "brand_name", "link"],
+  },
+  staff_invited: {
+    label: "Staff invite",
+    description: "Sent to a new staff user when they're invited, and again each time an admin resends the invite.",
+    variables: ["user_name", "brand_name", "link"],
+  },
+  supplier_invited: {
+    label: "Supplier invite",
+    description: "Sent to a new supplier when they're invited, and again each time an admin resends the invite.",
+    variables: ["supplier_name", "brand_name", "link"],
   },
 };

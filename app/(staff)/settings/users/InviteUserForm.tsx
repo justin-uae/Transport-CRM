@@ -40,13 +40,13 @@ export function InviteUserForm({
   function handleSubmit(formData: FormData) {
     setError(null);
     startTransition(async () => {
-      const result = await inviteUserAction({ error: null, link: null }, formData);
+      const result = await inviteUserAction({ error: null, link: null, emailError: null }, formData);
       if (result?.error) {
         setError(result.error);
         return;
       }
       setLink(result.link);
-      notify("User created — share the link below");
+      notify(result.emailError ? `User created, but the invite email couldn't be sent (${result.emailError})` : "User created — invite email sent");
     });
   }
 
@@ -55,7 +55,7 @@ export function InviteUserForm({
       <div className="w-full max-w-xl rounded-2xl border p-5">
         <h3 className="font-black">Share this invite link</h3>
         <p className="mt-1 text-sm text-slate-500">
-          Send it to the new user directly (email, WhatsApp, Slack) — it lets them set their password and sign in.
+          The invite email was sent to them directly — this link is also here in case you'd rather share it yourself (WhatsApp, Slack, etc.) or the email didn't arrive.
         </p>
         <div className="mt-4 flex items-center gap-2 rounded-xl border bg-slate-50 p-3">
           <code className="flex-1 truncate text-sm">{link}</code>

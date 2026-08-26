@@ -16,13 +16,13 @@ export function AddSupplierForm() {
   function handleSubmit(formData: FormData) {
     setError(null);
     startTransition(async () => {
-      const result = await createSupplierAction({ error: null, link: null }, formData);
+      const result = await createSupplierAction({ error: null, link: null, emailError: null }, formData);
       if (result?.error) {
         setError(result.error);
         return;
       }
       setLink(result.link);
-      notify("Supplier created — share the invite link below");
+      notify(result.emailError ? `Supplier created, but the invite email couldn't be sent (${result.emailError})` : "Supplier created — invite email sent");
     });
   }
 
@@ -31,7 +31,7 @@ export function AddSupplierForm() {
       <div className="w-full max-w-xl rounded-2xl border p-5">
         <h3 className="font-black">Share this invite link</h3>
         <p className="mt-1 text-sm text-slate-500">
-          Send it to the supplier — it lets them set a password and complete their verification.
+          The invite email was sent to them directly — this link is also here in case you'd rather share it yourself or the email didn't arrive.
         </p>
         <div className="mt-4 flex items-center gap-2 rounded-xl border bg-slate-50 p-3">
           <code className="flex-1 truncate text-sm">{link}</code>

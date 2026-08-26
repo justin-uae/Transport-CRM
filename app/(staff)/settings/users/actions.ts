@@ -10,7 +10,29 @@ import { hasPermission, permissionsUserTag, PERMISSIONS } from "@/lib/permission
 import { brandsUserTag } from "@/lib/brand";
 import { recordAudit } from "@/lib/audit";
 import { encryptSecret } from "@/lib/crypto";
+import { renderAndSendTemplate } from "@/lib/emailTemplates";
 import type { ProfileStatus, EmailSecurity } from "@/lib/supabase/database.types";
+
+type AdminClient = ReturnType<typeof createAdminClient>;
+
+/** Builds the /auth/confirm link from a freshly generated invite token — same construction wherever a staff invite is (re)sent. */
+function buildInviteLink(hashedToken: string) {
+  return `${process.env.NEXT_PUBLIC_APP_URL ?? ""}/auth/confirm?token_hash=${hashedToken}&type=invite&next=/accept-invite`;
+}
+
+/** Sends (or resends) the branded staff-invite email — errors are returned, not swallowed, since both call sites need to tell the admin whether it actually went out (the invite link itself still works either way, as a copy/paste fallback). */
+async function sendStaffInviteEmail(
+  admin: AdminClient,
+  input: { tenantId: string; userName: string; email: string; brandId: string; link: string },
+) {
+  const { data: brand } = await admin.from("brands").select("name").eq("id", input.brandId).maybeSingle();
+  return renderAndSendTemplate(admin, {
+    tenantId: input.tenantId,
+    key: "staff_invited",
+    to: input.email,
+    variables: { user_name: input.userName, brand_name: brand?.name ?? "", link: input.link },
+  });
+}
 
 async function requireUserManager() {
   const profile = await requireProfile();
@@ -20,7 +42,7 @@ async function requireUserManager() {
 }
 
 export async function inviteUserAction(
-  _prevState: { error: string | null; link: string | null },
+  _prevState: { error: string | null; link: string | null; emailError: string | null },
   formData: FormData,
 ) {
   const actor = await requireUserManager();
@@ -36,33 +58,34 @@ export async function inviteUserAction(
     .filter(Boolean);
 
   if (!fullName || !email || !roleId) {
-    return { error: "Full name, email and role are required.", link: null };
+    return { error: "Full name, email and role are required.", link: null, emailError: null };
   }
   if (!brandId) {
-    return { error: "Every user belongs to a brand/branch — select one.", link: null };
+    return { error: "Every user belongs to a brand/branch — select one.", link: null, emailError: null };
   }
 
   const admin = createAdminClient();
 
   const { data: brand } = await admin.from("brands").select("company_id").eq("id", brandId).single();
   if (!brand) {
-    return { error: "Selected brand not found.", link: null };
+    return { error: "Selected brand not found.", link: null, emailError: null };
   }
   const companyId = brand.company_id;
 
   // generateLink (rather than inviteUserByEmail) creates the auth user
-  // without sending a Supabase-hosted email — Supabase only lets you
-  // customise that email's template with custom SMTP configured, and real
-  // email delivery is a later phase (Part 41, Phase 7) anyway. We build the
-  // same /auth/confirm link ourselves from the raw token and hand it back
-  // to the admin to share directly, sidestepping both problems.
+  // without sending Supabase's own hosted invite email — Supabase only lets
+  // you customise that email's template with custom SMTP configured on
+  // their side. We build the same /auth/confirm link ourselves from the raw
+  // token instead, and send it through this app's own branded template via
+  // sendStaffInviteEmail below (still handed back as `link` too, so the
+  // admin can copy/share it directly if the email fails to send).
   const { data: invited, error: inviteError } = await admin.auth.admin.generateLink({
     type: "invite",
     email,
     options: { redirectTo: `${process.env.NEXT_PUBLIC_APP_URL ?? ""}/accept-invite` },
   });
   if (inviteError || !invited.user) {
-    return { error: inviteError?.message ?? "Could not create the invite.", link: null };
+    return { error: inviteError?.message ?? "Could not create the invite.", link: null, emailError: null };
   }
 
   const { error: profileError } = await admin.from("profiles").insert({
@@ -79,7 +102,7 @@ export async function inviteUserAction(
   });
 
   if (profileError) {
-    return { error: profileError.message, link: null };
+    return { error: profileError.message, link: null, emailError: null };
   }
 
   await admin.from("user_brands").insert({ user_id: invited.user.id, brand_id: brandId });
@@ -100,8 +123,66 @@ export async function inviteUserAction(
 
   revalidatePath("/settings/users");
 
-  const inviteLink = `${process.env.NEXT_PUBLIC_APP_URL ?? ""}/auth/confirm?token_hash=${invited.properties.hashed_token}&type=invite&next=/accept-invite`;
-  return { error: null, link: inviteLink };
+  const inviteLink = buildInviteLink(invited.properties.hashed_token);
+  const { error: emailError } = await sendStaffInviteEmail(admin, {
+    tenantId: actor.tenant_id,
+    userName: fullName,
+    email,
+    brandId,
+    link: inviteLink,
+  });
+
+  return { error: null, link: inviteLink, emailError };
+}
+
+/** Re-sends the branded invite email to a user who hasn't accepted yet, with a fresh link (the original token may have expired). */
+export async function resendUserInviteAction(userId: string) {
+  const actor = await requireUserManager();
+  const admin = createAdminClient();
+
+  const { data: target } = await admin
+    .from("profiles")
+    .select("tenant_id, full_name, email, default_brand_id, status")
+    .eq("id", userId)
+    .single();
+  if (!target || target.tenant_id !== actor.tenant_id) {
+    return { error: "User not found.", link: null };
+  }
+  if (target.status !== "invited") {
+    return { error: "This user has already accepted their invite.", link: null };
+  }
+  if (!target.default_brand_id) {
+    return { error: "This user has no brand assigned — cannot resend the invite.", link: null };
+  }
+
+  const { data: invited, error: inviteError } = await admin.auth.admin.generateLink({
+    type: "invite",
+    email: target.email,
+    options: { redirectTo: `${process.env.NEXT_PUBLIC_APP_URL ?? ""}/accept-invite` },
+  });
+  if (inviteError || !invited.properties) {
+    return { error: inviteError?.message ?? "Could not generate a new invite link.", link: null };
+  }
+
+  const inviteLink = buildInviteLink(invited.properties.hashed_token);
+  const { error: emailError } = await sendStaffInviteEmail(admin, {
+    tenantId: actor.tenant_id,
+    userName: target.full_name,
+    email: target.email,
+    brandId: target.default_brand_id,
+    link: inviteLink,
+  });
+
+  await recordAudit({
+    tenantId: actor.tenant_id,
+    actorId: actor.id,
+    action: "user_invite_resent",
+    entityType: "profile",
+    entityId: userId,
+    newValue: { email: target.email },
+  });
+
+  return { error: emailError, link: inviteLink };
 }
 
 export async function updateUserStatusAction(userId: string, status: ProfileStatus) {
