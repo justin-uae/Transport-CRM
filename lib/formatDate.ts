@@ -1,4 +1,4 @@
-// Single shared date/time formatter for the whole app — "10 Aug Monday
+// Single shared date/time formatter for the whole app — "Monday 10th August
 // 2026, 8:17 PM". Deliberately avoids two failure modes that have already
 // bitten this codebase (see the compact-currency hydration fixes in
 // CommissionsPage/AccountingPage/ControlCentre):
@@ -19,7 +19,20 @@
 // Weekday-from-date is computed with plain UTC arithmetic, not a locale
 // feature, so it's deterministic everywhere too.
 
-const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const MONTH_NAMES = [
+  "January",
+  "February",
+  "March",
+  "April",
+  "May",
+  "June",
+  "July",
+  "August",
+  "September",
+  "October",
+  "November",
+  "December",
+];
 const WEEKDAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 const DISPLAY_TIME_ZONE = "Europe/London";
 const BARE_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -46,8 +59,22 @@ function londonParts(date: Date) {
   return { year: get("year"), month: get("month"), day: get("day"), hour: get("hour") % 24, minute: get("minute") };
 }
 
+function ordinal(day: number): string {
+  if (day >= 11 && day <= 13) return `${day}th`;
+  switch (day % 10) {
+    case 1:
+      return `${day}st`;
+    case 2:
+      return `${day}nd`;
+    case 3:
+      return `${day}rd`;
+    default:
+      return `${day}th`;
+  }
+}
+
 function datePart(year: number, month: number, day: number): string {
-  return `${day} ${MONTH_NAMES[month - 1]} ${WEEKDAY_NAMES[weekdayIndex(year, month, day)]} ${year}`;
+  return `${WEEKDAY_NAMES[weekdayIndex(year, month, day)]} ${ordinal(day)} ${MONTH_NAMES[month - 1]} ${year}`;
 }
 
 function timePart(hour: number, minute: number): string {
@@ -57,7 +84,7 @@ function timePart(hour: number, minute: number): string {
 }
 
 /**
- * "10 Aug Monday 2026" — date portion only. A bare `date` value
+ * "Monday 10th August 2026" — date portion only. A bare `date` value
  * ("2026-08-10", no time-of-day) is read literally with no timezone
  * conversion, since converting a value that has no time component could
  * shift the calendar date by a day depending on the viewer. Anything else
@@ -78,7 +105,7 @@ export function formatTime(value: string): string {
   return timePart(hour, minute);
 }
 
-/** "10 Aug Monday 2026, 8:17 PM" — the app's one standard timestamp format. */
+/** "Monday 10th August 2026, 8:17 PM" — the app's one standard timestamp format. */
 export function formatDateTime(value: string): string {
   const { year, month, day, hour, minute } = londonParts(new Date(value));
   return `${datePart(year, month, day)}, ${timePart(hour, minute)}`;
