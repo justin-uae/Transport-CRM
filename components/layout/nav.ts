@@ -19,7 +19,6 @@ import {
   MessagesSquare,
   ListTodo,
   Star,
-  Bot,
   Truck,
   type LucideIcon,
 } from "lucide-react";
@@ -125,7 +124,9 @@ export const NAV: NavItem[] = [
   { label: "Team Chat", href: "/team-chat", icon: MessagesSquare, anyOf: WORKSPACE },
   { label: "Tasks", href: "/tasks", icon: ListTodo, anyOf: WORKSPACE },
   { label: "Customer Experience", href: "/customer-experience", icon: Star, anyOf: WORKSPACE },
-  { label: "AI Optimisation", href: "/ai-optimisation", icon: Bot, anyOf: WORKSPACE },
+  // AI Optimisation — hidden from the sidebar for now (not ready), route/page left in place for when
+  // it's finished. Restore by re-adding the entry below and importing Bot from lucide-react again:
+  // { label: "AI Optimisation", href: "/ai-optimisation", icon: Bot, anyOf: WORKSPACE },
 ];
 
 /** Every nav href the given permission set unlocks, in NAV order. */
