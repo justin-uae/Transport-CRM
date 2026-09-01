@@ -2,10 +2,12 @@
 
 import { useState, useTransition } from "react";
 import Link from "next/link";
+import { Eye, EyeOff } from "lucide-react";
 import { signInAction } from "./actions";
 
 export function LoginForm({ next }: { next: string }) {
   const [error, setError] = useState<string | null>(null);
+  const [showPassword, setShowPassword] = useState(false);
   const [pending, startTransition] = useTransition();
 
   function handleSubmit(formData: FormData) {
@@ -36,14 +38,25 @@ export function LoginForm({ next }: { next: string }) {
         <label className="text-sm font-bold text-slate-700" htmlFor="password">
           Password
         </label>
-        <input
-          id="password"
-          name="password"
-          type="password"
-          required
-          autoComplete="current-password"
-          className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-3 outline-none focus:border-primary-300 focus:ring-4 focus:ring-primary-100"
-        />
+        <div className="relative mt-2">
+          <input
+            id="password"
+            name="password"
+            type={showPassword ? "text" : "password"}
+            required
+            autoComplete="current-password"
+            className="w-full rounded-xl border border-slate-200 px-3 py-3 pr-11 outline-none focus:border-primary-300 focus:ring-4 focus:ring-primary-100"
+          />
+          <button
+            type="button"
+            onClick={() => setShowPassword((v) => !v)}
+            aria-label={showPassword ? "Hide password" : "Show password"}
+            tabIndex={-1}
+            className="absolute inset-y-0 right-0 flex items-center px-3 text-slate-400 hover:text-slate-600"
+          >
+            {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+          </button>
+        </div>
       </div>
       {error && (
         <div className="rounded-xl bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">
