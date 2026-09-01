@@ -216,9 +216,16 @@ export async function completeJobAction(jobId: string) {
   const supplier = await requireSupplier();
   const supabase = await createClient();
 
-  const { data: job } = await supabase.from("jobs").select("status, assigned_supplier_id, tenant_id").eq("id", jobId).single();
+  const { data: job } = await supabase
+    .from("jobs")
+    .select("status, assigned_supplier_id, tenant_id, supplier_payment_status")
+    .eq("id", jobId)
+    .single();
   if (!job || job.assigned_supplier_id !== supplier.id || job.status !== "confirmed") {
     throw new Error("This job cannot be marked completed right now.");
+  }
+  if (job.supplier_payment_status !== "paid") {
+    throw new Error("Your invoice must be settled before this job can be marked completed.");
   }
 
   const { error } = await supabase

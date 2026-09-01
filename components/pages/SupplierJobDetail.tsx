@@ -200,7 +200,7 @@ export function SupplierJobDetail({
               Confirm this job
             </button>
           )}
-          {job.job_status === "confirmed" && (
+          {job.job_status === "confirmed" && job.supplier_payment_status === "paid" && (
             <button onClick={() => setModal("complete")} className="rounded-xl bg-emerald-600 px-5 py-2.5 text-sm font-bold text-white">
               Mark Completed
             </button>
@@ -249,7 +249,7 @@ export function SupplierJobDetail({
         open={modal === "complete"}
         onClose={closeModal}
         title="Mark this job as completed?"
-        description="Once completed you'll be able to submit your invoice for this job."
+        description="Your invoice for this job has been settled — mark it completed to close it out."
         details={journeyDetails}
         pending={pending}
         error={modalError}
