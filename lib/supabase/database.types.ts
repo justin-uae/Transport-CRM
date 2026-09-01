@@ -299,6 +299,7 @@ export interface Lead {
   return_time: string | null;
   passenger_count: number | null;
   luggage_count: number | null;
+  is_complex_booking: boolean;
   vehicle_requested: string | null;
   notes: string | null;
   utm_source: string | null;
@@ -324,6 +325,7 @@ export interface Enquiry {
   internal_notes: string | null;
   customer_notes: string | null;
   created_by: string | null;
+  is_complex_booking: boolean;
   created_at: string;
   updated_at: string;
 }

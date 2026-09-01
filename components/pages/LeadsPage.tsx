@@ -33,6 +33,7 @@ export interface LeadRow {
   return_time: string | null;
   passenger_count: number | null;
   luggage_count: number | null;
+  is_complex_booking: boolean;
   vehicle_requested: string | null;
   notes: string | null;
   assigned_user_id: string | null;
@@ -245,6 +246,9 @@ export function LeadsPage({
                 </b>
                 <span className="shrink-0 text-right">
                   <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold">{SOURCE_LABEL[l.source]}</span>
+                  {l.is_complex_booking && (
+                    <span className="ml-1.5 rounded-full bg-indigo-50 px-2.5 py-1 text-xs font-bold text-indigo-600">Complex Booking</span>
+                  )}
                   {l.brands?.name && <div className="mt-1 text-[10px] text-slate-400">{l.brands.name}</div>}
                 </span>
               </div>
@@ -323,6 +327,9 @@ export function LeadsPage({
                   </td>
                   <td className="whitespace-nowrap">
                     <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold">{SOURCE_LABEL[l.source]}</span>
+                    {l.is_complex_booking && (
+                      <span className="ml-1.5 rounded-full bg-indigo-50 px-2.5 py-1 text-xs font-bold text-indigo-600">Complex Booking</span>
+                    )}
                     {l.brands?.name && <div className="mt-1 text-[10px] text-slate-400">{l.brands.name}</div>}
                   </td>
                   <td className="whitespace-nowrap">{STATUS_LABEL[l.status]}</td>
@@ -377,6 +384,7 @@ export function LeadsPage({
           }
           details={[
             { label: "Source", value: SOURCE_LABEL[detailLead.source] },
+            ...(detailLead.is_complex_booking ? [{ label: "Complex Booking", value: "Yes — AI-assisted intake" }] : []),
             { label: "Brand / website", value: detailLead.brands?.name ?? "—" },
             ...(detailIsGeneralEnquiry
               ? []
