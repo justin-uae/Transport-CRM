@@ -56,21 +56,6 @@ export function JourneyLegDetail({ leg, index, total }: { leg: JourneyLeg; index
           <dt className="text-xs font-bold uppercase text-slate-400">Passengers</dt>
           <dd className="mt-0.5 font-semibold">{leg.passenger_count ?? "—"}</dd>
         </div>
-        <div>
-          <dt className="text-xs font-bold uppercase text-slate-400">Luggage</dt>
-          <dd className="mt-0.5 font-semibold">{leg.luggage_count ?? "—"}</dd>
-        </div>
-        <div>
-          <dt className="text-xs font-bold uppercase text-slate-400">Vehicle type</dt>
-          <dd className="mt-0.5 font-semibold">{leg.vehicle_types?.name ?? "—"}</dd>
-        </div>
-        <div>
-          <dt className="text-xs font-bold uppercase text-slate-400">Wheelchair / child seats</dt>
-          <dd className="mt-0.5 font-semibold">
-            {leg.wheelchair_required ? "Wheelchair required" : "No wheelchair"}
-            {leg.child_seats > 0 ? ` · ${leg.child_seats} child seat${leg.child_seats === 1 ? "" : "s"}` : ""}
-          </dd>
-        </div>
         {leg.special_requirements && (
           <div className="col-span-2">
             <dt className="text-xs font-bold uppercase text-slate-400">Special requirements</dt>
