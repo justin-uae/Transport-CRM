@@ -235,7 +235,7 @@ export function ComplexBookingPage({
               value={pastedText}
               onChange={(e) => setPastedText(e.target.value)}
               placeholder="Paste an email, itinerary, or quote request here…"
-              className="mt-2 min-h-40 w-full rounded-xl border px-3 py-3 font-normal"
+              className="mt-2 min-h-40 w-full rounded-xl border px-3 py-3 text-base font-normal sm:text-sm"
             />
           </label>
 
