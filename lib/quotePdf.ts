@@ -348,8 +348,6 @@ export async function generateQuotePdf(
       rows.push(["Return", `${formatDate(leg.return_date)}${leg.return_time ? ` at ${leg.return_time}` : ""}`]);
     }
     rows.push(["Passengers", String(leg.passenger_count ?? "—")]);
-    rows.push(["Luggage", String(leg.luggage_count ?? "—")]);
-    rows.push(["Vehicle", leg.vehicle_types?.name ?? version.vehicle_description ?? "—"]);
     if (leg.wheelchair_required || (leg.child_seats ?? 0) > 0) {
       const parts = [
         leg.wheelchair_required ? "Wheelchair required" : null,
