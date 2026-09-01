@@ -121,10 +121,6 @@ export default async function PublicQuotePage({ params }: { params: Promise<{ to
               <span className="text-slate-500">Passengers</span>
               <b>{leg?.passenger_count ?? "—"}</b>
             </div>
-            <div className="flex justify-between border-b py-2">
-              <span className="text-slate-500">Vehicle</span>
-              <b>{version?.vehicle_description ?? "—"}</b>
-            </div>
             {quote.expiry_at && (
               <div className="flex flex-wrap justify-between gap-x-3 gap-y-1 border-b py-2">
                 <span className="text-slate-500">Valid until</span>
