@@ -20,6 +20,17 @@ body {
   background-color: var(--color-appbg);
 }
 
+/* Inputs sit inside labels styled text-sm/text-xs (for the label text itself)
+   and inherit that font-size since they don't set their own — anything under
+   16px makes iOS Safari auto-zoom the page on focus. A component can still
+   opt into a smaller size by setting a text-size class directly on the
+   input/select/textarea itself, which wins over this via class specificity. */
+input,
+select,
+textarea {
+  font-size: 1rem;
+}
+
 /* Dial-code phone input (components/ui/PhoneNumberField.tsx) — restyles
    react-phone-number-input to match the app's rounded-xl bordered inputs. */
 .PhoneNumberField.PhoneInput {

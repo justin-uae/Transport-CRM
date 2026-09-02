@@ -73,7 +73,7 @@ export function ConfirmDetailModal({
     >
       <div className="flex min-h-full items-start justify-center sm:items-center">
         <div
-          className="flex max-h-[90vh] w-full max-w-lg flex-col overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl"
+          className="flex max-h-[90dvh] w-full max-w-lg flex-col overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl"
           onClick={(e) => e.stopPropagation()}
         >
           {/* Scrolls on its own — the footer below stays pinned in view so the

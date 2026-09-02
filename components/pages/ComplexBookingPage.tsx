@@ -382,7 +382,12 @@ export function ComplexBookingPage({
           <div key={leg.clientId} className="rounded-2xl border p-4">
             <div className="flex items-center justify-between">
               <b className="text-sm">Leg {i + 1}</b>
-              <button type="button" onClick={() => removeLeg(leg.clientId)} className="text-red-600" aria-label="Remove leg">
+              <button
+                type="button"
+                onClick={() => removeLeg(leg.clientId)}
+                className="shrink-0 rounded-lg p-1.5 text-red-600 hover:bg-red-50"
+                aria-label="Remove leg"
+              >
                 <Trash2 size={15} />
               </button>
             </div>
