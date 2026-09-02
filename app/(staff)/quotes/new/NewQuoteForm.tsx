@@ -25,7 +25,7 @@ interface CustomerInfo {
 
 function CustomerSummary({ customer }: { customer: CustomerInfo }) {
   return (
-    <dl className="grid grid-cols-2 gap-x-4 gap-y-3 rounded-2xl bg-slate-50 p-4 text-sm">
+    <dl className="grid grid-cols-1 gap-x-4 gap-y-3 rounded-2xl bg-slate-50 p-4 text-sm sm:grid-cols-2">
       <div>
         <dt className="text-xs font-bold uppercase text-slate-400">Name</dt>
         <dd className="mt-0.5 font-semibold">{customer.name}</dd>
@@ -158,7 +158,7 @@ export function NewQuoteForm({
 
       <div>
         <div className="mb-2 text-xs font-black uppercase tracking-wide text-primary-500">Pricing &amp; payment</div>
-        <dl className="grid grid-cols-2 gap-x-4 gap-y-3 rounded-2xl bg-slate-50 p-4 text-sm">
+        <dl className="grid grid-cols-1 gap-x-4 gap-y-3 rounded-2xl bg-slate-50 p-4 text-sm sm:grid-cols-2">
           <div>
             <dt className="text-xs font-bold uppercase text-slate-400">Currency</dt>
             <dd className="mt-0.5 font-semibold">{currency}</dd>
@@ -236,21 +236,30 @@ export function NewQuoteForm({
       <input type="hidden" name="enquiryId" value={enquiryId} />
       <input type="hidden" name="depositPercentage" value={depositPercentage ?? ""} />
       <Panel>
-        <div className="grid grid-cols-3 gap-2">
+        <div className="flex items-center">
           {STEPS.map((s, i) => (
-            <button
-              key={s}
-              type="button"
-              onClick={() => setStep(i + 1)}
-              className={clsx(
-                "rounded-xl px-2 py-3 text-xs font-bold md:text-sm",
-                step === i + 1 ? "bg-primary-500 text-white" : step > i + 1 ? "bg-primary-50 text-primary-700" : "bg-slate-100 text-slate-500",
+            <div key={s} className="flex flex-1 items-center last:flex-none">
+              <button
+                type="button"
+                onClick={() => setStep(i + 1)}
+                aria-label={`Step ${i + 1}: ${s}`}
+                aria-current={step === i + 1 ? "step" : undefined}
+                className={clsx(
+                  "grid h-9 w-9 shrink-0 place-items-center rounded-full text-sm font-black transition-colors",
+                  step >= i + 1 ? "bg-primary-500 text-white" : "bg-slate-100 text-slate-400",
+                )}
+              >
+                {i + 1}
+              </button>
+              {i < STEPS.length - 1 && (
+                <div className={clsx("mx-1.5 h-0.5 flex-1 rounded-full", step > i + 1 ? "bg-primary-500" : "bg-slate-100")} />
               )}
-            >
-              {i + 1}. {s}
-            </button>
+            </div>
           ))}
         </div>
+        <p className="mt-2 text-center text-sm font-bold text-primary-600">
+          Step {step} of {STEPS.length} · {STEPS[step - 1]}
+        </p>
       </Panel>
 
       <div className="mt-5">

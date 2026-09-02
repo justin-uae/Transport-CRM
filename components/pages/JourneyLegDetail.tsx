@@ -27,7 +27,7 @@ export function JourneyLegDetail({ leg, index, total }: { leg: JourneyLeg; index
           Leg {leg.sequence} of {total} · {leg.journey_type.replaceAll("_", " ")}
         </div>
       )}
-      <dl className="grid grid-cols-2 gap-x-4 gap-y-3 rounded-2xl bg-slate-50 p-4 text-sm">
+      <dl className="grid grid-cols-1 gap-x-4 gap-y-3 rounded-2xl bg-slate-50 p-4 text-sm sm:grid-cols-2">
         <div>
           <dt className="text-xs font-bold uppercase text-slate-400">Pickup</dt>
           <dd className="mt-0.5 font-semibold">{leg.pickup_address}</dd>

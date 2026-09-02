@@ -152,7 +152,7 @@ export function SupplierJobDetail({
             ))}
           </div>
         ) : (
-          <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-3 rounded-2xl bg-slate-50 p-4 text-sm">
+          <dl className="mt-4 grid grid-cols-1 gap-x-4 gap-y-3 rounded-2xl bg-slate-50 p-4 text-sm sm:grid-cols-2">
             <div className="col-span-2">
               <dt className="text-xs font-bold uppercase text-slate-400">Pickup</dt>
               <dd className="mt-0.5 font-semibold">{job.pickup_address ?? "—"}</dd>
@@ -172,7 +172,7 @@ export function SupplierJobDetail({
           </dl>
         )}
         {(rate || job.customer_name || job.customer_phone) && (
-          <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-3 rounded-2xl bg-slate-50 p-4 text-sm">
+          <dl className="mt-3 grid grid-cols-1 gap-x-4 gap-y-3 rounded-2xl bg-slate-50 p-4 text-sm sm:grid-cols-2">
             {rate && (
               <div>
                 <dt className="text-xs font-bold uppercase text-slate-400">Your rate</dt>
