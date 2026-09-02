@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { Wand2, Plus, Trash2, Upload, FileText, X, Loader2 } from "lucide-react";
 import { SectionTitle } from "@/components/ui/SectionTitle";
+import { DatePicker } from "@/components/ui/DatePicker";
 import { PhoneNumberField } from "@/components/ui/PhoneNumberField";
 import { useToast } from "@/components/ui/Toast";
 import { createClient } from "@/lib/supabase/client";
@@ -294,7 +295,11 @@ export function ComplexBookingPage({
     <div>
       <div className="flex items-center justify-between">
         <SectionTitle title="Review & edit" sub="Correct anything the AI missed, then create the lead" />
-        <button type="button" onClick={() => setPhase("input")} className="text-xs font-bold text-primary-600">
+        <button
+          type="button"
+          onClick={() => setPhase("input")}
+          className="shrink-0 rounded-lg px-2.5 py-1.5 text-xs font-bold text-primary-600 hover:bg-primary-50"
+        >
           ← Start over
         </button>
       </div>
@@ -407,12 +412,7 @@ export function ComplexBookingPage({
               </label>
               <label className="text-sm font-bold">
                 Pickup date
-                <input
-                  type="date"
-                  value={leg.pickupDate}
-                  onChange={(e) => updateLeg(leg.clientId, { pickupDate: e.target.value })}
-                  className="mt-1.5 w-full rounded-xl border px-3 py-2.5 font-normal"
-                />
+                <DatePicker value={leg.pickupDate} onChange={(v) => updateLeg(leg.clientId, { pickupDate: v })} />
               </label>
               <label className="text-sm font-bold">
                 Pickup address
@@ -443,12 +443,7 @@ export function ComplexBookingPage({
                 <>
                   <label className="text-sm font-bold">
                     Return date
-                    <input
-                      type="date"
-                      value={leg.returnDate}
-                      onChange={(e) => updateLeg(leg.clientId, { returnDate: e.target.value })}
-                      className="mt-1.5 w-full rounded-xl border px-3 py-2.5 font-normal"
-                    />
+                    <DatePicker value={leg.returnDate} onChange={(v) => updateLeg(leg.clientId, { returnDate: v })} />
                   </label>
                   <label className="text-sm font-bold">
                     Return time

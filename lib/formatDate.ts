@@ -19,7 +19,7 @@
 // Weekday-from-date is computed with plain UTC arithmetic, not a locale
 // feature, so it's deterministic everywhere too.
 
-const MONTH_NAMES = [
+export const MONTH_NAMES = [
   "January",
   "February",
   "March",
