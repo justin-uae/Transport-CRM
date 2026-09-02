@@ -2,7 +2,8 @@ import { notFound } from "next/navigation";
 import { Bus } from "lucide-react";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { amountDueNow } from "@/lib/quotePayments";
-import { formatDateTime, formatDateAndTime } from "@/lib/formatDate";
+import { formatDateTime } from "@/lib/formatDate";
+import { JourneyLegDetail, type JourneyLeg } from "@/components/pages/JourneyLegDetail";
 import { QuoteDecisionButtons } from "./QuoteDecisionButtons";
 import { PaymentChooser, type BankAccountRow } from "./PaymentChooser";
 
@@ -20,14 +21,6 @@ interface VersionRow {
   customer_notes: string | null;
   terms_snapshot: string | null;
   brand_snapshot: BrandSnapshot;
-}
-
-interface LegRow {
-  pickup_address: string;
-  destination_address: string;
-  pickup_date: string | null;
-  pickup_time: string | null;
-  passenger_count: number | null;
 }
 
 // For now, hardcoded test values — swap for a real bank_accounts row (or
@@ -51,7 +44,7 @@ export default async function PublicQuotePage({ params }: { params: Promise<{ to
   const { data: quote } = await admin
     .from("quotes")
     .select(
-      "id, quote_number, status, currency, expiry_at, brand_id, invoice_number, invoiced_at, payment_method_chosen, customers(company_name, contact_name), enquiries(enquiry_legs(pickup_address, destination_address, pickup_date, pickup_time, passenger_count)), quote_versions!quotes_current_version_id_fkey(vehicle_description, selling_price, deposit_percentage, payment_methods, customer_notes, terms_snapshot, brand_snapshot), customer_payments(amount)",
+      "id, quote_number, status, currency, expiry_at, brand_id, invoice_number, invoiced_at, payment_method_chosen, customers(company_name, contact_name), enquiries(enquiry_legs(sequence, journey_type, pickup_address, destination_address, via_points, pickup_date, pickup_time, return_date, return_time, passenger_count, luggage_count, wheelchair_required, child_seats, special_requirements, vehicle_types(name))), quote_versions!quotes_current_version_id_fkey(vehicle_description, selling_price, deposit_percentage, payment_methods, customer_notes, terms_snapshot, brand_snapshot), customer_payments(amount)",
     )
     .eq("public_token", token)
     .single();
@@ -77,7 +70,9 @@ export default async function PublicQuotePage({ params }: { params: Promise<{ to
   }
 
   const customer = quote.customers as unknown as { company_name: string | null; contact_name: string } | null;
-  const leg = (quote.enquiries as unknown as { enquiry_legs: LegRow[] } | null)?.enquiry_legs?.[0];
+  const legs = [...((quote.enquiries as unknown as { enquiry_legs: JourneyLeg[] } | null)?.enquiry_legs ?? [])].sort(
+    (a, b) => a.sequence - b.sequence,
+  );
   const version = quote.quote_versions as unknown as VersionRow | null;
   const brand = version?.brand_snapshot;
   const money = (amount: number) =>
@@ -108,28 +103,21 @@ export default async function PublicQuotePage({ params }: { params: Promise<{ to
             <span className="rounded-full bg-slate-100 px-3 py-1.5 text-xs font-bold capitalize">{status.replaceAll("_", " ")}</span>
           </div>
 
-          <div className="mt-6 space-y-3 rounded-2xl bg-slate-50 p-5 text-sm">
-            <div className="flex justify-between border-b py-2">
-              <span className="text-slate-500">Journey</span>
-              <b>{leg ? `${leg.pickup_address} → ${leg.destination_address}` : "—"}</b>
-            </div>
-            <div className="flex flex-wrap justify-between gap-x-3 gap-y-1 border-b py-2">
-              <span className="text-slate-500">Date</span>
-              <b>{leg?.pickup_date ? formatDateAndTime(leg.pickup_date, leg.pickup_time) : "—"}</b>
-            </div>
-            <div className="flex justify-between border-b py-2">
-              <span className="text-slate-500">Passengers</span>
-              <b>{leg?.passenger_count ?? "—"}</b>
-            </div>
-            {quote.expiry_at && (
-              <div className="flex flex-wrap justify-between gap-x-3 gap-y-1 border-b py-2">
-                <span className="text-slate-500">Valid until</span>
-                <b>{formatDateTime(quote.expiry_at)}</b>
+          <div className="mt-6 space-y-3">
+            {legs.map((leg, i) => (
+              <JourneyLegDetail key={i} leg={leg} index={i} total={legs.length} />
+            ))}
+            <div className="space-y-3 rounded-2xl bg-slate-50 p-5 text-sm">
+              {quote.expiry_at && (
+                <div className="flex flex-wrap justify-between gap-x-3 gap-y-1 border-b py-2">
+                  <span className="text-slate-500">Valid until</span>
+                  <b>{formatDateTime(quote.expiry_at)}</b>
+                </div>
+              )}
+              <div className="flex justify-between py-2">
+                <span className="text-slate-500">Total</span>
+                <b className="text-lg text-primary-600">{version ? money(version.selling_price) : "—"}</b>
               </div>
-            )}
-            <div className="flex justify-between py-2">
-              <span className="text-slate-500">Total</span>
-              <b className="text-lg text-primary-600">{version ? money(version.selling_price) : "—"}</b>
             </div>
           </div>
 

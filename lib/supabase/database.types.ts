@@ -665,6 +665,24 @@ export interface JobSupplierInvoice {
 }
 
 /** Supplier-safe read of a job offer — full address/customer contact only once confirmed. */
+export interface JobOfferLeg {
+  sequence: number;
+  journey_type: JourneyType;
+  pickup_address: string;
+  destination_address: string;
+  via_points: string[];
+  pickup_date: string | null;
+  pickup_time: string | null;
+  return_date: string | null;
+  return_time: string | null;
+  passenger_count: number | null;
+  luggage_count: number | null;
+  wheelchair_required: boolean;
+  child_seats: number;
+  special_requirements: string | null;
+  vehicle_types: { name: string } | null;
+}
+
 export interface JobOfferView {
   offer_id: string;
   job_id: string;
@@ -688,6 +706,7 @@ export interface JobOfferView {
   destination_address: string | null;
   customer_name: string | null;
   customer_phone: string | null;
+  legs: JobOfferLeg[] | null;
 }
 
 // -----------------------------------------------------------------------------

@@ -365,6 +365,7 @@ export async function generateQuotePdf(
 
   // ---- Pricing ---------------------------------------------------------------
   sectionHeading(doc, "Pricing", brandColor, contentWidth);
+  ensureSpace(doc, 44);
   const priceBoxTop = doc.y;
   doc.font(FONT_REGULAR).fontSize(11).fillColor(MUTED).text("Total price", PAGE_MARGIN, priceBoxTop);
   doc
@@ -448,9 +449,28 @@ function sectionHeading(doc: PDFKit.PDFDocument, title: string, color: string, w
   doc.fillColor(INK);
 }
 
+/**
+ * Forces a fresh page first if `height` of content wouldn't fit in what's
+ * left of the current one. Needed before anything (a background rect, a
+ * tight label+value pair) that draws using explicit y-coordinates computed
+ * from doc.y and then manually advances doc.y by a fixed amount afterward —
+ * pdfkit's own per-line auto page-break can still silently fire mid-way
+ * through such a block (each .text() call checks the bottom margin on its
+ * own), and once that happens the manual doc.y math after it is left
+ * pointing at a stale position from the old page instead of the new one.
+ * That produced a real bug: a multi-leg quote whose Pricing section landed
+ * near a page's bottom sent the price *value* to a new page while "Total
+ * price" stayed managed by page 1, and every section after it inherited the
+ * same wrong math — five pages in a row with one stray line of text each.
+ */
+function ensureSpace(doc: PDFKit.PDFDocument, height: number) {
+  if (doc.y + height > doc.page.maxY()) {
+    doc.addPage();
+  }
+}
+
 /** A light grey box of label/value rows — the workhorse layout for travel + pricing details. */
 function drawKeyValueBox(doc: PDFKit.PDFDocument, rows: [string, string][], width: number) {
-  const startY = doc.y;
   const padding = 10;
   const labelWidth = width * 0.4 - padding;
   const valueWidth = width * 0.6 - padding;
@@ -462,6 +482,8 @@ function drawKeyValueBox(doc: PDFKit.PDFDocument, rows: [string, string][], widt
   for (const [, value] of rows) {
     boxHeight += Math.max(doc.heightOfString(value, { width: valueWidth }), 12) + 8;
   }
+  ensureSpace(doc, boxHeight);
+  const startY = doc.y;
   doc.rect(PAGE_MARGIN, startY, width, boxHeight).fillOpacity(0.04).fill(INK).fillOpacity(1);
 
   let y = startY + padding;

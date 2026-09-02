@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { Wand2, Plus, Trash2, Upload, FileText, X, Loader2 } from "lucide-react";
 import { SectionTitle } from "@/components/ui/SectionTitle";
 import { DatePicker } from "@/components/ui/DatePicker";
+import { TimePicker } from "@/components/ui/TimePicker";
 import { PhoneNumberField } from "@/components/ui/PhoneNumberField";
 import { useToast } from "@/components/ui/Toast";
 import { createClient } from "@/lib/supabase/client";
@@ -432,12 +433,7 @@ export function ComplexBookingPage({
               </label>
               <label className="text-sm font-bold">
                 Pickup time
-                <input
-                  type="time"
-                  value={leg.pickupTime}
-                  onChange={(e) => updateLeg(leg.clientId, { pickupTime: e.target.value })}
-                  className="mt-1.5 w-full rounded-xl border px-3 py-2.5 font-normal"
-                />
+                <TimePicker value={leg.pickupTime} onChange={(v) => updateLeg(leg.clientId, { pickupTime: v })} />
               </label>
               {leg.journeyType === "return" && (
                 <>
@@ -447,12 +443,7 @@ export function ComplexBookingPage({
                   </label>
                   <label className="text-sm font-bold">
                     Return time
-                    <input
-                      type="time"
-                      value={leg.returnTime}
-                      onChange={(e) => updateLeg(leg.clientId, { returnTime: e.target.value })}
-                      className="mt-1.5 w-full rounded-xl border px-3 py-2.5 font-normal"
-                    />
+                    <TimePicker value={leg.returnTime} onChange={(v) => updateLeg(leg.clientId, { returnTime: v })} />
                   </label>
                 </>
               )}

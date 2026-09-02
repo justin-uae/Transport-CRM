@@ -18,6 +18,7 @@ interface VersionRow {
 }
 
 interface LegRow {
+  sequence: number;
   pickup_address: string;
   destination_address: string;
   pickup_date: string | null;
@@ -41,7 +42,7 @@ export default async function InvoiceDownloadPage({ params }: { params: Promise<
   const { data: quote } = await admin
     .from("quotes")
     .select(
-      "id, quote_number, status, currency, brand_id, invoice_number, invoiced_at, customers(company_name, contact_name, email, phone, billing_address), enquiries(enquiry_legs(pickup_address, destination_address, pickup_date, pickup_time, passenger_count)), quote_versions!quotes_current_version_id_fkey(vehicle_description, selling_price, brand_snapshot)",
+      "id, quote_number, status, currency, brand_id, invoice_number, invoiced_at, customers(company_name, contact_name, email, phone, billing_address), enquiries(enquiry_legs(sequence, pickup_address, destination_address, pickup_date, pickup_time, passenger_count)), quote_versions!quotes_current_version_id_fkey(vehicle_description, selling_price, brand_snapshot)",
     )
     .eq("public_token", token)
     .single();
@@ -62,7 +63,9 @@ export default async function InvoiceDownloadPage({ params }: { params: Promise<
     phone: string | null;
     billing_address: string | null;
   } | null;
-  const leg = (quote.enquiries as unknown as { enquiry_legs: LegRow[] } | null)?.enquiry_legs?.[0];
+  const legs = [...((quote.enquiries as unknown as { enquiry_legs: LegRow[] } | null)?.enquiry_legs ?? [])].sort(
+    (a, b) => a.sequence - b.sequence,
+  );
   const version = quote.quote_versions as unknown as VersionRow | null;
   const brand = version?.brand_snapshot;
   const money = (amount: number) =>
@@ -126,14 +129,25 @@ export default async function InvoiceDownloadPage({ params }: { params: Promise<
             <tbody>
               <tr className="border-b">
                 <td className="py-4">
-                  <div className="font-bold">
-                    {leg ? `${leg.pickup_address} → ${leg.destination_address}` : "Transport service"}
-                  </div>
-                  <div className="text-xs text-slate-500">
-                    {version?.vehicle_description ?? ""}
-                    {leg?.pickup_date && ` · ${formatDateAndTime(leg.pickup_date, leg.pickup_time)}`}
-                    {leg?.passenger_count ? ` · ${leg.passenger_count} passengers` : ""}
-                  </div>
+                  {legs.length > 0 ? (
+                    <div className="space-y-2">
+                      {legs.map((leg, i) => (
+                        <div key={i}>
+                          <div className="font-bold">
+                            {legs.length > 1 && <span className="text-slate-400">Leg {leg.sequence} · </span>}
+                            {leg.pickup_address} → {leg.destination_address}
+                          </div>
+                          <div className="text-xs text-slate-500">
+                            {i === 0 && version?.vehicle_description ? `${version.vehicle_description} · ` : ""}
+                            {leg.pickup_date && formatDateAndTime(leg.pickup_date, leg.pickup_time)}
+                            {leg.passenger_count ? ` · ${leg.passenger_count} passengers` : ""}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="font-bold">Transport service</div>
+                  )}
                 </td>
                 <td className="py-4 text-right font-bold">{version ? money(version.selling_price) : "—"}</td>
               </tr>

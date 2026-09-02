@@ -9,6 +9,7 @@ import { Panel } from "@/components/ui/Panel";
 import { SectionTitle } from "@/components/ui/SectionTitle";
 import { useToast } from "@/components/ui/Toast";
 import { ConfirmDetailModal } from "@/components/ui/ConfirmDetailModal";
+import { JourneyLegDetail } from "@/components/pages/JourneyLegDetail";
 import { InvoiceUploadForm } from "@/app/supplier/dashboard/InvoiceUploadForm";
 import { acceptJobOfferAction, rejectJobOfferAction, confirmJobAction, completeJobAction } from "@/app/supplier/dashboard/actions";
 import { statusDetailText } from "@/lib/supplierJobStatus";
@@ -140,43 +141,58 @@ export function SupplierJobDetail({
       />
 
       <Panel>
-        <SectionTitle title="Journey" sub="Pickup, destination and passenger details" />
-        <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-3 rounded-2xl bg-slate-50 p-4 text-sm">
-          <div className="col-span-2">
-            <dt className="text-xs font-bold uppercase text-slate-400">Pickup</dt>
-            <dd className="mt-0.5 font-semibold">{job.pickup_address ?? "—"}</dd>
+        <SectionTitle
+          title="Journey"
+          sub={job.legs && job.legs.length > 1 ? "Every leg of this multi-day booking" : "Pickup, destination and passenger details"}
+        />
+        {job.legs && job.legs.length > 0 ? (
+          <div className="mt-4 rounded-2xl bg-slate-50 p-4 text-sm">
+            {job.legs.map((leg, i) => (
+              <JourneyLegDetail key={i} leg={leg} index={i} total={job.legs!.length} />
+            ))}
           </div>
-          <div className="col-span-2">
-            <dt className="text-xs font-bold uppercase text-slate-400">Destination</dt>
-            <dd className="mt-0.5 font-semibold">{job.destination_address ?? "—"}</dd>
-          </div>
-          <div>
-            <dt className="text-xs font-bold uppercase text-slate-400">Date &amp; time</dt>
-            <dd className="mt-0.5 font-semibold">{job.pickup_date ? formatDateAndTime(job.pickup_date, job.pickup_time) : "TBC"}</dd>
-          </div>
-          <div>
-            <dt className="text-xs font-bold uppercase text-slate-400">Passengers</dt>
-            <dd className="mt-0.5 font-semibold">{job.passenger_count ?? "—"}</dd>
-          </div>
-          {rate && (
-            <div>
-              <dt className="text-xs font-bold uppercase text-slate-400">Your rate</dt>
-              <dd className="mt-0.5 text-base font-black text-primary-600">{rate}</dd>
+        ) : (
+          <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-3 rounded-2xl bg-slate-50 p-4 text-sm">
+            <div className="col-span-2">
+              <dt className="text-xs font-bold uppercase text-slate-400">Pickup</dt>
+              <dd className="mt-0.5 font-semibold">{job.pickup_address ?? "—"}</dd>
             </div>
-          )}
-          {job.customer_name && (
-            <div>
-              <dt className="text-xs font-bold uppercase text-slate-400">Customer</dt>
-              <dd className="mt-0.5 font-semibold">{job.customer_name}</dd>
+            <div className="col-span-2">
+              <dt className="text-xs font-bold uppercase text-slate-400">Destination</dt>
+              <dd className="mt-0.5 font-semibold">{job.destination_address ?? "—"}</dd>
             </div>
-          )}
-          {job.customer_phone && (
             <div>
-              <dt className="text-xs font-bold uppercase text-slate-400">Phone</dt>
-              <dd className="mt-0.5 font-semibold">{job.customer_phone}</dd>
+              <dt className="text-xs font-bold uppercase text-slate-400">Date &amp; time</dt>
+              <dd className="mt-0.5 font-semibold">{job.pickup_date ? formatDateAndTime(job.pickup_date, job.pickup_time) : "TBC"}</dd>
             </div>
-          )}
-        </dl>
+            <div>
+              <dt className="text-xs font-bold uppercase text-slate-400">Passengers</dt>
+              <dd className="mt-0.5 font-semibold">{job.passenger_count ?? "—"}</dd>
+            </div>
+          </dl>
+        )}
+        {(rate || job.customer_name || job.customer_phone) && (
+          <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-3 rounded-2xl bg-slate-50 p-4 text-sm">
+            {rate && (
+              <div>
+                <dt className="text-xs font-bold uppercase text-slate-400">Your rate</dt>
+                <dd className="mt-0.5 text-base font-black text-primary-600">{rate}</dd>
+              </div>
+            )}
+            {job.customer_name && (
+              <div>
+                <dt className="text-xs font-bold uppercase text-slate-400">Customer</dt>
+                <dd className="mt-0.5 font-semibold">{job.customer_name}</dd>
+              </div>
+            )}
+            {job.customer_phone && (
+              <div>
+                <dt className="text-xs font-bold uppercase text-slate-400">Phone</dt>
+                <dd className="mt-0.5 font-semibold">{job.customer_phone}</dd>
+              </div>
+            )}
+          </dl>
+        )}
 
         <div className="mt-6 flex flex-wrap gap-2">
           {job.offer_status === "sent" && (
