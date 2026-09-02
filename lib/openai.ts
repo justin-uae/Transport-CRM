@@ -12,5 +12,7 @@ export function getOpenAIClient() {
   if (!apiKey) {
     throw new Error("OPENAI_API_KEY is not configured — the Complex Booking form is unavailable until it's set.");
   }
-  return new OpenAI({ apiKey });
+  // The SDK's bundled node-fetch has a known gzip-decompression race ("Premature
+  // close") on larger/slower responses (e.g. file uploads) — force native fetch.
+  return new OpenAI({ apiKey, fetch: globalThis.fetch });
 }
