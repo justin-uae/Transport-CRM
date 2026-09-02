@@ -20,7 +20,6 @@ import {
   ListTodo,
   Star,
   Truck,
-  Wand2,
   type LucideIcon,
 } from "lucide-react";
 import { PERMISSIONS, type PermissionKey } from "@/lib/permissionKeys";
@@ -54,12 +53,6 @@ export const NAV: NavItem[] = [
       PERMISSIONS.ENQUIRIES_ADD,
       PERMISSIONS.ENQUIRIES_CLAIM_OPEN_LEADS,
     ],
-  },
-  {
-    label: "Complex Booking",
-    href: "/leads/complex-booking",
-    icon: Wand2,
-    anyOf: [PERMISSIONS.ENQUIRIES_ADD],
   },
   {
     label: "Pending Quotes",

@@ -76,7 +76,7 @@ export function ComplexBookingPage({
   const [uploading, setUploading] = useState(false);
 
   const [customerMode, setCustomerMode] = useState<"existing" | "new">(customers.length > 0 ? "existing" : "new");
-  const [existingCustomerId, setExistingCustomerId] = useState(customers[0]?.id ?? "");
+  const [existingCustomerId, setExistingCustomerId] = useState("");
   const [newCustomer, setNewCustomer] = useState({ contactName: "", companyName: "", email: "", phone: "" });
   const [legs, setLegs] = useState<EditableLeg[]>([]);
   const [internalNotes, setInternalNotes] = useState("");
@@ -329,7 +329,7 @@ export function ComplexBookingPage({
             onChange={(e) => setExistingCustomerId(e.target.value)}
             className="w-full rounded-xl border px-3 py-3"
           >
-            {customers.length === 0 && <option value="">No customers yet</option>}
+            <option value="">{customers.length === 0 ? "No customers yet" : "Select a customer…"}</option>
             {customers.map((c) => (
               <option key={c.id} value={c.id}>
                 {c.company_name || c.contact_name} {c.email ? `(${c.email})` : ""}

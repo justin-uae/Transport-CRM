@@ -1,10 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { Clock3, FileText, Menu, Plus, LogOut } from "lucide-react";
+import { Clock3, FileText, Menu, LogOut } from "lucide-react";
 import clsx from "clsx";
 import type { Brand } from "@/lib/supabase/database.types";
 import { BrandSwitcher } from "./BrandSwitcher";
+import { NewLeadMenu } from "../ui/NewLeadMenu";
 import { useAttendance } from "../ui/AttendanceState";
 import { signOut } from "@/app/(staff)/actions";
 
@@ -68,15 +69,7 @@ export function Header({
             New Quote
           </Link>
         )}
-        {canAddLead && (
-          <Link
-            href="/leads/new"
-            className="flex items-center gap-2 rounded-xl bg-primary-500 px-4 py-2.5 text-sm font-bold text-white shadow-lg shadow-orange-200 hover:bg-primary-600"
-          >
-            <Plus size={18} />
-            <span className="hidden sm:inline">New Lead</span>
-          </Link>
-        )}
+        {canAddLead && <NewLeadMenu label="New Lead" labelClassName="hidden sm:inline" />}
         <form action={signOut}>
           <button
             className="rounded-xl border border-slate-200 p-2.5 text-slate-500 hover:bg-slate-50"

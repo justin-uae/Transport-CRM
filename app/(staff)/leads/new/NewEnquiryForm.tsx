@@ -4,6 +4,8 @@ import { useState, useTransition } from "react";
 import { SectionTitle } from "@/components/ui/SectionTitle";
 import { PhoneNumberField } from "@/components/ui/PhoneNumberField";
 import { AddressAutocompleteField } from "@/components/ui/AddressAutocompleteField";
+import { DatePicker } from "@/components/ui/DatePicker";
+import { TimePicker } from "@/components/ui/TimePicker";
 import { createEnquiryAction } from "./actions";
 
 const STEPS = ["Customer", "Journey", "Requirements", "Review"];
@@ -33,7 +35,7 @@ export function NewEnquiryForm({
   const [pending, startTransition] = useTransition();
 
   const [customerMode, setCustomerMode] = useState<"existing" | "new">(customers.length > 0 ? "existing" : "new");
-  const [existingCustomerId, setExistingCustomerId] = useState(customers[0]?.id ?? "");
+  const [existingCustomerId, setExistingCustomerId] = useState("");
   const [newCustomer, setNewCustomer] = useState({ contactName: "", companyName: "", email: "", phone: "" });
 
   const [journey, setJourney] = useState({
@@ -102,21 +104,30 @@ export function NewEnquiryForm({
 
   return (
     <div>
-      <div className="grid grid-cols-4 gap-2">
+      <div className="flex items-center">
         {STEPS.map((s, i) => (
-          <button
-            key={s}
-            type="button"
-            onClick={() => setStep(i + 1)}
-            className={
-              "rounded-xl px-2 py-3 text-xs font-bold md:text-sm " +
-              (step === i + 1 ? "bg-primary-500 text-white" : step > i + 1 ? "bg-primary-50 text-primary-700" : "bg-slate-100 text-slate-500")
-            }
-          >
-            {i + 1}. {s}
-          </button>
+          <div key={s} className="flex flex-1 items-center last:flex-none">
+            <button
+              type="button"
+              onClick={() => setStep(i + 1)}
+              aria-label={`Step ${i + 1}: ${s}`}
+              aria-current={step === i + 1 ? "step" : undefined}
+              className={
+                "grid h-9 w-9 shrink-0 place-items-center rounded-full text-sm font-black transition-colors " +
+                (step >= i + 1 ? "bg-primary-500 text-white" : "bg-slate-100 text-slate-400")
+              }
+            >
+              {i + 1}
+            </button>
+            {i < STEPS.length - 1 && (
+              <div className={"mx-1.5 h-0.5 flex-1 rounded-full " + (step > i + 1 ? "bg-primary-500" : "bg-slate-100")} />
+            )}
+          </div>
         ))}
       </div>
+      <p className="mt-2 text-center text-sm font-bold text-primary-600">
+        Step {step} of {STEPS.length} · {STEPS[step - 1]}
+      </p>
 
       <div className="mt-5">
         {step === 1 && (
@@ -145,7 +156,7 @@ export function NewEnquiryForm({
                   onChange={(e) => setExistingCustomerId(e.target.value)}
                   className="w-full rounded-xl border px-3 py-3"
                 >
-                  {customers.length === 0 && <option value="">No customers yet</option>}
+                  <option value="">{customers.length === 0 ? "No customers yet" : "Select a customer…"}</option>
                   {customers.map((c) => (
                     <option key={c.id} value={c.id}>
                       {c.company_name || c.contact_name} {c.email ? `(${c.email})` : ""}
@@ -212,12 +223,7 @@ export function NewEnquiryForm({
               </label>
               <label className="text-sm font-bold">
                 Pickup date
-                <input
-                  type="date"
-                  value={journey.date}
-                  onChange={(e) => setJourney({ ...journey, date: e.target.value })}
-                  className="mt-2 w-full rounded-xl border px-3 py-3 font-normal"
-                />
+                <DatePicker value={journey.date} onChange={(v) => setJourney({ ...journey, date: v })} />
               </label>
               <label className="text-sm font-bold">
                 Pickup address
@@ -245,32 +251,17 @@ export function NewEnquiryForm({
               </label>
               <label className="text-sm font-bold">
                 Pickup time
-                <input
-                  type="time"
-                  value={journey.time}
-                  onChange={(e) => setJourney({ ...journey, time: e.target.value })}
-                  className="mt-2 w-full rounded-xl border px-3 py-3 font-normal"
-                />
+                <TimePicker value={journey.time} onChange={(v) => setJourney({ ...journey, time: v })} />
               </label>
               {journey.type === "return" && (
                 <>
                   <label className="text-sm font-bold">
                     Return date
-                    <input
-                      type="date"
-                      value={journey.returnDate}
-                      onChange={(e) => setJourney({ ...journey, returnDate: e.target.value })}
-                      className="mt-2 w-full rounded-xl border px-3 py-3 font-normal"
-                    />
+                    <DatePicker value={journey.returnDate} onChange={(v) => setJourney({ ...journey, returnDate: v })} />
                   </label>
                   <label className="text-sm font-bold">
                     Return time
-                    <input
-                      type="time"
-                      value={journey.returnTime}
-                      onChange={(e) => setJourney({ ...journey, returnTime: e.target.value })}
-                      className="mt-2 w-full rounded-xl border px-3 py-3 font-normal"
-                    />
+                    <TimePicker value={journey.returnTime} onChange={(v) => setJourney({ ...journey, returnTime: v })} />
                   </label>
                 </>
               )}
@@ -364,30 +355,30 @@ export function NewEnquiryForm({
             <div className="mt-2 space-y-2 rounded-2xl bg-slate-50 p-5 text-sm">
               {customerMode === "existing" ? (
                 <>
-                  <div className="flex justify-between border-b py-2">
+                  <div className="flex flex-wrap justify-between gap-x-3 gap-y-1 border-b py-2">
                     <span className="text-slate-500">Name</span>
                     <b>{selectedCustomer?.company_name || selectedCustomer?.contact_name || "—"}</b>
                   </div>
-                  <div className="flex justify-between py-2">
+                  <div className="flex flex-wrap justify-between gap-x-3 gap-y-1 py-2">
                     <span className="text-slate-500">Email</span>
                     <b>{selectedCustomer?.email || "—"}</b>
                   </div>
                 </>
               ) : (
                 <>
-                  <div className="flex justify-between border-b py-2">
+                  <div className="flex flex-wrap justify-between gap-x-3 gap-y-1 border-b py-2">
                     <span className="text-slate-500">Contact name</span>
                     <b>{newCustomer.contactName || "—"}</b>
                   </div>
-                  <div className="flex justify-between border-b py-2">
+                  <div className="flex flex-wrap justify-between gap-x-3 gap-y-1 border-b py-2">
                     <span className="text-slate-500">Company</span>
                     <b>{newCustomer.companyName || "—"}</b>
                   </div>
-                  <div className="flex justify-between border-b py-2">
+                  <div className="flex flex-wrap justify-between gap-x-3 gap-y-1 border-b py-2">
                     <span className="text-slate-500">Email</span>
                     <b>{newCustomer.email || "—"}</b>
                   </div>
-                  <div className="flex justify-between py-2">
+                  <div className="flex flex-wrap justify-between gap-x-3 gap-y-1 py-2">
                     <span className="text-slate-500">Phone</span>
                     <b>{newCustomer.phone || "—"}</b>
                   </div>
@@ -397,33 +388,33 @@ export function NewEnquiryForm({
 
             <div className="mt-5 text-xs font-black uppercase tracking-wide text-primary-500">Journey</div>
             <div className="mt-2 space-y-2 rounded-2xl bg-slate-50 p-5 text-sm">
-              <div className="flex justify-between border-b py-2">
+              <div className="flex flex-wrap justify-between gap-x-3 gap-y-1 border-b py-2">
                 <span className="text-slate-500">Journey type</span>
                 <b className="capitalize">{journey.type.replaceAll("_", " ")}</b>
               </div>
-              <div className="flex justify-between border-b py-2">
+              <div className="flex flex-wrap justify-between gap-x-3 gap-y-1 border-b py-2">
                 <span className="text-slate-500">Pickup</span>
                 <b>{journey.pickup || "—"}</b>
               </div>
-              <div className="flex justify-between border-b py-2">
+              <div className="flex flex-wrap justify-between gap-x-3 gap-y-1 border-b py-2">
                 <span className="text-slate-500">Destination</span>
                 <b>{journey.destination || "—"}</b>
               </div>
-              <div className="flex justify-between border-b py-2">
+              <div className="flex flex-wrap justify-between gap-x-3 gap-y-1 border-b py-2">
                 <span className="text-slate-500">Date &amp; time</span>
                 <b>{journey.date || "—"} {journey.time}</b>
               </div>
               {journey.type === "return" && (
-                <div className="flex justify-between border-b py-2">
+                <div className="flex flex-wrap justify-between gap-x-3 gap-y-1 border-b py-2">
                   <span className="text-slate-500">Return date &amp; time</span>
                   <b>{journey.returnDate || "—"} {journey.returnTime}</b>
                 </div>
               )}
-              <div className="flex justify-between border-b py-2">
+              <div className="flex flex-wrap justify-between gap-x-3 gap-y-1 border-b py-2">
                 <span className="text-slate-500">Passengers</span>
                 <b>{journey.passengers}</b>
               </div>
-              <div className="flex justify-between py-2">
+              <div className="flex flex-wrap justify-between gap-x-3 gap-y-1 py-2">
                 <span className="text-slate-500">Luggage</span>
                 <b>{journey.luggage}</b>
               </div>
@@ -431,23 +422,23 @@ export function NewEnquiryForm({
 
             <div className="mt-5 text-xs font-black uppercase tracking-wide text-primary-500">Requirements</div>
             <div className="mt-2 space-y-2 rounded-2xl bg-slate-50 p-5 text-sm">
-              <div className="flex justify-between border-b py-2">
+              <div className="flex flex-wrap justify-between gap-x-3 gap-y-1 border-b py-2">
                 <span className="text-slate-500">Vehicle requested</span>
                 <b>{vehicleTypes.find((v) => v.id === requirements.vehicleTypeId)?.name ?? "—"}</b>
               </div>
-              <div className="flex justify-between border-b py-2">
+              <div className="flex flex-wrap justify-between gap-x-3 gap-y-1 border-b py-2">
                 <span className="text-slate-500">Child seats</span>
                 <b>{requirements.childSeats}</b>
               </div>
-              <div className="flex justify-between border-b py-2">
+              <div className="flex flex-wrap justify-between gap-x-3 gap-y-1 border-b py-2">
                 <span className="text-slate-500">Wheelchair accessible</span>
                 <b>{requirements.wheelchair ? "Required" : "Not required"}</b>
               </div>
-              <div className="flex justify-between border-b py-2">
+              <div className="flex flex-wrap justify-between gap-x-3 gap-y-1 border-b py-2">
                 <span className="text-slate-500">Special requirements</span>
                 <b>{requirements.specialRequirements || "—"}</b>
               </div>
-              <div className="flex justify-between py-2">
+              <div className="flex flex-wrap justify-between gap-x-3 gap-y-1 py-2">
                 <span className="text-slate-500">Internal notes</span>
                 <b>{requirements.internalNotes || "—"}</b>
               </div>

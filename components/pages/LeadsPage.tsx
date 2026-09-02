@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
-import { UserCheck, UserPlus, FileText, TrendingUp, Plus } from "lucide-react";
+import { UserCheck, UserPlus, FileText, TrendingUp } from "lucide-react";
 import { Panel } from "@/components/ui/Panel";
 import { Kpi } from "@/components/ui/Kpi";
 import { JourneyCell } from "@/components/ui/JourneyCell";
@@ -12,6 +12,7 @@ import { SearchInput } from "@/components/ui/SearchInput";
 import { Pagination } from "@/components/ui/Pagination";
 import { useToast } from "@/components/ui/Toast";
 import { ConfirmDetailModal } from "@/components/ui/ConfirmDetailModal";
+import { NewLeadMenu } from "@/components/ui/NewLeadMenu";
 import { claimLeadAction, createEnquiryFromLeadAction, releaseLeadAction } from "@/app/(staff)/leads/actions";
 import { formatDate, formatTimeOnly } from "@/lib/formatDate";
 import { SOURCE_LABEL } from "@/lib/leadSource";
@@ -198,13 +199,10 @@ export function LeadsPage({
         text="Website, email, WhatsApp, telephone and live-chat leads in one workspace."
         action={
           canAddEnquiry ? (
-            <Link
-              href="/leads/new"
-              className="flex items-center gap-2 self-start rounded-xl bg-primary-500 px-4 py-3 text-sm font-bold text-white"
-            >
-              <Plus size={17} />
-              Add Enquiry
-            </Link>
+            <NewLeadMenu
+              label="Add Enquiry"
+              buttonClassName="flex items-center gap-2 self-start rounded-xl bg-primary-500 px-4 py-3 text-sm font-bold text-white"
+            />
           ) : undefined
         }
       />
