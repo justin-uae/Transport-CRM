@@ -104,9 +104,9 @@ export function PaymentChooser({
 
 function Row({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex justify-between border-b py-1.5">
+    <div className="flex flex-wrap justify-between gap-x-3 gap-y-0.5 border-b py-1.5">
       <span className="text-slate-500">{label}</span>
-      <b>{value}</b>
+      <b className="whitespace-nowrap">{value}</b>
     </div>
   );
 }
