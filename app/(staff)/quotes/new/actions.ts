@@ -25,7 +25,7 @@ export async function createQuoteAction(
   const enquiryId = String(formData.get("enquiryId") ?? "");
   const { data: enquiry } = await supabase
     .from("enquiries")
-    .select("id, brand_id, customer_id, lead_id, customers(contact_name, company_name, email), enquiry_legs(sequence, vehicle_type_id, vehicle_types(name))")
+    .select("id, brand_id, customer_id, lead_id, customers(contact_name, company_name, email), enquiry_legs(sequence, vehicle_type_id, vehicle_description, vehicle_types(name))")
     .eq("id", enquiryId)
     .single();
 
@@ -104,7 +104,7 @@ export async function createQuoteAction(
   // Vehicle is chosen once, at lead/enquiry intake — the quote just inherits
   // whatever the enquiry's first leg already has, rather than asking staff
   // to pick it again.
-  const legs = (enquiry.enquiry_legs as unknown as { sequence: number; vehicle_type_id: string | null; vehicle_types: { name: string } | null }[]) ?? [];
+  const legs = (enquiry.enquiry_legs as unknown as { sequence: number; vehicle_type_id: string | null; vehicle_description: string | null; vehicle_types: { name: string } | null }[]) ?? [];
   const firstLeg = [...legs].sort((a, b) => a.sequence - b.sequence)[0];
 
   const { data: version, error: versionError } = await supabase
@@ -113,7 +113,7 @@ export async function createQuoteAction(
       quote_id: quote.id,
       version_number: 1,
       vehicle_type_id: firstLeg?.vehicle_type_id ?? null,
-      vehicle_description: firstLeg?.vehicle_types?.name ?? null,
+      vehicle_description: firstLeg?.vehicle_types?.name ?? firstLeg?.vehicle_description ?? null,
       supplier_estimated_cost: supplierEstimatedCost,
       selling_price: sellingPrice,
       currency,

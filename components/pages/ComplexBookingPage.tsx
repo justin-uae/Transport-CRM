@@ -21,12 +21,6 @@ interface CustomerOption {
   email: string | null;
 }
 
-interface VehicleTypeOption {
-  id: string;
-  name: string;
-  seat_capacity: number;
-}
-
 interface EditableLeg {
   clientId: string;
   journeyType: JourneyType;
@@ -38,8 +32,7 @@ interface EditableLeg {
   returnTime: string;
   passengers: number;
   luggage: number;
-  vehicleTypeId: string;
-  vehicleNotes: string | null;
+  vehicleDescription: string;
   wheelchair: boolean;
   childSeats: number;
   specialRequirements: string;
@@ -57,8 +50,7 @@ function blankLeg(): EditableLeg {
     returnTime: "",
     passengers: 1,
     luggage: 0,
-    vehicleTypeId: "",
-    vehicleNotes: null,
+    vehicleDescription: "",
     wheelchair: false,
     childSeats: 0,
     specialRequirements: "",
@@ -67,10 +59,8 @@ function blankLeg(): EditableLeg {
 
 export function ComplexBookingPage({
   customers,
-  vehicleTypes,
 }: {
   customers: CustomerOption[];
-  vehicleTypes: VehicleTypeOption[];
 }) {
   const notify = useToast();
   const [phase, setPhase] = useState<"input" | "review">("input");
@@ -160,8 +150,7 @@ export function ComplexBookingPage({
           returnTime: leg.return_time ?? "",
           passengers: leg.passenger_count ?? 1,
           luggage: leg.luggage_count ?? 0,
-          vehicleTypeId: "",
-          vehicleNotes: leg.vehicle_notes,
+          vehicleDescription: leg.vehicle_notes ?? "",
           wheelchair: false,
           childSeats: 0,
           specialRequirements: leg.special_requirements ?? "",
@@ -204,7 +193,7 @@ export function ComplexBookingPage({
       returnTime: l.returnTime || null,
       passengerCount: l.passengers || null,
       luggageCount: l.luggage || null,
-      vehicleTypeId: l.vehicleTypeId || null,
+      vehicleDescription: l.vehicleDescription.trim() || null,
       wheelchairRequired: l.wheelchair,
       childSeats: l.childSeats,
       specialRequirements: l.specialRequirements.trim() || null,
@@ -489,19 +478,13 @@ export function ComplexBookingPage({
               </label>
               <label className="text-sm font-bold">
                 Vehicle type
-                <select
-                  value={leg.vehicleTypeId}
-                  onChange={(e) => updateLeg(leg.clientId, { vehicleTypeId: e.target.value })}
+                <input
+                  type="text"
+                  value={leg.vehicleDescription}
+                  onChange={(e) => updateLeg(leg.clientId, { vehicleDescription: e.target.value })}
+                  placeholder="e.g. 45-seat coach, SUV, minivan"
                   className="mt-1.5 w-full rounded-xl border px-3 py-2.5 font-normal"
-                >
-                  <option value="">Select vehicle type…</option>
-                  {vehicleTypes.map((v) => (
-                    <option key={v.id} value={v.id}>
-                      {v.name} · {v.seat_capacity} seats
-                    </option>
-                  ))}
-                </select>
-                {leg.vehicleNotes && <p className="mt-1 text-xs text-slate-400">AI noted: {leg.vehicleNotes}</p>}
+                />
               </label>
               <label className="text-sm font-bold">
                 Child seats

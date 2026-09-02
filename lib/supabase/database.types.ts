@@ -349,6 +349,7 @@ export interface EnquiryLeg {
   passenger_count: number | null;
   luggage_count: number | null;
   vehicle_type_id: string | null;
+  vehicle_description: string | null;
   wheelchair_required: boolean;
   child_seats: number;
   special_requirements: string | null;

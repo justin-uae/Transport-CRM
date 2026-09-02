@@ -14,10 +14,10 @@ export default async function ComplexBooking() {
   }
   const supabase = await createClient();
 
-  const [{ data: customers }, { data: vehicleTypes }] = await Promise.all([
-    supabase.from("customers").select("id, company_name, contact_name, email").order("contact_name"),
-    supabase.from("vehicle_types").select("id, name, seat_capacity").eq("is_active", true).order("seat_capacity"),
-  ]);
+  const { data: customers } = await supabase
+    .from("customers")
+    .select("id, company_name, contact_name, email")
+    .order("contact_name");
 
   return (
     <div>
@@ -27,7 +27,7 @@ export default async function ComplexBooking() {
         text="Paste a multi-day itinerary or upload a quote file — AI reads it and builds every leg for you to review before a lead is created."
       />
       <Panel>
-        <ComplexBookingPage customers={customers ?? []} vehicleTypes={vehicleTypes ?? []} />
+        <ComplexBookingPage customers={customers ?? []} />
       </Panel>
     </div>
   );

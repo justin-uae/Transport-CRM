@@ -49,7 +49,7 @@ export interface ComplexBookingLegInput {
   returnTime: string | null;
   passengerCount: number | null;
   luggageCount: number | null;
-  vehicleTypeId: string | null;
+  vehicleDescription: string | null;
   wheelchairRequired: boolean;
   childSeats: number;
   specialRequirements: string | null;
@@ -168,7 +168,7 @@ export async function createComplexBookingLeadAction(input: CreateComplexBooking
       return_time: leg.journeyType === "return" ? leg.returnTime : null,
       passenger_count: leg.passengerCount,
       luggage_count: leg.luggageCount,
-      vehicle_type_id: leg.vehicleTypeId || null,
+      vehicle_description: leg.vehicleDescription,
       wheelchair_required: leg.wheelchairRequired,
       child_seats: leg.childSeats,
       special_requirements: leg.specialRequirements,
