@@ -35,6 +35,8 @@ export async function approveCommissionAction(commissionId: string) {
     action: "commission_approved",
     entityType: "commission",
     entityId: commissionId,
+    previousValue: { status: commission.status },
+    newValue: { status: "approved" },
   });
 
   revalidatePath("/commissions");
@@ -65,6 +67,8 @@ export async function markCommissionPaidAction(commissionId: string, payrollRefe
     action: "commission_paid",
     entityType: "commission",
     entityId: commissionId,
+    previousValue: { status: commission.status },
+    newValue: { status: "paid", payrollReference: payrollReference.trim() || null },
   });
 
   revalidatePath("/commissions");
@@ -98,6 +102,8 @@ export async function reverseCommissionAction(commissionId: string, reason: stri
     action: "commission_reversed",
     entityType: "commission",
     entityId: commissionId,
+    previousValue: { status: commission.status },
+    newValue: { status: "reversed" },
     reason: reason.trim(),
   });
 

@@ -3,12 +3,15 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { getGbpRates } from "@/lib/fxRates";
 import type { Database } from "@/lib/supabase/database.types";
 
+export type AgeBucket = "current" | "d1_30" | "d31_60" | "d61plus";
+
 export interface BankTransferQueueItem {
   quoteId: string;
   quoteNumber: string;
   customerName: string;
   balance: number;
   currency: string;
+  ageBucket: AgeBucket;
 }
 
 export interface AccountingSummary {
@@ -20,7 +23,16 @@ export interface AccountingSummary {
   supplierPayableGbp: number;
   supplierPayableCount: number;
   bankTransferQueue: BankTransferQueueItem[];
-  receivablesAgeing: { n: string; v: number }[];
+  receivablesAgeing: { n: string; v: number; bucket: AgeBucket }[];
+  /** Every outstanding quote, tagged with its age bucket — FIN-01's ageing
+      chart drill-down reads this (unlike bankTransferQueue, which is capped
+      to the top 8 by balance for the queue panel). */
+  receivablesAgeingDetail: BankTransferQueueItem[];
+  /** True if any outstanding quote's currency had no live FX rate available,
+      so its balance was added at face value rather than a real GBP
+      conversion — flags that the ageing totals may be understated/overstated
+      for that quote rather than silently misreporting it. */
+  fxFallbackUsed: boolean;
 }
 
 interface QuoteRow {
@@ -50,12 +62,12 @@ interface SupplierInvoiceRow {
  * dropped — a KPI should never silently under-count, even if an exotic
  * currency can't be precisely converted.
  */
-function toGbp(amount: number, currency: string, rates: Record<string, number>): number {
+export function toGbp(amount: number, currency: string, rates: Record<string, number>): { value: number; usedFallback: boolean } {
   const code = currency.toUpperCase();
-  if (code === "GBP") return amount;
+  if (code === "GBP") return { value: amount, usedFallback: false };
   const rate = rates[code];
-  if (!rate) return amount;
-  return amount / rate;
+  if (!rate) return { value: amount, usedFallback: true };
+  return { value: amount / rate, usedFallback: false };
 }
 
 function startOfMonth(): string {
@@ -89,6 +101,7 @@ export async function getAccountingSummary(
   let outstandingCount = 0;
   let grossProfitGbp = 0;
   let paidRevenueGbp = 0;
+  let fxFallbackUsed = false;
   const bankTransferQueue: BankTransferQueueItem[] = [];
   const ageingBuckets = { current: 0, d1_30: 0, d31_60: 0, d61plus: 0 };
 
@@ -97,16 +110,24 @@ export async function getAccountingSummary(
 
     for (const p of q.customer_payments ?? []) {
       if (p.paid_at >= monthStart) {
-        collectedRevenueGbp += toGbp(Number(p.amount), q.currency, rates);
+        const converted = toGbp(Number(p.amount), q.currency, rates);
+        collectedRevenueGbp += converted.value;
+        if (converted.usedFallback) fxFallbackUsed = true;
       }
     }
 
     if (q.status === "accepted" || q.status === "partially_paid") {
       const sellingPrice = q.quote_versions?.selling_price ?? 0;
       const balance = Math.max(0, sellingPrice - paidSoFar);
-      const balanceGbp = toGbp(balance, q.currency, rates);
-      outstandingGbp += balanceGbp;
+      const converted = toGbp(balance, q.currency, rates);
+      if (converted.usedFallback) fxFallbackUsed = true;
+      outstandingGbp += converted.value;
       outstandingCount += 1;
+
+      const ageDays = q.decided_at
+        ? Math.floor((Date.now() - new Date(q.decided_at).getTime()) / (24 * 60 * 60 * 1000))
+        : 0;
+      const ageBucket: AgeBucket = ageDays <= 0 ? "current" : ageDays <= 30 ? "d1_30" : ageDays <= 60 ? "d31_60" : "d61plus";
 
       bankTransferQueue.push({
         quoteId: q.id,
@@ -114,22 +135,21 @@ export async function getAccountingSummary(
         customerName: q.customers?.company_name || q.customers?.contact_name || "—",
         balance,
         currency: q.currency,
+        ageBucket,
       });
 
-      const ageDays = q.decided_at
-        ? Math.floor((Date.now() - new Date(q.decided_at).getTime()) / (24 * 60 * 60 * 1000))
-        : 0;
-      if (ageDays <= 0) ageingBuckets.current += balanceGbp;
-      else if (ageDays <= 30) ageingBuckets.d1_30 += balanceGbp;
-      else if (ageDays <= 60) ageingBuckets.d31_60 += balanceGbp;
-      else ageingBuckets.d61plus += balanceGbp;
+      if (ageBucket === "current") ageingBuckets.current += converted.value;
+      else if (ageBucket === "d1_30") ageingBuckets.d1_30 += converted.value;
+      else if (ageBucket === "d31_60") ageingBuckets.d31_60 += converted.value;
+      else ageingBuckets.d61plus += converted.value;
     }
 
     if (q.status === "paid" && q.decided_at && q.decided_at >= monthStart && q.quote_versions) {
-      const sellingPriceGbp = toGbp(q.quote_versions.selling_price, q.currency, rates);
-      const costGbp = toGbp(q.quote_versions.supplier_estimated_cost ?? 0, q.currency, rates);
-      grossProfitGbp += sellingPriceGbp - costGbp;
-      paidRevenueGbp += sellingPriceGbp;
+      const sellingPriceConverted = toGbp(q.quote_versions.selling_price, q.currency, rates);
+      const costConverted = toGbp(q.quote_versions.supplier_estimated_cost ?? 0, q.currency, rates);
+      if (sellingPriceConverted.usedFallback || costConverted.usedFallback) fxFallbackUsed = true;
+      grossProfitGbp += sellingPriceConverted.value - costConverted.value;
+      paidRevenueGbp += sellingPriceConverted.value;
     }
   }
 
@@ -139,12 +159,15 @@ export async function getAccountingSummary(
     const paid = (inv.supplier_payments ?? []).reduce((sum, p) => sum + Number(p.amount), 0);
     const balance = Math.max(0, Number(inv.amount) - paid);
     if (balance > 0) {
-      supplierPayableGbp += toGbp(balance, inv.currency, rates);
+      const converted = toGbp(balance, inv.currency, rates);
+      if (converted.usedFallback) fxFallbackUsed = true;
+      supplierPayableGbp += converted.value;
       supplierPayableCount += 1;
     }
   }
 
   bankTransferQueue.sort((a, b) => b.balance - a.balance);
+  const receivablesAgeingDetail = bankTransferQueue;
 
   return {
     collectedRevenueGbp,
@@ -156,10 +179,12 @@ export async function getAccountingSummary(
     supplierPayableCount,
     bankTransferQueue: bankTransferQueue.slice(0, 8),
     receivablesAgeing: [
-      { n: "Current", v: Math.round(ageingBuckets.current) },
-      { n: "1–30", v: Math.round(ageingBuckets.d1_30) },
-      { n: "31–60", v: Math.round(ageingBuckets.d31_60) },
-      { n: "61+", v: Math.round(ageingBuckets.d61plus) },
+      { n: "Current", v: Math.round(ageingBuckets.current), bucket: "current" },
+      { n: "1–30", v: Math.round(ageingBuckets.d1_30), bucket: "d1_30" },
+      { n: "31–60", v: Math.round(ageingBuckets.d31_60), bucket: "d31_60" },
+      { n: "61+", v: Math.round(ageingBuckets.d61plus), bucket: "d61plus" },
     ],
+    receivablesAgeingDetail,
+    fxFallbackUsed,
   };
 }

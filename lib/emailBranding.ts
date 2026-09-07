@@ -14,6 +14,7 @@ const EMAIL_HEADLINES: Record<EmailTemplateKey, string> = {
   feedback_request: "How was your trip?",
   staff_invited: "You're invited",
   supplier_invited: "You're invited",
+  payment_received: "Payment received",
 };
 
 /**

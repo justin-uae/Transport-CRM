@@ -30,6 +30,15 @@ function textToSafeHtml(text: string): string {
     .join("<br>")}</div>`;
 }
 
+// Deliberately permissive (not a full RFC 5322 parser) — just enough to
+// catch a typo/garbled address before it reaches the SMTP layer, where it
+// would otherwise surface as a raw, unfriendly nodemailer error.
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function invalidAddresses(addresses: string[]): string[] {
+  return addresses.filter((a) => !EMAIL_RE.test(a));
+}
+
 export async function sendEmailAction(data: {
   to: string;
   cc?: string;
@@ -45,14 +54,23 @@ export async function sendEmailAction(data: {
   if (!data.subject.trim()) return { error: "Subject is required." };
   if (!data.bodyText.trim()) return { error: "Write a message before sending." };
 
+  const cc = data.cc
+    ? data.cc
+        .split(",")
+        .map((a) => a.trim())
+        .filter(Boolean)
+    : undefined;
+
+  const badAddresses = [...invalidAddresses(to), ...invalidAddresses(cc ?? [])];
+  if (badAddresses.length > 0) {
+    return {
+      error: `Invalid recipient address${badAddresses.length > 1 ? "es" : ""}: ${badAddresses.join(", ")}`,
+      invalidAddresses: badAddresses,
+    };
+  }
+
   try {
     const { supabase, account } = await requireOwnAccount();
-    const cc = data.cc
-      ? data.cc
-          .split(",")
-          .map((a) => a.trim())
-          .filter(Boolean)
-      : undefined;
 
     await sendUserEmail(supabase, account, {
       to,

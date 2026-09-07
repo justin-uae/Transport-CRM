@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import Link from "next/link";
-import { usePathname, useSearchParams } from "next/navigation";
+import { usePathname, useSearchParams, useRouter } from "next/navigation";
 import { UserCheck, UserPlus, FileText, TrendingUp } from "lucide-react";
 import { Panel } from "@/components/ui/Panel";
 import { Kpi } from "@/components/ui/Kpi";
@@ -125,6 +125,7 @@ export function LeadsPage({
   total: number;
 }) {
   const notify = useToast();
+  const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const [pending, startTransition] = useTransition();
@@ -141,6 +142,17 @@ export function LeadsPage({
   function openDetail(lead: LeadRow) {
     setModalError(null);
     setDetailLead(lead);
+  }
+
+  /** Row/card click and the "View" action: an open-pool lead still opens the
+      quick-claim modal (that's the "Accept" flow, not a view), everything
+      else goes to the full detail page. */
+  function viewLead(lead: LeadRow) {
+    if (lead.status === "open_pool") {
+      openDetail(lead);
+    } else {
+      router.push(`/leads/${lead.id}`);
+    }
   }
 
   function closeDetail() {
@@ -234,7 +246,7 @@ export function LeadsPage({
         </div>
         <div className="space-y-3 py-4 sm:hidden">
           {leads.map((l) => (
-            <div key={l.id} onClick={() => openDetail(l)} className="cursor-pointer rounded-2xl border p-4 hover:bg-orange-50/30">
+            <div key={l.id} onClick={() => viewLead(l)} className="cursor-pointer rounded-2xl border p-4 hover:bg-orange-50/30">
               <div className="flex items-center justify-between gap-2">
                 <b>
                   {l.customers?.company_name || l.customers?.contact_name || "Unassigned enquiry"}
@@ -271,7 +283,7 @@ export function LeadsPage({
                   disabled={pending}
                   onClick={(e) => {
                     e.stopPropagation();
-                    openDetail(l);
+                    viewLead(l);
                   }}
                   className={
                     "mt-3 w-full rounded-xl px-3 py-2 text-xs font-bold disabled:opacity-60 " +
@@ -302,7 +314,7 @@ export function LeadsPage({
               {leads.map((l) => (
                 <tr
                   key={l.id}
-                  onClick={() => openDetail(l)}
+                  onClick={() => viewLead(l)}
                   className="cursor-pointer border-t hover:bg-orange-50/30"
                 >
                   <td className="whitespace-nowrap py-4 font-bold">
@@ -342,16 +354,14 @@ export function LeadsPage({
                       >
                         Accept
                       </button>
-                    ) : isOwnActiveLead(l) ? (
-                      <button
-                        disabled={pending}
-                        onClick={() => openDetail(l)}
-                        className="whitespace-nowrap rounded-xl border border-primary-300 px-3 py-2 text-xs font-bold text-primary-700 disabled:opacity-60"
+                    ) : (
+                      <Link
+                        href={`/leads/${l.id}`}
+                        onClick={(e) => e.stopPropagation()}
+                        className="whitespace-nowrap rounded-xl border border-primary-300 px-3 py-2 text-xs font-bold text-primary-700"
                       >
                         View
-                      </button>
-                    ) : (
-                      <span className="text-xs text-slate-400">—</span>
+                      </Link>
                     )}
                   </td>
                 </tr>

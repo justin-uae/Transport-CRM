@@ -7,7 +7,7 @@ import { PageHead } from "@/components/ui/PageHead";
 import { useToast } from "@/components/ui/Toast";
 import { ConfirmDetailModal } from "@/components/ui/ConfirmDetailModal";
 import { createClient } from "@/lib/supabase/client";
-import { recordCustomerPaymentAction } from "@/app/(staff)/quotes/actions";
+import { recordCustomerPaymentAction, verifyBankTransferAction } from "@/app/(staff)/quotes/actions";
 import { amountDueNow } from "@/lib/quoteMoney";
 import { formatDateTime } from "@/lib/formatDate";
 import type { QuoteStatus, CustomerPaymentMethod } from "@/lib/supabase/database.types";
@@ -18,6 +18,7 @@ export interface PaymentRow {
   method: CustomerPaymentMethod;
   paid_at: string;
   proof_storage_path: string | null;
+  verification_status: "pending" | "verified";
 }
 
 export interface AcceptedQuoteRow {
@@ -43,28 +44,65 @@ export function CustomerPaymentsPage({
   quotes,
   proofUrls,
   currentUserId,
+  canVerify,
 }: {
   quotes: AcceptedQuoteRow[];
   proofUrls: Record<string, string | null>;
   currentUserId: string;
+  canVerify: boolean;
 }) {
   const router = useRouter();
   const notify = useToast();
   const [pending, startTransition] = useTransition();
-  const [tab, setTab] = useState<"awaiting" | "paid">("awaiting");
+  const [verifyingId, setVerifyingId] = useState<string | null>(null);
+  const [tab, setTab] = useState<"awaiting" | "verify" | "paid">("awaiting");
   const [target, setTarget] = useState<AcceptedQuoteRow | null>(null);
   const [amount, setAmount] = useState("");
   const [proofFile, setProofFile] = useState<File | null>(null);
   const [modalError, setModalError] = useState<string | null>(null);
+  const [modalWarning, setModalWarning] = useState<string | null>(null);
 
   const awaiting = useMemo(() => quotes.filter((q) => q.status === "accepted" || q.status === "partially_paid"), [quotes]);
   const paid = useMemo(() => quotes.filter((q) => q.status === "paid"), [quotes]);
-  const visible = tab === "awaiting" ? awaiting : paid;
+  const pendingPayments = useMemo(
+    () =>
+      quotes.flatMap((q) =>
+        (q.customer_payments ?? [])
+          .filter((p) => p.method === "bank_transfer" && p.verification_status === "pending")
+          .map((p) => ({ quote: q, payment: p })),
+      ),
+    [quotes],
+  );
+  const visible = tab === "awaiting" ? awaiting : tab === "paid" ? paid : [];
+
+  function verifiedAmount(q: AcceptedQuoteRow) {
+    return (q.customer_payments ?? [])
+      .filter((p) => p.verification_status === "verified")
+      .reduce((sum, p) => sum + Number(p.amount), 0);
+  }
 
   function balanceOf(q: AcceptedQuoteRow) {
     if (!q.quote_versions) return 0;
-    const alreadyPaid = (q.customer_payments ?? []).reduce((sum, p) => sum + Number(p.amount), 0);
-    return amountDueNow(q.quote_versions, alreadyPaid);
+    return amountDueNow(q.quote_versions, verifiedAmount(q));
+  }
+
+  function verify(paymentId: string) {
+    setVerifyingId(paymentId);
+    startTransition(async () => {
+      const result = await verifyBankTransferAction(paymentId);
+      if (result?.error) {
+        notify(result.error);
+        setVerifyingId(null);
+        return;
+      }
+      notify(
+        result.status === "paid"
+          ? "Verified — quote marked as paid, invoice generated and job sent to Confirmed Booking"
+          : "Payment verified",
+      );
+      setVerifyingId(null);
+      router.refresh();
+    });
   }
 
   function open(q: AcceptedQuoteRow) {
@@ -72,6 +110,7 @@ export function CustomerPaymentsPage({
     setAmount(String(balanceOf(q)));
     setProofFile(null);
     setModalError(null);
+    setModalWarning(null);
   }
 
   function confirm() {
@@ -81,10 +120,33 @@ export function CustomerPaymentsPage({
       return;
     }
     const amountNum = Number(amount);
-    if (!amountNum || amountNum <= 0) {
-      setModalError("Enter an amount greater than zero.");
+    if (amount.trim() === "" || Number.isNaN(amountNum)) {
+      setModalError("Enter a valid amount.");
       return;
     }
+
+    // Zero/negative and above-balance amounts are allowed, but only after an
+    // explicit second confirmation — the warning banner stays up and the
+    // button re-labels to "Record anyway" until the user presses again with
+    // the same amount, matching PAY-01/PAY-02's warn-then-allow rule.
+    if (!modalWarning) {
+      const fullRemaining = Math.max(
+        0,
+        Math.round(((target.quote_versions?.selling_price ?? 0) - verifiedAmount(target)) * 100) / 100,
+      );
+      if (amountNum <= 0) {
+        setModalWarning("This amount is zero or negative. Press Record Payment again to save it anyway.");
+        return;
+      }
+      if (amountNum > fullRemaining) {
+        setModalWarning(
+          `This amount is more than the outstanding balance (${money(fullRemaining, target.currency)}). Press Record Payment again to save it anyway.`,
+        );
+        return;
+      }
+    }
+
+    setModalError(null);
     startTransition(async () => {
       const supabase = createClient();
       const path = `${currentUserId}/${crypto.randomUUID()}-${proofFile.name}`;
@@ -100,6 +162,7 @@ export function CustomerPaymentsPage({
         currency: target.currency,
         proofStoragePath: path,
         proofFileName: proofFile.name,
+        confirmedOverride: !!modalWarning,
       });
       if (result?.error) {
         setModalError(result.error);
@@ -107,9 +170,11 @@ export function CustomerPaymentsPage({
         return;
       }
       notify(
-        result.status === "paid"
-          ? "Marked as paid — invoice generated and job sent to Confirmed Booking"
-          : "Payment recorded — balance still outstanding",
+        result.pendingVerification
+          ? "Payment recorded — awaiting Finance verification before it counts toward the balance"
+          : result.status === "paid"
+            ? "Marked as paid — invoice generated and job sent to Confirmed Booking"
+            : "Payment recorded — balance still outstanding",
       );
       setTarget(null);
       router.refresh();
@@ -125,8 +190,8 @@ export function CustomerPaymentsPage({
         title="Customer Payments"
         text="Quotes the customer has accepted — record deposits, balances and full payments as bank transfers arrive."
       />
-      <div className="mb-4 flex gap-2">
-        {(["awaiting", "paid"] as const).map((t) => (
+      <div className="mb-4 flex flex-wrap gap-2">
+        {(["awaiting", "verify", "paid"] as const).map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
@@ -135,17 +200,59 @@ export function CustomerPaymentsPage({
               (tab === t ? "bg-primary-500 text-white" : "bg-slate-100 text-slate-600")
             }
           >
-            {t === "awaiting" ? `Awaiting Payment (${awaiting.length})` : `Paid (${paid.length})`}
+            {t === "awaiting"
+              ? `Awaiting Payment (${awaiting.length})`
+              : t === "verify"
+                ? `Pending Verification (${pendingPayments.length})`
+                : `Paid (${paid.length})`}
           </button>
         ))}
       </div>
+      {tab === "verify" ? (
+        <Panel>
+          <div className="space-y-3">
+            {pendingPayments.map(({ quote: q, payment: p }) => (
+              <div key={p.id} className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border p-4">
+                <div>
+                  <b className="text-primary-600">{q.quote_number}</b>
+                  <div className="text-sm font-semibold">
+                    {q.customers?.company_name || q.customers?.contact_name || "—"}
+                  </div>
+                  <div className="mt-1 text-sm">
+                    Bank transfer · {money(p.amount, q.currency)} · {formatDateTime(p.paid_at)}
+                  </div>
+                  {proofUrls[p.id] && (
+                    <a href={proofUrls[p.id] ?? undefined} target="_blank" rel="noreferrer" className="text-xs font-bold text-primary-600">
+                      View proof
+                    </a>
+                  )}
+                </div>
+                {canVerify ? (
+                  <button
+                    disabled={pending && verifyingId === p.id}
+                    onClick={() => verify(p.id)}
+                    className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-bold text-white disabled:opacity-60"
+                  >
+                    {pending && verifyingId === p.id ? "Verifying…" : "Verify"}
+                  </button>
+                ) : (
+                  <span className="text-xs font-semibold text-amber-600">Awaiting Finance verification</span>
+                )}
+              </div>
+            ))}
+            {pendingPayments.length === 0 && (
+              <p className="py-8 text-center text-sm text-slate-500">No bank transfers awaiting verification.</p>
+            )}
+          </div>
+        </Panel>
+      ) : (
       <Panel>
         <div className="space-y-3">
           {visible.map((q) => {
             const leg = q.enquiries?.enquiry_legs?.[0];
             const customer = q.customers;
             const balance = balanceOf(q);
-            const paidSoFar = (q.customer_payments ?? []).reduce((sum, p) => sum + Number(p.amount), 0);
+            const paidSoFar = verifiedAmount(q);
             return (
               <div key={q.id} className="rounded-2xl border p-4">
                 <div className="flex flex-wrap items-center justify-between gap-2">
@@ -172,6 +279,11 @@ export function CustomerPaymentsPage({
                       <div key={p.id} className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
                         <span className="capitalize">
                           {p.method.replace("_", " ")} · {money(p.amount, q.currency)} · {formatDateTime(p.paid_at)}
+                          {p.verification_status === "pending" && (
+                            <span className="ml-1.5 rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-bold normal-case text-amber-700">
+                              Pending verification
+                            </span>
+                          )}
                         </span>
                         {proofUrls[p.id] && (
                           <a href={proofUrls[p.id] ?? undefined} target="_blank" rel="noreferrer" className="font-bold text-primary-600">
@@ -203,6 +315,7 @@ export function CustomerPaymentsPage({
           )}
         </div>
       </Panel>
+      )}
 
       {target && (
         <ConfirmDetailModal
@@ -217,17 +330,22 @@ export function CustomerPaymentsPage({
             { label: "Customer", value: target.customers?.company_name || target.customers?.contact_name || "—" },
             { label: "Outstanding balance", value: money(targetBalance, target.currency) },
           ]}
-          confirmLabel="Record payment"
+          confirmLabel={modalWarning ? "Record anyway" : "Record payment"}
           onConfirm={confirm}
         >
+          {modalWarning && (
+            <div className="mb-3 rounded-xl bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-700">{modalWarning}</div>
+          )}
           <label className="block text-sm font-bold">
             Amount received
             <input
               type="number"
-              min={0}
               step="0.01"
               value={amount}
-              onChange={(e) => setAmount(e.target.value)}
+              onChange={(e) => {
+                setAmount(e.target.value);
+                setModalWarning(null);
+              }}
               className="mt-1 w-full rounded-xl border px-3 py-2 font-normal"
             />
           </label>

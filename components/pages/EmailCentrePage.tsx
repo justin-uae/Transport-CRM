@@ -55,12 +55,15 @@ export function EmailCentrePage({
   const [composeTo, setComposeTo] = useState("");
   const [composeSubject, setComposeSubject] = useState("");
   const [composeBody, setComposeBody] = useState("");
+  const [invalidAddresses, setInvalidAddresses] = useState<string[]>([]);
 
   function send(payload: { to: string; subject: string; bodyText: string; inReplyTo?: string | null }) {
+    setInvalidAddresses([]);
     startTransition(async () => {
       const result = await sendEmailAction(payload);
       if (result?.error) {
         notify(result.error);
+        setInvalidAddresses(result.invalidAddresses ?? []);
         return;
       }
       notify("Email sent");
@@ -69,6 +72,7 @@ export function EmailCentrePage({
       setComposeTo("");
       setComposeSubject("");
       setComposeBody("");
+      setInvalidAddresses([]);
       router.refresh();
     });
   }
@@ -271,10 +275,21 @@ export function EmailCentrePage({
                 To
                 <input
                   value={composeTo}
-                  onChange={(e) => setComposeTo(e.target.value)}
+                  onChange={(e) => {
+                    setComposeTo(e.target.value);
+                    if (invalidAddresses.length > 0) setInvalidAddresses([]);
+                  }}
                   placeholder="name@example.com, another@example.com"
-                  className="mt-1 w-full rounded-xl border px-3 py-2 font-normal"
+                  className={
+                    "mt-1 w-full rounded-xl border px-3 py-2 font-normal " +
+                    (invalidAddresses.length > 0 ? "border-red-400 bg-red-50" : "")
+                  }
                 />
+                {invalidAddresses.length > 0 && (
+                  <span className="mt-1 block text-xs font-normal text-red-600">
+                    Not a valid address: {invalidAddresses.join(", ")}
+                  </span>
+                )}
               </label>
               <label className="block text-sm font-bold">
                 Subject

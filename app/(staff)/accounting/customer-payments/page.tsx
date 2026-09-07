@@ -8,13 +8,14 @@ export default async function Page() {
   const profile = await requireProfile();
   const canMarkPaid = await hasPermission(profile, PERMISSIONS.FINANCE_RECORD_PAYMENTS);
   if (!canMarkPaid) redirect("/dashboard");
+  const canVerify = await hasPermission(profile, PERMISSIONS.FINANCE_VERIFY_BANK_TRANSFERS);
 
   const supabase = await createClient();
 
   const { data: quotes } = await supabase
     .from("quotes")
     .select(
-      "id, quote_number, status, currency, decided_at, invoice_number, invoiced_at, customers(company_name, contact_name, phone, email), enquiries(enquiry_legs(pickup_address, destination_address, pickup_date)), quote_versions!quotes_current_version_id_fkey(selling_price, deposit_percentage), customer_payments(id, amount, method, paid_at, proof_storage_path)",
+      "id, quote_number, status, currency, decided_at, invoice_number, invoiced_at, customers(company_name, contact_name, phone, email), enquiries(enquiry_legs(pickup_address, destination_address, pickup_date)), quote_versions!quotes_current_version_id_fkey(selling_price, deposit_percentage), customer_payments(id, amount, method, paid_at, proof_storage_path, verification_status)",
     )
     .in("status", ["accepted", "partially_paid", "paid"])
     .order("decided_at", { ascending: false });
@@ -34,5 +35,5 @@ export default async function Page() {
   );
   const proofUrls = Object.fromEntries(signedProofUrls.map((s) => [s.id, s.url]));
 
-  return <CustomerPaymentsPage quotes={rows} proofUrls={proofUrls} currentUserId={profile.id} />;
+  return <CustomerPaymentsPage quotes={rows} proofUrls={proofUrls} currentUserId={profile.id} canVerify={canVerify} />;
 }

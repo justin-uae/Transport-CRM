@@ -12,7 +12,7 @@ async function loadDecidableQuote(admin: ReturnType<typeof createAdminClient>, t
   const { data: quote } = await admin
     .from("quotes")
     .select(
-      "id, tenant_id, status, quote_number, created_by, brands(name), enquiries(assigned_user_id, customers(contact_name, company_name))",
+      "id, tenant_id, status, quote_number, created_by, current_version_id, brands(name), enquiries(assigned_user_id, customers(contact_name, company_name))",
     )
     .eq("public_token", token)
     .single();
@@ -108,11 +108,15 @@ export async function createStripeCheckoutAction(token: string) {
   }
 }
 
-export async function acceptQuoteAction(token: string) {
+export async function acceptQuoteAction(token: string, acceptedByName: string) {
   const admin = createAdminClient();
   const quote = await loadDecidableQuote(admin, token);
   if (!quote || (quote.status !== "sent" && quote.status !== "viewed")) {
     return { error: "This quote can no longer be accepted." };
+  }
+  const name = acceptedByName.trim();
+  if (!name) {
+    return { error: "Type your name to confirm acceptance." };
   }
 
   const headerList = await headers();
@@ -120,6 +124,8 @@ export async function acceptQuoteAction(token: string) {
     quote_id: quote.id,
     decision: "accepted",
     ip_address: headerList.get("x-forwarded-for"),
+    version_id: quote.current_version_id,
+    accepted_by_name: name,
   });
   await admin
     .from("quotes")

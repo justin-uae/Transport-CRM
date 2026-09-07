@@ -1,13 +1,21 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { BarChart, Bar, CartesianGrid, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
-import { Landmark, ReceiptText, TrendingUp, Truck } from "lucide-react";
+import { Landmark, ReceiptText, TrendingUp, Truck, X, AlertTriangle } from "lucide-react";
 import { Panel } from "@/components/ui/Panel";
 import { Kpi } from "@/components/ui/Kpi";
 import { PageHead } from "@/components/ui/PageHead";
 import { SectionTitle } from "@/components/ui/SectionTitle";
-import type { AccountingSummary } from "@/lib/accountingSummary";
+import type { AccountingSummary, AgeBucket } from "@/lib/accountingSummary";
+
+const BUCKET_LABEL: Record<AgeBucket, string> = {
+  current: "Current",
+  d1_30: "1–30 days",
+  d31_60: "31–60 days",
+  d61plus: "61+ days",
+};
 
 // Built by hand rather than Intl's `notation: "compact"` — that option
 // disagrees between Node's ICU (SSR) and the browser's (hydration) on both
@@ -29,6 +37,9 @@ function money(amount: number, currency: string) {
 }
 
 export function AccountingPage({ summary }: { summary: AccountingSummary }) {
+  const [selectedBucket, setSelectedBucket] = useState<AgeBucket | null>(null);
+  const bucketRows = selectedBucket ? summary.receivablesAgeingDetail.filter((r) => r.ageBucket === selectedBucket) : [];
+
   return (
     <div>
       <PageHead
@@ -36,6 +47,13 @@ export function AccountingPage({ summary }: { summary: AccountingSummary }) {
         title="Accounting & payment control"
         text="Invoices, bank transfers, supplier costs, reconciliation and group reporting."
       />
+      {summary.fxFallbackUsed && (
+        <div className="mb-4 flex items-center gap-2 rounded-xl bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-700">
+          <AlertTriangle size={16} className="shrink-0" />
+          One or more figures below include an amount in a currency with no live exchange rate available — added at
+          face value rather than converted, so totals may be under- or over-stated for that amount.
+        </div>
+      )}
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <Kpi
           title="Collected revenue"
@@ -95,7 +113,7 @@ export function AccountingPage({ summary }: { summary: AccountingSummary }) {
           </div>
         </Panel>
         <Panel>
-          <SectionTitle title="Accounts receivable" sub="Ageing summary" />
+          <SectionTitle title="Accounts receivable" sub="Ageing summary — click a bar to see the quotes behind it" />
           <div className="mt-5 h-64">
             <ResponsiveContainer>
               <BarChart data={summary.receivablesAgeing}>
@@ -103,12 +121,47 @@ export function AccountingPage({ summary }: { summary: AccountingSummary }) {
                 <XAxis dataKey="n" axisLine={false} tickLine={false} />
                 <YAxis axisLine={false} tickLine={false} />
                 <Tooltip formatter={(value: number) => compactGbp(value)} />
-                <Bar dataKey="v" fill="#f97316" radius={[8, 8, 0, 0]} />
+                <Bar
+                  dataKey="v"
+                  fill="#f97316"
+                  radius={[8, 8, 0, 0]}
+                  cursor="pointer"
+                  onClick={(data: { bucket: AgeBucket }) => setSelectedBucket(data.bucket)}
+                />
               </BarChart>
             </ResponsiveContainer>
           </div>
         </Panel>
       </div>
+
+      {selectedBucket && (
+        <div className="fixed inset-0 z-[200] flex items-end justify-center bg-slate-900/40 p-4 sm:items-center" onClick={() => setSelectedBucket(null)}>
+          <div className="w-full max-w-lg rounded-3xl border bg-white p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-black">{BUCKET_LABEL[selectedBucket]} — {bucketRows.length} quote{bucketRows.length === 1 ? "" : "s"}</h3>
+              <button onClick={() => setSelectedBucket(null)} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100" aria-label="Close">
+                <X size={18} />
+              </button>
+            </div>
+            <div className="mt-4 max-h-[60vh] space-y-2 overflow-y-auto">
+              {bucketRows.map((r) => (
+                <Link
+                  key={r.quoteId}
+                  href={`/quotes/${r.quoteId}`}
+                  className="flex items-center justify-between gap-3 rounded-xl border p-3 text-sm hover:bg-slate-50"
+                >
+                  <div>
+                    <b className="text-primary-600">{r.quoteNumber}</b>
+                    <div className="text-slate-500">{r.customerName}</div>
+                  </div>
+                  <b>{money(r.balance, r.currency)}</b>
+                </Link>
+              ))}
+              {bucketRows.length === 0 && <p className="py-8 text-center text-sm text-slate-500">No quotes in this bucket.</p>}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

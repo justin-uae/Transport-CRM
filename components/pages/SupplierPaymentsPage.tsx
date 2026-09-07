@@ -7,8 +7,9 @@ import { PageHead } from "@/components/ui/PageHead";
 import { useToast } from "@/components/ui/Toast";
 import { ConfirmDetailModal } from "@/components/ui/ConfirmDetailModal";
 import { createClient } from "@/lib/supabase/client";
-import { formatDateTime } from "@/lib/formatDate";
+import { formatDateTime, formatDate } from "@/lib/formatDate";
 import { recordSupplierPaymentAction } from "@/app/(staff)/accounting/supplier-payments/actions";
+import { downloadCsv } from "@/lib/exportCsv";
 import type { SupplierPaymentStatus } from "@/lib/supabase/database.types";
 
 export interface SupplierInvoiceRow {
@@ -73,10 +74,66 @@ export function SupplierPaymentsPage({
   const [notes, setNotes] = useState("");
   const [proofFile, setProofFile] = useState<File | null>(null);
   const [modalError, setModalError] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
+  const [supplierFilter, setSupplierFilter] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
 
   const outstanding = invoices.filter((row) => row.jobs?.supplier_payment_status !== "paid");
   const paidHistory = invoices.filter((row) => row.jobs?.supplier_payment_status === "paid");
-  const visible = tab === "outstanding" ? outstanding : paidHistory;
+
+  const supplierOptions = useMemo(() => {
+    const names = new Set(invoices.map((row) => row.jobs?.suppliers?.name).filter((n): n is string => !!n));
+    return [...names].sort();
+  }, [invoices]);
+
+  /** Latest payment date on the invoice (Paid History rows always have at
+      least one) — used for both display and the date-range filter there. */
+  function latestPaymentDate(row: SupplierInvoiceRow): string | null {
+    const dates = (row.jobs?.supplier_payments ?? []).map((p) => p.paid_at).sort();
+    return dates.length > 0 ? dates[dates.length - 1]! : null;
+  }
+
+  const filtered = useMemo(() => {
+    const base = tab === "outstanding" ? outstanding : paidHistory;
+    const q = search.trim().toLowerCase();
+    return base.filter((row) => {
+      if (supplierFilter && row.jobs?.suppliers?.name !== supplierFilter) return false;
+      if (q) {
+        const haystack = [
+          row.jobs?.suppliers?.name,
+          row.jobs?.quotes?.quote_number,
+          row.jobs?.quotes?.customers?.company_name,
+          row.jobs?.quotes?.customers?.contact_name,
+        ]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase();
+        if (!haystack.includes(q)) return false;
+      }
+      const relevantDate = tab === "outstanding" ? row.forwarded_at : latestPaymentDate(row);
+      if (dateFrom && (!relevantDate || relevantDate < dateFrom)) return false;
+      if (dateTo && (!relevantDate || relevantDate > `${dateTo}T23:59:59`)) return false;
+      return true;
+    });
+  }, [tab, outstanding, paidHistory, search, supplierFilter, dateFrom, dateTo]);
+
+  const visible = filtered;
+
+  function exportVisible() {
+    downloadCsv(`supplier-payments-${tab}`, visible, [
+      { header: "Supplier", value: (row) => row.jobs?.suppliers?.name },
+      { header: "Quote number", value: (row) => row.jobs?.quotes?.quote_number },
+      { header: "Customer", value: (row) => row.jobs?.quotes?.customers?.company_name || row.jobs?.quotes?.customers?.contact_name },
+      { header: "Currency", value: (row) => row.currency },
+      { header: "Invoice amount", value: (row) => row.amount },
+      { header: "Paid so far", value: (row) => paidSoFar(row) },
+      { header: "Balance", value: (row) => row.amount - paidSoFar(row) },
+      { header: "Status", value: (row) => row.jobs?.supplier_payment_status ?? "unpaid" },
+      { header: "Forwarded", value: (row) => (row.forwarded_at ? formatDate(row.forwarded_at) : "") },
+      { header: "Latest payment date", value: (row) => { const d = latestPaymentDate(row); return d ? formatDate(d) : ""; } },
+    ]);
+  }
 
   function open(row: SupplierInvoiceRow) {
     const balance = row.amount - paidSoFar(row);
@@ -147,19 +204,63 @@ export function SupplierPaymentsPage({
         title="Supplier Payments"
         text="Invoices forwarded from Dispatch — pay the supplier by bank transfer outside the system, then record it here (partial payments supported)."
       />
-      <div className="mb-4 flex gap-2">
-        {(["outstanding", "paid"] as const).map((t) => (
-          <button
-            key={t}
-            onClick={() => setTab(t)}
-            className={
-              "rounded-xl px-3 py-2 text-sm font-bold " +
-              (tab === t ? "bg-primary-500 text-white" : "bg-slate-100 text-slate-600")
-            }
-          >
-            {t === "outstanding" ? `Outstanding (${outstanding.length})` : `Paid History (${paidHistory.length})`}
-          </button>
-        ))}
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+        <div className="flex gap-2">
+          {(["outstanding", "paid"] as const).map((t) => (
+            <button
+              key={t}
+              onClick={() => setTab(t)}
+              className={
+                "rounded-xl px-3 py-2 text-sm font-bold " +
+                (tab === t ? "bg-primary-500 text-white" : "bg-slate-100 text-slate-600")
+              }
+            >
+              {t === "outstanding" ? `Outstanding (${outstanding.length})` : `Paid History (${paidHistory.length})`}
+            </button>
+          ))}
+        </div>
+        <button
+          type="button"
+          onClick={exportVisible}
+          disabled={visible.length === 0}
+          className="rounded-xl border px-3 py-2 text-sm font-bold text-slate-600 hover:bg-slate-50 disabled:opacity-40"
+        >
+          Export CSV
+        </button>
+      </div>
+      <div className="mb-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+        <input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search supplier, quote, customer…"
+          className="rounded-xl border bg-slate-50 px-3 py-2.5 text-sm outline-none"
+        />
+        <select
+          value={supplierFilter}
+          onChange={(e) => setSupplierFilter(e.target.value)}
+          className="rounded-xl border bg-slate-50 px-3 py-2.5 text-sm outline-none"
+        >
+          <option value="">All suppliers</option>
+          {supplierOptions.map((name) => (
+            <option key={name} value={name}>
+              {name}
+            </option>
+          ))}
+        </select>
+        <input
+          type="date"
+          value={dateFrom}
+          onChange={(e) => setDateFrom(e.target.value)}
+          aria-label={tab === "outstanding" ? "Forwarded from" : "Paid from"}
+          className="rounded-xl border bg-slate-50 px-3 py-2.5 text-sm outline-none"
+        />
+        <input
+          type="date"
+          value={dateTo}
+          onChange={(e) => setDateTo(e.target.value)}
+          aria-label={tab === "outstanding" ? "Forwarded to" : "Paid to"}
+          className="rounded-xl border bg-slate-50 px-3 py-2.5 text-sm outline-none"
+        />
       </div>
       <Panel>
         <div className="space-y-3">
