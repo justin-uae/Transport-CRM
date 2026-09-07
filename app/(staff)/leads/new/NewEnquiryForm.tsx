@@ -7,6 +7,7 @@ import { AddressAutocompleteField } from "@/components/ui/AddressAutocompleteFie
 import { DatePicker } from "@/components/ui/DatePicker";
 import { TimePicker } from "@/components/ui/TimePicker";
 import { createEnquiryAction } from "./actions";
+import type { DuplicateCustomerMatch } from "@/lib/customerDuplicates";
 
 const STEPS = ["Customer", "Journey", "Requirements", "Review"];
 
@@ -15,6 +16,7 @@ interface CustomerOption {
   company_name: string | null;
   contact_name: string;
   email: string | null;
+  phone: string | null;
 }
 
 interface VehicleTypeOption {
@@ -32,6 +34,7 @@ export function NewEnquiryForm({
 }) {
   const [step, setStep] = useState(1);
   const [error, setError] = useState<string | null>(null);
+  const [duplicateWarning, setDuplicateWarning] = useState<DuplicateCustomerMatch | null>(null);
   const [pending, startTransition] = useTransition();
 
   const [customerMode, setCustomerMode] = useState<"existing" | "new">(customers.length > 0 ? "existing" : "new");
@@ -64,8 +67,9 @@ export function NewEnquiryForm({
 
   const selectedCustomer = customers.find((c) => c.id === existingCustomerId);
 
-  function submit() {
+  function submit(confirmDuplicate = false) {
     setError(null);
+    setDuplicateWarning(null);
     const formData = new FormData();
     if (customerMode === "existing") {
       formData.set("existingCustomerId", existingCustomerId);
@@ -74,6 +78,7 @@ export function NewEnquiryForm({
       formData.set("newCompanyName", newCustomer.companyName);
       formData.set("newEmail", newCustomer.email);
       formData.set("newPhone", newCustomer.phone);
+      if (confirmDuplicate) formData.set("confirmedDuplicateCustomer", "true");
     }
     formData.set("journeyType", journey.type);
     formData.set("pickupAddress", journey.pickup);
@@ -98,6 +103,10 @@ export function NewEnquiryForm({
 
     startTransition(async () => {
       const result = await createEnquiryAction({ error: null }, formData);
+      if (result?.duplicate) {
+        setDuplicateWarning(result.duplicate);
+        return;
+      }
       if (result?.error) setError(result.error);
     });
   }
@@ -159,7 +168,7 @@ export function NewEnquiryForm({
                   <option value="">{customers.length === 0 ? "No customers yet" : "Select a customer…"}</option>
                   {customers.map((c) => (
                     <option key={c.id} value={c.id}>
-                      {c.company_name || c.contact_name} {c.email ? `(${c.email})` : ""}
+                      {c.company_name || c.contact_name} {c.email ? `(${c.email})` : ""} {c.phone ? `· ${c.phone}` : ""}
                     </option>
                   ))}
                 </select>
@@ -447,6 +456,12 @@ export function NewEnquiryForm({
         )}
       </div>
 
+      {duplicateWarning && (
+        <div className="mt-4 rounded-xl bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-700">
+          A customer matching this email or phone already exists: {duplicateWarning.label}. Save again to create a
+          separate record anyway, or go back and select the existing customer instead.
+        </div>
+      )}
       {error && <div className="mt-4 rounded-xl bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">{error}</div>}
 
       <div className="mt-6 flex justify-between border-t pt-5">
@@ -466,11 +481,20 @@ export function NewEnquiryForm({
           >
             Next Step →
           </button>
+        ) : duplicateWarning ? (
+          <button
+            type="button"
+            disabled={pending}
+            onClick={() => submit(true)}
+            className="rounded-xl bg-amber-500 px-5 py-2.5 text-sm font-bold text-white disabled:opacity-60"
+          >
+            {pending ? "Saving…" : "Create anyway"}
+          </button>
         ) : (
           <button
             type="button"
             disabled={pending}
-            onClick={submit}
+            onClick={() => submit(false)}
             className="rounded-xl bg-primary-500 px-5 py-2.5 text-sm font-bold text-white disabled:opacity-60"
           >
             {pending ? "Saving…" : "Save & Continue to Quote"}

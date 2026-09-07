@@ -2,18 +2,40 @@ import Link from "next/link";
 import { ChevronRight } from "lucide-react";
 import { PageHead } from "@/components/ui/PageHead";
 import { Panel } from "@/components/ui/Panel";
+import { SearchInput } from "@/components/ui/SearchInput";
+import { Pagination } from "@/components/ui/Pagination";
 import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { NewCustomerForm } from "./NewCustomerForm";
 
-export default async function CustomersPage() {
+const PAGE_SIZE = 25;
+
+export default async function CustomersPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ q?: string; page?: string }>;
+}) {
   await requireProfile();
   const supabase = await createClient();
+  const params = await searchParams;
 
-  const { data: customers } = await supabase
+  const q = params.q?.trim() ?? "";
+  const page = Math.max(1, Number(params.page) || 1);
+  const from = (page - 1) * PAGE_SIZE;
+  const to = from + PAGE_SIZE - 1;
+
+  let query = supabase
     .from("customers")
-    .select("id, company_name, contact_name, email, phone, country, created_at, profiles(full_name)")
-    .order("created_at", { ascending: false });
+    .select("id, company_name, contact_name, email, phone, country, created_at, profiles(full_name)", {
+      count: "exact",
+    });
+  if (q) {
+    query = query.or(
+      `company_name.ilike.%${q}%,contact_name.ilike.%${q}%,email.ilike.%${q}%,phone.ilike.%${q}%`,
+    );
+  }
+
+  const { data: customers, count } = await query.order("created_at", { ascending: false }).range(from, to);
 
   return (
     <div>
@@ -23,6 +45,9 @@ export default async function CustomersPage() {
         text="Every company and contact your team has quoted or booked for."
         action={<NewCustomerForm />}
       />
+      <div className="mb-4 flex gap-2">
+        <SearchInput placeholder="Search by name, company, email or phone…" />
+      </div>
       <Panel>
         <div className="overflow-x-auto">
           <table className="w-full min-w-[720px] text-left text-sm">
@@ -70,10 +95,13 @@ export default async function CustomersPage() {
             </tbody>
           </table>
           {(customers ?? []).length === 0 && (
-            <p className="py-8 text-center text-sm text-slate-500">No customers yet — add one to get started.</p>
+            <p className="py-8 text-center text-sm text-slate-500">
+              {q ? "No customers match your search." : "No customers yet — add one to get started."}
+            </p>
           )}
         </div>
       </Panel>
+      <Pagination page={page} pageSize={PAGE_SIZE} total={count ?? 0} />
     </div>
   );
 }

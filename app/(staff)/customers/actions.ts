@@ -5,8 +5,12 @@ import { createClient } from "@/lib/supabase/server";
 import { requireProfile } from "@/lib/auth";
 import { hasPermission, PERMISSIONS } from "@/lib/permissions";
 import { recordAudit } from "@/lib/audit";
+import { findDuplicateCustomer, type DuplicateCustomerMatch } from "@/lib/customerDuplicates";
 
-export async function createCustomerAction(_prevState: { error: string | null }, formData: FormData) {
+export async function createCustomerAction(
+  _prevState: { error: string | null; duplicate?: DuplicateCustomerMatch | null },
+  formData: FormData,
+) {
   const actor = await requireProfile();
   const allowed = await hasPermission(actor, PERMISSIONS.ENQUIRIES_ADD);
   if (!allowed) return { error: "You do not have permission to add customers." };
@@ -23,6 +27,12 @@ export async function createCustomerAction(_prevState: { error: string | null },
   }
 
   const supabase = await createClient();
+
+  if (formData.get("confirmedDuplicate") !== "true") {
+    const duplicate = await findDuplicateCustomer(supabase, actor.tenant_id, email, phone);
+    if (duplicate) return { error: null, duplicate };
+  }
+
   const { data: customer, error } = await supabase
     .from("customers")
     .insert({

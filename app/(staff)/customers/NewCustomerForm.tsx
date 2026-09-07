@@ -5,11 +5,13 @@ import { Plus } from "lucide-react";
 import { useToast } from "@/components/ui/Toast";
 import { PhoneNumberField } from "@/components/ui/PhoneNumberField";
 import { createCustomerAction } from "./actions";
+import type { DuplicateCustomerMatch } from "@/lib/customerDuplicates";
 
 export function NewCustomerForm() {
   const notify = useToast();
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [duplicate, setDuplicate] = useState<DuplicateCustomerMatch | null>(null);
   const [pending, startTransition] = useTransition();
 
   function handleSubmit(formData: FormData) {
@@ -20,9 +22,18 @@ export function NewCustomerForm() {
         setError(result.error);
         return;
       }
+      if (result?.duplicate) {
+        setDuplicate(result.duplicate);
+        return;
+      }
       notify("Customer created");
       setOpen(false);
     });
+  }
+
+  function createAnyway(formData: FormData) {
+    formData.set("confirmedDuplicate", "true");
+    handleSubmit(formData);
   }
 
   if (!open) {
@@ -35,7 +46,7 @@ export function NewCustomerForm() {
   }
 
   return (
-    <form action={handleSubmit} className="w-full max-w-xl rounded-2xl border p-5">
+    <form action={duplicate ? createAnyway : handleSubmit} className="w-full max-w-xl rounded-2xl border p-5">
       <div className="grid gap-4 sm:grid-cols-2">
         <label className="text-sm font-bold">
           Contact name
@@ -62,14 +73,23 @@ export function NewCustomerForm() {
           <textarea name="notes" className="mt-2 min-h-20 w-full rounded-xl border px-3 py-2.5 font-normal" />
         </label>
       </div>
+      {duplicate && (
+        <div className="mt-3 rounded-xl bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-700">
+          A customer matching this email or phone already exists: {duplicate.label}. Submit again to create a
+          separate record anyway, or cancel and use the existing one.
+        </div>
+      )}
       {error && <div className="mt-3 rounded-xl bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">{error}</div>}
       <div className="mt-4 flex gap-2">
         <button
           type="submit"
           disabled={pending}
-          className="rounded-xl bg-primary-500 px-4 py-2.5 text-sm font-bold text-white disabled:opacity-60"
+          className={
+            "rounded-xl px-4 py-2.5 text-sm font-bold text-white disabled:opacity-60 " +
+            (duplicate ? "bg-amber-500" : "bg-primary-500")
+          }
         >
-          {pending ? "Creating…" : "Create customer"}
+          {pending ? "Creating…" : duplicate ? "Create anyway" : "Create customer"}
         </button>
         <button type="button" onClick={() => setOpen(false)} className="rounded-xl border px-4 py-2.5 text-sm font-bold">
           Cancel

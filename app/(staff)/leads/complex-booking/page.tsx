@@ -16,7 +16,7 @@ export default async function ComplexBooking() {
 
   const { data: customers } = await supabase
     .from("customers")
-    .select("id, company_name, contact_name, email")
+    .select("id, company_name, contact_name, email, phone")
     .order("contact_name");
 
   return (

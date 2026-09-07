@@ -6,8 +6,12 @@ import { createClient } from "@/lib/supabase/server";
 import { requireProfile } from "@/lib/auth";
 import { hasPermission, PERMISSIONS } from "@/lib/permissions";
 import { recordAudit } from "@/lib/audit";
+import { findDuplicateCustomer, type DuplicateCustomerMatch } from "@/lib/customerDuplicates";
 
-export async function createEnquiryAction(_prevState: { error: string | null }, formData: FormData) {
+export async function createEnquiryAction(
+  _prevState: { error: string | null; duplicate?: DuplicateCustomerMatch | null },
+  formData: FormData,
+) {
   const actor = await requireProfile();
   const allowed = await hasPermission(actor, PERMISSIONS.ENQUIRIES_ADD);
   if (!allowed) return { error: "You do not have permission to add enquiries." };
@@ -21,14 +25,22 @@ export async function createEnquiryAction(_prevState: { error: string | null }, 
       return { error: "Select an existing customer or enter a new contact name." };
     }
 
+    const newEmail = String(formData.get("newEmail") ?? "").trim() || null;
+    const newPhone = String(formData.get("newPhone") ?? "").trim() || null;
+
+    if (formData.get("confirmedDuplicateCustomer") !== "true") {
+      const duplicate = await findDuplicateCustomer(supabase, actor.tenant_id, newEmail, newPhone);
+      if (duplicate) return { error: null, duplicate };
+    }
+
     const { data: customer, error: customerError } = await supabase
       .from("customers")
       .insert({
         tenant_id: actor.tenant_id,
         contact_name: contactName,
         company_name: String(formData.get("newCompanyName") ?? "").trim() || null,
-        email: String(formData.get("newEmail") ?? "").trim() || null,
-        phone: String(formData.get("newPhone") ?? "").trim() || null,
+        email: newEmail,
+        phone: newPhone,
         account_manager_id: actor.id,
       })
       .select()

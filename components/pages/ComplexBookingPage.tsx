@@ -15,12 +15,14 @@ import {
   type ComplexBookingLegInput,
 } from "@/app/(staff)/leads/complex-booking/actions";
 import type { JourneyType } from "@/lib/supabase/database.types";
+import type { DuplicateCustomerMatch } from "@/lib/customerDuplicates";
 
 interface CustomerOption {
   id: string;
   company_name: string | null;
   contact_name: string;
   email: string | null;
+  phone: string | null;
 }
 
 interface EditableLeg {
@@ -68,6 +70,7 @@ export function ComplexBookingPage({
   const [phase, setPhase] = useState<"input" | "review">("input");
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  const [duplicateWarning, setDuplicateWarning] = useState<DuplicateCustomerMatch | null>(null);
 
   const [pastedText, setPastedText] = useState("");
   const [file, setFile] = useState<ComplexBookingFileRef | null>(null);
@@ -172,8 +175,9 @@ export function ComplexBookingPage({
     setLegs((prev) => prev.filter((l) => l.clientId !== clientId));
   }
 
-  function submit() {
+  function submit(confirmDuplicate = false) {
     setError(null);
+    setDuplicateWarning(null);
     if (legs.length === 0) {
       setError("Add at least one journey leg.");
       return;
@@ -209,7 +213,12 @@ export function ComplexBookingPage({
         internalNotes: internalNotes.trim() || null,
         pastedText: pastedText.trim() || null,
         sourceFile: file,
+        confirmedDuplicateCustomer: confirmDuplicate,
       });
+      if (result?.duplicate) {
+        setDuplicateWarning(result.duplicate);
+        return;
+      }
       if (result?.error) setError(result.error);
       // On success this redirects into /quotes/new — nothing else to do here.
     });
@@ -332,7 +341,7 @@ export function ComplexBookingPage({
             <option value="">{customers.length === 0 ? "No customers yet" : "Select a customer…"}</option>
             {customers.map((c) => (
               <option key={c.id} value={c.id}>
-                {c.company_name || c.contact_name} {c.email ? `(${c.email})` : ""}
+                {c.company_name || c.contact_name} {c.email ? `(${c.email})` : ""} {c.phone ? `· ${c.phone}` : ""}
               </option>
             ))}
           </select>
@@ -521,16 +530,25 @@ export function ComplexBookingPage({
         />
       </label>
 
+      {duplicateWarning && (
+        <div className="mt-4 rounded-xl bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-700">
+          A customer matching this email or phone already exists: {duplicateWarning.label}. Submit again to create a
+          separate record anyway, or switch to "Existing customer" above and select it instead.
+        </div>
+      )}
       {error && <div className="mt-4 rounded-xl bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">{error}</div>}
 
       <div className="mt-6 flex justify-end border-t pt-5">
         <button
           type="button"
           disabled={pending}
-          onClick={submit}
-          className="rounded-xl bg-primary-500 px-5 py-2.5 text-sm font-bold text-white disabled:opacity-60"
+          onClick={() => submit(!!duplicateWarning)}
+          className={
+            "rounded-xl px-5 py-2.5 text-sm font-bold text-white disabled:opacity-60 " +
+            (duplicateWarning ? "bg-amber-500" : "bg-primary-500")
+          }
         >
-          {pending ? "Creating…" : "Create Lead & Continue to Quote"}
+          {pending ? "Creating…" : duplicateWarning ? "Create anyway" : "Create Lead & Continue to Quote"}
         </button>
       </div>
     </div>

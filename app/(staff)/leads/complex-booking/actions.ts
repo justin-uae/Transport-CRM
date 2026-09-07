@@ -7,6 +7,7 @@ import { requireProfile } from "@/lib/auth";
 import { hasPermission, PERMISSIONS } from "@/lib/permissions";
 import { recordAudit } from "@/lib/audit";
 import { extractComplexBooking, type ComplexBookingExtraction } from "@/lib/complexBookingExtraction";
+import { findDuplicateCustomer, type DuplicateCustomerMatch } from "@/lib/customerDuplicates";
 import type { JourneyType } from "@/lib/supabase/database.types";
 
 export interface ComplexBookingFileRef {
@@ -62,9 +63,12 @@ export interface CreateComplexBookingInput {
   internalNotes: string | null;
   pastedText: string | null;
   sourceFile: ComplexBookingFileRef | null;
+  confirmedDuplicateCustomer?: boolean;
 }
 
-export async function createComplexBookingLeadAction(input: CreateComplexBookingInput): Promise<{ error: string | null }> {
+export async function createComplexBookingLeadAction(
+  input: CreateComplexBookingInput,
+): Promise<{ error: string | null; duplicate?: DuplicateCustomerMatch }> {
   const actor = await requireProfile();
   const allowed = await hasPermission(actor, PERMISSIONS.ENQUIRIES_ADD);
   if (!allowed) return { error: "You do not have permission to add enquiries." };
@@ -77,14 +81,22 @@ export async function createComplexBookingLeadAction(input: CreateComplexBooking
     if (!contactName) {
       return { error: "Select an existing customer or enter a new contact name." };
     }
+    const newEmail = input.newCustomer?.email.trim() || null;
+    const newPhone = input.newCustomer?.phone.trim() || null;
+
+    if (!input.confirmedDuplicateCustomer) {
+      const duplicate = await findDuplicateCustomer(supabase, actor.tenant_id, newEmail, newPhone);
+      if (duplicate) return { error: null, duplicate };
+    }
+
     const { data: customer, error: customerError } = await supabase
       .from("customers")
       .insert({
         tenant_id: actor.tenant_id,
         contact_name: contactName,
         company_name: input.newCustomer?.companyName.trim() || null,
-        email: input.newCustomer?.email.trim() || null,
-        phone: input.newCustomer?.phone.trim() || null,
+        email: newEmail,
+        phone: newPhone,
         account_manager_id: actor.id,
       })
       .select()
