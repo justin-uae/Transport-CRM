@@ -49,6 +49,10 @@ services:
         generateValue: true
       - key: NEXT_PUBLIC_GOOGLE_MAPS_API_KEY
         sync: false
+      - key: WHATSAPP_API_KEY
+        sync: false
+      - key: WHATSAPP_API_BASE_URL
+        sync: false
       - key: NODE_VERSION
         value: 20.17.0
 
