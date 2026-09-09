@@ -64,7 +64,14 @@ interface Brand {
   name: string;
 }
 
-type IntakeStep = "awaiting_name" | "awaiting_email" | "awaiting_pickup" | "awaiting_destination" | "awaiting_date" | "done";
+type IntakeStep =
+  | "awaiting_name"
+  | "awaiting_email"
+  | "awaiting_pickup"
+  | "awaiting_destination"
+  | "awaiting_passengers"
+  | "awaiting_date"
+  | "done";
 
 interface IntakeSession {
   id: string;
@@ -73,8 +80,19 @@ interface IntakeSession {
   email: string | null;
   pickup: string | null;
   destination: string | null;
+  passenger_count: number | null;
   lead_id: string | null;
   created_at: string;
+}
+
+/** Lenient — pulls the first run of digits out of whatever was typed ("4
+    pax", "we are 6") rather than requiring a bare number; leaves it null
+    (never blocks the conversation) if nothing parses. */
+function parsePassengerCount(text: string): number | null {
+  const match = text.match(/\d+/);
+  if (!match) return null;
+  const n = Number(match[0]);
+  return Number.isFinite(n) && n > 0 ? n : null;
 }
 
 // A completed conversation older than this starts a fresh intake for what's
@@ -131,7 +149,7 @@ async function createLeadFromSession(admin: AdminClient, brand: Brand, waId: str
   const name = session.name?.trim() || waId;
   const email = session.email?.trim() || null;
 
-  await admin.from("customers").update({ contact_name: name, ...(email ? { email } : {}) }).eq("id", customerId);
+  await admin.from("customers").update({ contact_name: name, phone: waId, ...(email ? { email } : {}) }).eq("id", customerId);
 
   const { data: lead, error: leadError } = await admin
     .from("leads")
@@ -143,9 +161,18 @@ async function createLeadFromSession(admin: AdminClient, brand: Brand, waId: str
       customer_id: customerId,
       pickup_text: session.pickup,
       destination_text: session.destination,
+      passenger_count: session.passenger_count,
       travel_date: travelDate,
       notes: travelDate ? null : `Requested date (as typed via WhatsApp): ${dateText}`,
-      raw_payload: { waId, name, email, pickup: session.pickup, destination: session.destination, travelDateText: dateText },
+      raw_payload: {
+        waId,
+        name,
+        email,
+        pickup: session.pickup,
+        destination: session.destination,
+        passengerCount: session.passenger_count,
+        travelDateText: dateText,
+      },
     })
     .select("id")
     .single();
@@ -197,7 +224,7 @@ async function handleInboundMessage(admin: AdminClient, brand: Brand, waId: stri
   if (!customerId) {
     const { data: created } = await admin
       .from("customers")
-      .insert({ tenant_id: brand.tenant_id, contact_name: contactName, whatsapp: waId, default_brand_id: brand.id })
+      .insert({ tenant_id: brand.tenant_id, contact_name: contactName, whatsapp: waId, phone: waId, default_brand_id: brand.id })
       .select("id")
       .single();
     customerId = created?.id ?? null;
@@ -206,7 +233,7 @@ async function handleInboundMessage(admin: AdminClient, brand: Brand, waId: stri
 
   const { data: lastSession } = await admin
     .from("whatsapp_intake_sessions")
-    .select("id, step, name, email, pickup, destination, lead_id, created_at")
+    .select("id, step, name, email, pickup, destination, passenger_count, lead_id, created_at")
     .eq("brand_id", brand.id)
     .eq("wa_id", waId)
     .order("created_at", { ascending: false })
@@ -243,11 +270,18 @@ async function handleInboundMessage(admin: AdminClient, brand: Brand, waId: stri
         const destination = await resolveAddressAnswer(message, text);
         await admin
           .from("whatsapp_intake_sessions")
-          .update({ destination, step: "awaiting_date", updated_at: new Date().toISOString() })
+          .update({ destination, step: "awaiting_passengers", updated_at: new Date().toISOString() })
+          .eq("id", session.id);
+        await sendWhatsAppText(waId, "How many passengers will be travelling?");
+        return;
+      }
+      case "awaiting_passengers":
+        await admin
+          .from("whatsapp_intake_sessions")
+          .update({ passenger_count: parsePassengerCount(text), step: "awaiting_date", updated_at: new Date().toISOString() })
           .eq("id", session.id);
         await sendWhatsAppText(waId, "What date do you need this trip?");
         return;
-      }
       case "awaiting_date":
         await createLeadFromSession(admin, brand, waId, customerId, session, text);
         return;
