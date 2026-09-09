@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useId, useRef } from "react";
 import { createPortal } from "react-dom";
 import clsx from "clsx";
 
@@ -43,6 +43,10 @@ export function ConfirmDetailModal({
   error,
   onConfirm,
 }: ConfirmDetailModalProps) {
+  const titleId = useId();
+  const descId = useId();
+  const panelRef = useRef<HTMLDivElement>(null);
+
   useEffect(() => {
     if (!open) return;
     function handleKey(e: KeyboardEvent) {
@@ -51,6 +55,12 @@ export function ConfirmDetailModal({
     document.addEventListener("keydown", handleKey);
     return () => document.removeEventListener("keydown", handleKey);
   }, [open, pending, onClose]);
+
+  // Moves focus into the dialog on open so a keyboard/screen-reader user
+  // isn't left focused on whatever triggered it, behind the overlay.
+  useEffect(() => {
+    if (open) panelRef.current?.focus();
+  }, [open]);
 
   // Locks the page behind the modal — without this, a long details list plus
   // the page's own scroll made it possible to scroll the dashboard/table
@@ -73,15 +83,27 @@ export function ConfirmDetailModal({
     >
       <div className="flex min-h-full items-start justify-center sm:items-center">
         <div
-          className="flex max-h-[90dvh] w-full max-w-lg flex-col overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl"
+          ref={panelRef}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby={titleId}
+          aria-describedby={description ? descId : undefined}
+          tabIndex={-1}
+          className="flex max-h-[90dvh] w-full max-w-lg flex-col overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl outline-none"
           onClick={(e) => e.stopPropagation()}
         >
           {/* Scrolls on its own — the footer below stays pinned in view so the
               action buttons are never pushed off-screen behind a long details
               list on a short mobile viewport. */}
           <div className="overflow-y-auto p-6">
-            <h3 className="text-lg font-black text-slate-900">{title}</h3>
-            {description && <p className="mt-1 text-sm text-slate-500">{description}</p>}
+            <h3 id={titleId} className="text-lg font-black text-slate-900">
+              {title}
+            </h3>
+            {description && (
+              <p id={descId} className="mt-1 text-sm text-slate-500">
+                {description}
+              </p>
+            )}
 
             {details && details.length > 0 && (
               <dl className="mt-4 grid grid-cols-1 gap-x-4 gap-y-3 rounded-2xl bg-slate-50 p-4 sm:grid-cols-2">

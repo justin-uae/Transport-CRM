@@ -3,7 +3,31 @@
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { landingHrefForProfile } from "@/lib/landing";
+
+/**
+ * AUTH-01 (visibility only — no lockout): records a failed attempt against
+ * whichever profile the email actually belongs to, using the service-role
+ * client since there's no session yet at this point — login_history_insert's
+ * RLS check requires tenant_id = current_tenant_id(), which resolves to null
+ * pre-session (same reasoning as lib/audit.ts's client? override). A
+ * nonexistent email has no profile to attribute the attempt to, so there's
+ * nothing to record.
+ */
+async function recordFailedLogin(email: string) {
+  const admin = createAdminClient();
+  const { data: profile } = await admin.from("profiles").select("id, tenant_id").eq("email", email).maybeSingle();
+  if (!profile) return;
+  const headerList = await headers();
+  await admin.from("login_history").insert({
+    tenant_id: profile.tenant_id,
+    user_id: profile.id,
+    event: "login_failed",
+    ip_address: headerList.get("x-forwarded-for"),
+    user_agent: headerList.get("user-agent"),
+  });
+}
 
 export async function signInAction(_prevState: { error: string | null }, formData: FormData) {
   const email = String(formData.get("email") ?? "").trim();
@@ -18,6 +42,7 @@ export async function signInAction(_prevState: { error: string | null }, formDat
   const { data, error } = await supabase.auth.signInWithPassword({ email, password });
 
   if (error || !data.user) {
+    await recordFailedLogin(email);
     return { error: "Incorrect email or password." };
   }
 

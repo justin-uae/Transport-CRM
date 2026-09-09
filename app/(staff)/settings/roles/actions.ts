@@ -42,32 +42,50 @@ export async function createRoleAction(_prevState: { error: string | null }, for
   return { error: null };
 }
 
-export async function togglePermissionAction(roleId: string, permissionId: string, enabled: boolean) {
+/**
+ * ADM-02: the permission grid batches every checkbox change locally and
+ * commits them in one Save — unlike other admin toggles in this app that
+ * still save immediately, a role's permission set is the one place a
+ * half-finished edit (a manager unticking several sensitive keys mid-review)
+ * is dangerous to apply one checkbox at a time. `nextPermissionIds` is the
+ * full desired set; this diffs it against what's actually granted today
+ * rather than trusting the client's idea of "before" for that diff.
+ */
+export async function savePermissionsAction(roleId: string, nextPermissionIds: string[]) {
   const actor = await requireRoleManager();
   const supabase = await createClient();
 
   const { data: role } = await supabase.from("roles").select("tenant_id, name").eq("id", roleId).single();
   if (!role || role.tenant_id !== actor.tenant_id) throw new Error("Role not found.");
 
-  if (enabled) {
-    const { error } = await supabase.from("role_permissions").insert({ role_id: roleId, permission_id: permissionId });
-    if (error) throw new Error(error.message);
-  } else {
+  const { data: currentRows } = await supabase.from("role_permissions").select("permission_id").eq("role_id", roleId);
+  const currentIds = new Set((currentRows ?? []).map((r) => r.permission_id));
+  const nextIds = new Set(nextPermissionIds);
+
+  const toAdd = [...nextIds].filter((id) => !currentIds.has(id));
+  const toRemove = [...currentIds].filter((id) => !nextIds.has(id));
+
+  if (toAdd.length === 0 && toRemove.length === 0) return;
+
+  if (toAdd.length > 0) {
     const { error } = await supabase
       .from("role_permissions")
-      .delete()
-      .eq("role_id", roleId)
-      .eq("permission_id", permissionId);
+      .insert(toAdd.map((permission_id) => ({ role_id: roleId, permission_id })));
+    if (error) throw new Error(error.message);
+  }
+  if (toRemove.length > 0) {
+    const { error } = await supabase.from("role_permissions").delete().eq("role_id", roleId).in("permission_id", toRemove);
     if (error) throw new Error(error.message);
   }
 
   await recordAudit({
     tenantId: actor.tenant_id,
     actorId: actor.id,
-    action: enabled ? "permission_granted" : "permission_revoked",
+    action: "permissions_updated",
     entityType: "role",
     entityId: roleId,
-    newValue: { permission_id: permissionId, enabled },
+    previousValue: { permissionIds: [...currentIds] },
+    newValue: { permissionIds: [...nextIds], granted: toAdd, revoked: toRemove },
   });
 
   // { expire: 0 } forces immediate invalidation (Next 16 requires a second

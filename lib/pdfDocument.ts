@@ -118,9 +118,29 @@ export function money(amount: number | null | undefined, currency: string) {
   return new Intl.NumberFormat("en-GB", { style: "currency", currency, maximumFractionDigits: 2 }).format(amount);
 }
 
+const BARE_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * "10 Aug 2026". A bare date value ("2026-08-10", no time-of-day) is read
+ * literally — converting a value with no time component through a timezone
+ * could shift the calendar date depending on where the server process runs.
+ * Anything else (a real timestamp, e.g. quote.expiry_at) is rendered in UK
+ * time — matches lib/formatDate.ts's convention, so a PDF and the app UI
+ * never disagree on what day something happened, regardless of the Node
+ * process's own local timezone.
+ */
 export function formatDate(value: string | null) {
   if (!value) return "—";
-  return new Date(value).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
+  if (BARE_DATE_RE.test(value)) {
+    const [y, m, d] = value.split("-").map(Number);
+    return new Date(Date.UTC(y ?? 1970, (m ?? 1) - 1, d ?? 1)).toLocaleDateString("en-GB", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+      timeZone: "UTC",
+    });
+  }
+  return new Date(value).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric", timeZone: "Europe/London" });
 }
 
 export async function fetchLogoBuffer(logoUrl: string | null): Promise<Buffer | null> {
