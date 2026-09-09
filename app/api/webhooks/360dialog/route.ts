@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { recordAudit } from "@/lib/audit";
-import { sendWhatsAppText } from "@/lib/whatsapp360";
+import { sendWhatsAppText, sendWhatsAppLocationRequest } from "@/lib/whatsapp360";
+import { reverseGeocode } from "@/lib/reverseGeocode";
 
 // Inbound WhatsApp -> lead creation via 360dialog (a WhatsApp Business
 // Solution Provider built directly on Meta's Cloud API — same webhook
@@ -34,6 +35,7 @@ interface WhatsAppMessage {
   timestamp: string;
   type: string;
   text?: { body: string };
+  location?: { latitude: number; longitude: number; name?: string; address?: string };
 }
 
 interface WhatsAppValue {
@@ -91,6 +93,27 @@ async function resolveBrand(admin: AdminClient, brandSlug: string, secret: strin
 function messageText(message: WhatsAppMessage): string {
   if (message.type === "text" && message.text?.body) return message.text.body;
   return `Sent a ${message.type} message (not yet supported here)`;
+}
+
+/**
+ * The pickup/destination questions send a "Send Location" button
+ * (sendWhatsAppLocationRequest) but still accept a typed answer as a
+ * fallback for a contact who ignores the button — resolves whichever one
+ * actually arrived into a single address string for the lead. A shared pin
+ * with no name/address of its own gets reverse-geocoded; if that also fails
+ * (no Maps key configured, or the lookup itself fails), the raw
+ * coordinates are kept rather than losing the answer entirely.
+ */
+async function resolveAddressAnswer(message: WhatsAppMessage, fallbackText: string): Promise<string> {
+  if (message.type === "location" && message.location) {
+    const loc = message.location;
+    if (loc.address) return loc.address;
+    if (loc.name) return loc.name;
+    const geocoded = await reverseGeocode(loc.latitude, loc.longitude);
+    if (geocoded) return geocoded;
+    return `${loc.latitude}, ${loc.longitude}`;
+  }
+  return fallbackText;
 }
 
 /** Best-effort only — an unparseable date is kept as the raw text the
@@ -205,22 +228,26 @@ async function handleInboundMessage(admin: AdminClient, brand: Brand, waId: stri
           .from("whatsapp_intake_sessions")
           .update({ email: text, step: "awaiting_pickup", updated_at: new Date().toISOString() })
           .eq("id", session.id);
-        await sendWhatsAppText(waId, "Where would you like to be picked up from?");
+        await sendWhatsAppLocationRequest(waId, "Where would you like to be picked up from? Tap below to share the location, or just type it.");
         return;
-      case "awaiting_pickup":
+      case "awaiting_pickup": {
+        const pickup = await resolveAddressAnswer(message, text);
         await admin
           .from("whatsapp_intake_sessions")
-          .update({ pickup: text, step: "awaiting_destination", updated_at: new Date().toISOString() })
+          .update({ pickup, step: "awaiting_destination", updated_at: new Date().toISOString() })
           .eq("id", session.id);
-        await sendWhatsAppText(waId, "And where are you headed to?");
+        await sendWhatsAppLocationRequest(waId, "And where are you headed to? Tap below to share the location, or just type it.");
         return;
-      case "awaiting_destination":
+      }
+      case "awaiting_destination": {
+        const destination = await resolveAddressAnswer(message, text);
         await admin
           .from("whatsapp_intake_sessions")
-          .update({ destination: text, step: "awaiting_date", updated_at: new Date().toISOString() })
+          .update({ destination, step: "awaiting_date", updated_at: new Date().toISOString() })
           .eq("id", session.id);
         await sendWhatsAppText(waId, "What date do you need this trip?");
         return;
+      }
       case "awaiting_date":
         await createLeadFromSession(admin, brand, waId, customerId, session, text);
         return;
