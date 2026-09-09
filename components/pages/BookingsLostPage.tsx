@@ -26,7 +26,11 @@ function money(amount: number | undefined | null, currency: string) {
 export function BookingsLostPage({ quotes }: { quotes: LostBookingQuote[] }) {
   return (
     <div>
-      <PageHead eyebrow="Bookings" title="Lost Booking" text="Quotes the customer rejected, or that expired unanswered." />
+      <PageHead
+        eyebrow="Bookings"
+        title="Lost Booking"
+        text="Quotes the customer rejected, that expired unanswered, or a booking staff cancelled."
+      />
       <BookingTabs active="lost" />
       <Panel>
         <div className="space-y-3">
@@ -35,6 +39,13 @@ export function BookingsLostPage({ quotes }: { quotes: LostBookingQuote[] }) {
             const leg = q.enquiries?.enquiry_legs?.[0];
             const decision = q.quote_decisions?.[0] ?? null;
             const isExpired = q.status === "expired";
+            const isCancelled = q.status === "cancelled";
+            const badgeLabel = isCancelled ? "Cancelled" : isExpired ? "Expired" : "Rejected";
+            const badgeStyle = isCancelled
+              ? "bg-slate-100 text-slate-500"
+              : isExpired
+                ? "bg-slate-100 text-slate-600"
+                : "bg-red-50 text-red-700";
             return (
               <div key={q.id} className="rounded-2xl border p-4">
                 <div className="flex flex-wrap items-center justify-between gap-2">
@@ -42,14 +53,7 @@ export function BookingsLostPage({ quotes }: { quotes: LostBookingQuote[] }) {
                     <b>{customer?.company_name || customer?.contact_name || "Customer"}</b>
                     <div className="text-xs text-slate-500">{q.quote_number}</div>
                   </div>
-                  <span
-                    className={
-                      "rounded-full px-2.5 py-1 text-xs font-bold " +
-                      (isExpired ? "bg-slate-100 text-slate-600" : "bg-red-50 text-red-700")
-                    }
-                  >
-                    {isExpired ? "Expired" : "Rejected"}
-                  </span>
+                  <span className={"rounded-full px-2.5 py-1 text-xs font-bold " + badgeStyle}>{badgeLabel}</span>
                 </div>
                 <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-sm text-slate-600">
                   <span>
@@ -58,7 +62,7 @@ export function BookingsLostPage({ quotes }: { quotes: LostBookingQuote[] }) {
                   </span>
                   <span className="font-bold">{money(q.quote_versions?.selling_price, q.currency)}</span>
                 </div>
-                {!isExpired && decision && (decision.reason || decision.free_text) && (
+                {!isExpired && !isCancelled && decision && (decision.reason || decision.free_text) && (
                   <p className="mt-2 text-xs text-slate-500">
                     {decision.reason && <span className="capitalize">{decision.reason.replaceAll("_", " ")}</span>}
                     {decision.reason && decision.free_text && " — "}
@@ -67,6 +71,9 @@ export function BookingsLostPage({ quotes }: { quotes: LostBookingQuote[] }) {
                 )}
                 {isExpired && q.expiry_at && (
                   <p className="mt-2 text-xs text-slate-500">Expired {formatDateTime(q.expiry_at)}</p>
+                )}
+                {isCancelled && q.decided_at && (
+                  <p className="mt-2 text-xs text-slate-500">Cancelled {formatDateTime(q.decided_at)}</p>
                 )}
                 <Link
                   href={`/quotes/${q.id}`}

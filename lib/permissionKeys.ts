@@ -83,6 +83,9 @@ export const PERMISSIONS = {
   ADMIN_MANAGE_ACCOUNTING_SETTINGS: "admin.manage_accounting_settings",
   ADMIN_EXPORT_COMPANY_DATA: "admin.export_company_data",
   ADMIN_VIEW_AUDIT_LOGS: "admin.view_audit_logs",
+
+  COMPLAINTS_MANAGE: "complaints.manage",
+  INCIDENTS_MANAGE: "incidents.manage",
 } as const;
 
 export type PermissionKey = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];

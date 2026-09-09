@@ -846,6 +846,72 @@ export interface CrmTask {
 }
 
 // -----------------------------------------------------------------------------
+// Service ops (0050_service_ops.sql) — booking cancellation refunds,
+// complaints, incidents. Status columns are plain text + check constraints
+// (matching commissions' convention), not Postgres enum types.
+// -----------------------------------------------------------------------------
+
+export type RefundStatus = "pending" | "processed";
+
+export interface Refund {
+  id: string;
+  tenant_id: string;
+  quote_id: string;
+  amount: number;
+  currency: string;
+  reason: string | null;
+  status: RefundStatus;
+  requested_by: string | null;
+  processed_by: string | null;
+  processed_at: string | null;
+  created_at: string;
+}
+
+export type ComplaintCategory = "service_quality" | "driver_behavior" | "vehicle_condition" | "billing" | "communication" | "other";
+export type ServiceOpsStatus = "open" | "investigating" | "resolved" | "closed";
+export type ServiceOpsSeverity = "low" | "medium" | "high" | "critical";
+
+export interface Complaint {
+  id: string;
+  tenant_id: string;
+  customer_id: string | null;
+  quote_id: string | null;
+  feedback_id: string | null;
+  category: ComplaintCategory;
+  severity: ServiceOpsSeverity;
+  description: string;
+  status: ServiceOpsStatus;
+  assigned_to: string | null;
+  resolution_notes: string | null;
+  resolved_by: string | null;
+  resolved_at: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export type IncidentCategory = "accident" | "breakdown" | "delay" | "safety" | "other";
+
+export interface Incident {
+  id: string;
+  tenant_id: string;
+  job_id: string | null;
+  quote_id: string | null;
+  supplier_id: string | null;
+  category: IncidentCategory;
+  severity: ServiceOpsSeverity;
+  description: string;
+  status: ServiceOpsStatus;
+  assigned_to: string | null;
+  resolution_notes: string | null;
+  resolved_by: string | null;
+  resolved_at: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+// -----------------------------------------------------------------------------
 // KPIs & Targets (0027_kpi_targets.sql) — individual, monthly, manager-
 // assigned targets. Actuals are always derived live from quotes/payments
 // (see lib/kpiSummary.ts), never stored here.

@@ -304,6 +304,110 @@ export async function resendInvoiceEmailAction(quoteId: string) {
   return result;
 }
 
+const CANCELLABLE_STATUSES = ["accepted", "partially_paid", "paid"];
+
+/**
+ * OPS-01: cancel a booking that's already been accepted/paid — a distinct
+ * staff-initiated action from a customer rejecting a quote (quote_decisions).
+ * Reuses the 'cancelled' value already sitting unused on both the
+ * quote_status and job_status enums. Any money already collected doesn't get
+ * touched in customer_payments (append-only ledger) — it becomes a pending
+ * `refunds` row for Finance to action separately via processRefundAction.
+ */
+export async function cancelBookingAction(quoteId: string, reason: string) {
+  const actor = await requireProfile();
+  const allowed = await hasPermission(actor, PERMISSIONS.QUOTES_CANCEL);
+  if (!allowed) return { error: "You do not have permission to cancel a booking." };
+  if (!reason.trim()) return { error: "A reason is required to cancel a booking." };
+
+  const supabase = await createClient();
+  const { data: quote } = await supabase
+    .from("quotes")
+    .select("id, tenant_id, status, currency, customer_payments(amount, verification_status)")
+    .eq("id", quoteId)
+    .single();
+  if (!quote) return { error: "Quote not found." };
+  if (!CANCELLABLE_STATUSES.includes(quote.status)) {
+    return { error: "Only an accepted, partially paid, or paid booking can be cancelled." };
+  }
+
+  const { error: updateError } = await supabase
+    .from("quotes")
+    .update({ status: "cancelled", decided_at: new Date().toISOString() })
+    .eq("id", quoteId);
+  if (updateError) return { error: updateError.message };
+
+  const { data: job } = await supabase.from("jobs").select("id").eq("quote_id", quoteId).maybeSingle();
+  if (job) {
+    await supabase.from("jobs").update({ status: "cancelled" }).eq("id", job.id);
+    await supabase.from("job_offers").update({ status: "withdrawn" }).eq("job_id", job.id).eq("status", "sent");
+  }
+
+  const verifiedPaid = ((quote.customer_payments as unknown as { amount: number; verification_status: string }[] | null) ?? [])
+    .filter((p) => p.verification_status === "verified")
+    .reduce((sum, p) => sum + Number(p.amount), 0);
+
+  if (verifiedPaid > 0) {
+    await supabase.from("refunds").insert({
+      tenant_id: quote.tenant_id,
+      quote_id: quoteId,
+      amount: verifiedPaid,
+      currency: quote.currency,
+      reason: reason.trim(),
+      requested_by: actor.id,
+    });
+  }
+
+  await recordAudit({
+    tenantId: actor.tenant_id,
+    actorId: actor.id,
+    action: "booking_cancelled",
+    entityType: "quote",
+    entityId: quoteId,
+    previousValue: { status: quote.status },
+    newValue: { status: "cancelled" },
+    reason: reason.trim(),
+  });
+
+  revalidatePath("/quotes");
+  revalidatePath("/bookings");
+  revalidatePath("/dispatch");
+  revalidatePath(`/quotes/${quoteId}`);
+  return { error: null };
+}
+
+/** Finance confirms a cancellation's pending refund has actually been paid out. */
+export async function processRefundAction(refundId: string) {
+  const actor = await requireProfile();
+  const allowed = await hasPermission(actor, PERMISSIONS.FINANCE_PROCESS_REFUNDS);
+  if (!allowed) return { error: "You do not have permission to process refunds." };
+
+  const supabase = await createClient();
+  const { data: refund } = await supabase.from("refunds").select("id, quote_id, status").eq("id", refundId).single();
+  if (!refund) return { error: "Refund not found." };
+  if (refund.status !== "pending") return { error: "This refund has already been processed." };
+
+  const { error } = await supabase
+    .from("refunds")
+    .update({ status: "processed", processed_by: actor.id, processed_at: new Date().toISOString() })
+    .eq("id", refundId);
+  if (error) return { error: error.message };
+
+  await recordAudit({
+    tenantId: actor.tenant_id,
+    actorId: actor.id,
+    action: "refund_processed",
+    entityType: "refund",
+    entityId: refundId,
+    previousValue: { status: "pending" },
+    newValue: { status: "processed" },
+  });
+
+  revalidatePath(`/quotes/${refund.quote_id}`);
+  revalidatePath("/accounting/customer-payments");
+  return { error: null };
+}
+
 async function persistInvoicePdf(
   supabase: Awaited<ReturnType<typeof createClient>>,
   actor: { id: string; tenant_id: string },

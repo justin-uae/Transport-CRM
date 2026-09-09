@@ -3,13 +3,14 @@ import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
+import { hasPermission, PERMISSIONS } from "@/lib/permissions";
 import { Panel } from "@/components/ui/Panel";
 import { PageHead } from "@/components/ui/PageHead";
 import { SectionTitle } from "@/components/ui/SectionTitle";
 import { QuoteDetailActions } from "@/components/pages/QuoteDetailActions";
 import { JourneyLegDetail, type JourneyLeg } from "@/components/pages/JourneyLegDetail";
 import { formatDateTime, formatDate } from "@/lib/formatDate";
-import type { QuoteStatus, QuoteEventType, QuoteDecisionType, CustomerPaymentMethod } from "@/lib/supabase/database.types";
+import type { QuoteStatus, QuoteEventType, QuoteDecisionType, CustomerPaymentMethod, Refund } from "@/lib/supabase/database.types";
 
 interface LineItemRow {
   id: string;
@@ -101,8 +102,12 @@ function money(amount: number | undefined | null, currency: string) {
 
 export default async function QuoteDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  await requireProfile();
+  const actor = await requireProfile();
   const supabase = await createClient();
+  const [canCancel, canProcessRefunds] = await Promise.all([
+    hasPermission(actor, PERMISSIONS.QUOTES_CANCEL),
+    hasPermission(actor, PERMISSIONS.FINANCE_PROCESS_REFUNDS),
+  ]);
 
   const { data: quoteRaw, error: quoteError } = await supabase
     .from("quotes")
@@ -116,11 +121,10 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
   if (!quoteRaw) notFound();
   const quote = quoteRaw as unknown as QuoteDetailRow;
 
-  const { data: job } = await supabase
-    .from("jobs")
-    .select("id, status, suppliers(name)")
-    .eq("quote_id", id)
-    .maybeSingle();
+  const [{ data: job }, { data: refunds }] = await Promise.all([
+    supabase.from("jobs").select("id, status, suppliers(name)").eq("quote_id", id).maybeSingle(),
+    supabase.from("refunds").select("*").eq("quote_id", id).order("created_at", { ascending: false }),
+  ]);
 
   const customer = quote.customers;
   const legs = [...(quote.enquiries?.enquiry_legs ?? [])].sort((a, b) => a.sequence - b.sequence);
@@ -318,6 +322,9 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
                   customerLabel: customer?.company_name || customer?.contact_name || "—",
                   sellingPrice: currentVersion?.selling_price ?? null,
                 }}
+                canCancel={canCancel}
+                canProcessRefunds={canProcessRefunds}
+                refunds={(refunds ?? []) as Refund[]}
               />
             </div>
           </Panel>

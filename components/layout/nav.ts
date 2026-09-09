@@ -20,6 +20,8 @@ import {
   ListTodo,
   Star,
   Truck,
+  MessageSquareWarning,
+  TriangleAlert,
   type LucideIcon,
 } from "lucide-react";
 import { PERMISSIONS, type PermissionKey } from "@/lib/permissionKeys";
@@ -124,6 +126,8 @@ export const NAV: NavItem[] = [
   { label: "Team Chat", href: "/team-chat", icon: MessagesSquare, anyOf: WORKSPACE },
   { label: "Tasks", href: "/tasks", icon: ListTodo, anyOf: WORKSPACE },
   { label: "Customer Experience", href: "/customer-experience", icon: Star, anyOf: WORKSPACE },
+  { label: "Complaints", href: "/complaints", icon: MessageSquareWarning, anyOf: WORKSPACE },
+  { label: "Incidents", href: "/incidents", icon: TriangleAlert, anyOf: WORKSPACE },
   // AI Optimisation — hidden from the sidebar for now (not ready), route/page left in place for when
   // it's finished. Restore by re-adding the entry below and importing Bot from lucide-react again:
   // { label: "AI Optimisation", href: "/ai-optimisation", icon: Bot, anyOf: WORKSPACE },
