@@ -9,7 +9,17 @@ import { PERMISSIONS, type PermissionKey } from "@/lib/permissionKeys";
 // own terms (an unguessable token / a per-brand shared secret / the
 // CRON_SECRET bearer token) rather than a Supabase session, so none of them
 // have one to gate on here.
-const PUBLIC_PATHS = ["/login", "/reset-password", "/accept-invite", "/auth/confirm", "/q", "/api/leads/website", "/api/stripe/webhook", "/api/cron"];
+const PUBLIC_PATHS = [
+  "/login",
+  "/reset-password",
+  "/accept-invite",
+  "/auth/confirm",
+  "/q",
+  "/api/leads/website",
+  "/api/stripe/webhook",
+  "/api/cron",
+  "/api/webhooks/360dialog",
+];
 
 /** Most specific (longest-href) NAV item whose route this path falls under, if any — mirrors the highlighting logic in Sidebar.tsx. Paths matching no NAV item (settings/*, api/*, ...) are left to their own page/layout-level gates. */
 function matchingNavItem(pathname: string): NavItem | null {
