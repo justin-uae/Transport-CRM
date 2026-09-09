@@ -82,11 +82,17 @@ export interface LeadDetailQuote {
   status: string;
 }
 
+export interface LeadSourceDocument {
+  fileName: string;
+  downloadUrl: string | null;
+}
+
 export function LeadDetailPage({
   lead,
   legs,
   enquiryId,
   quote,
+  sourceDocument,
   currentUserId,
   canAddEnquiry,
   canClaim,
@@ -96,6 +102,7 @@ export function LeadDetailPage({
   legs: JourneyLeg[];
   enquiryId: string | null;
   quote: LeadDetailQuote | null;
+  sourceDocument: LeadSourceDocument | null;
   currentUserId: string;
   canAddEnquiry: boolean;
   canClaim: boolean;
@@ -169,6 +176,24 @@ export function LeadDetailPage({
             <div className="mt-4 text-sm">
               <Row label="Source" value={SOURCE_LABEL[lead.source]} />
               {lead.is_complex_booking && <Row label="Complex Booking" value="Yes — AI-assisted intake" />}
+              {lead.is_complex_booking && (
+                <Row
+                  label="Source document"
+                  value={
+                    sourceDocument ? (
+                      sourceDocument.downloadUrl ? (
+                        <a href={sourceDocument.downloadUrl} target="_blank" rel="noreferrer" className="text-primary-600 hover:underline">
+                          {sourceDocument.fileName}
+                        </a>
+                      ) : (
+                        sourceDocument.fileName
+                      )
+                    ) : (
+                      "Pasted text only, no file uploaded"
+                    )
+                  }
+                />
+              )}
               <Row label="Brand / website" value={lead.brands?.name} />
               <Row label="Priority" value={lead.priority === "high" ? "High" : "Normal"} />
               <Row

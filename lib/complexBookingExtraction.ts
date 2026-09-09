@@ -25,6 +25,13 @@ export interface ComplexBookingExtraction {
     special_requirements: string | null;
   }>;
   internal_notes: string | null;
+  /**
+   * Dot/bracket paths (e.g. "customer.email", "legs[0].pickup_date") the
+   * model guessed, inferred, or was otherwise unsure about — surfaced in the
+   * review UI as a highlight so staff know exactly what to double-check
+   * rather than treating every field as equally reliable.
+   */
+  uncertain_fields: string[];
 }
 
 const EXTRACTION_SCHEMA = {
@@ -75,8 +82,16 @@ const EXTRACTION_SCHEMA = {
       },
     },
     internal_notes: { type: ["string", "null"], description: "Anything relevant that didn't fit a leg or customer field" },
+    uncertain_fields: {
+      type: "array",
+      items: { type: "string" },
+      description:
+        "Dot/bracket paths for fields you guessed, inferred from ambiguous wording, or are only partially " +
+        "confident about — e.g. \"customer.email\", \"legs[0].pickup_date\". Do not list fields you left null " +
+        "because nothing was said — only fields you filled in but aren't sure are correct.",
+    },
   },
-  required: ["customer", "legs", "internal_notes"],
+  required: ["customer", "legs", "internal_notes", "uncertain_fields"],
   additionalProperties: false,
 } as const;
 
@@ -86,7 +101,8 @@ const SYSTEM_PROMPT =
   "create one entry in `legs` per distinct journey segment (e.g. Day 1 airport transfer, Day 2 city tour, Day 3 " +
   "return transfer are three separate legs), in chronological order. Only extract information that is actually " +
   "present — never invent dates, times, passenger counts, or vehicle types that aren't stated. Use null for " +
-  "anything not mentioned.";
+  "anything not mentioned. If you have to guess or infer a value from ambiguous wording rather than reading it " +
+  "directly, still fill it in but list its field path in `uncertain_fields` so a human can double-check it.";
 
 function bufferToDataUrl(buffer: Buffer, mimeType: string): string {
   return `data:${mimeType};base64,${buffer.toString("base64")}`;
@@ -151,5 +167,11 @@ export async function extractComplexBooking(input: {
   const raw = response.output_text;
   if (!raw) throw new Error("The AI didn't return any extracted data — try again or enter this booking manually.");
 
-  return JSON.parse(raw) as ComplexBookingExtraction;
+  try {
+    const parsed = JSON.parse(raw) as ComplexBookingExtraction;
+    if (!Array.isArray(parsed.uncertain_fields)) parsed.uncertain_fields = [];
+    return parsed;
+  } catch {
+    throw new Error("The AI's response could not be read — try again, or enter this booking manually.");
+  }
 }

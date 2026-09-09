@@ -47,10 +47,13 @@ export function PhoneNumberField({
   const [internalValue, setInternalValue] = useState<string | undefined>(isE164(defaultValue) ? defaultValue : undefined);
   const [defaultCountry, setDefaultCountry] = useState<Country>(FALLBACK_COUNTRY);
 
-  const current = isControlled ? value : internalValue;
-  // Surfaces a legacy non-E.164 number (can't be handed to the input as `value`
-  // without it throwing) so the field isn't silently blank for existing data.
-  const legacyValueHint = !isControlled && defaultValue && !isE164(defaultValue) ? `Current: ${defaultValue}` : undefined;
+  const rawCurrent = isControlled ? value : internalValue;
+  // react-phone-number-input throws if handed a non-E.164 value no matter
+  // which path it came from (a legacy record's `defaultValue`, or a
+  // controlled `value` from e.g. AI-extracted or otherwise loosely-formatted
+  // data) — never pass it through directly.
+  const current = isE164(rawCurrent) ? rawCurrent : undefined;
+  const legacyValueHint = rawCurrent && !isE164(rawCurrent) ? `Current: ${rawCurrent}` : undefined;
 
   useEffect(() => {
     if (current) return;
@@ -87,7 +90,7 @@ export function PhoneNumberField({
       {/* Falls back to the raw legacy value (rather than "") so saving other
           fields on this form doesn't wipe out a phone number the user never
           touched, just because it predates E.164 formatting. */}
-      {name && <input type="hidden" name={name} value={current ?? (legacyValueHint ? defaultValue! : "")} />}
+      {name && <input type="hidden" name={name} value={current ?? rawCurrent ?? ""} />}
     </div>
   );
 }

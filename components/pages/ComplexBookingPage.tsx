@@ -27,6 +27,8 @@ interface CustomerOption {
 
 interface EditableLeg {
   clientId: string;
+  /** Index in the AI's original `legs` array, or null for a manually-added leg — used to match `uncertain_fields` paths like "legs[0].pickup_date" back to this leg. */
+  sourceIndex: number | null;
   journeyType: JourneyType;
   pickupAddress: string;
   destinationAddress: string;
@@ -42,9 +44,17 @@ interface EditableLeg {
   specialRequirements: string;
 }
 
+/** AI-extracted phone numbers come formatted with spaces/dashes (e.g. "+44 7700 900123") — react-phone-number-input needs strict E.164. */
+function toE164(phone: string | null): string {
+  if (!phone) return "";
+  const stripped = phone.replace(/[^\d+]/g, "");
+  return /^\+[1-9]\d{1,14}$/.test(stripped) ? stripped : "";
+}
+
 function blankLeg(): EditableLeg {
   return {
     clientId: crypto.randomUUID(),
+    sourceIndex: null,
     journeyType: "one_way",
     pickupAddress: "",
     destinationAddress: "",
@@ -83,6 +93,8 @@ export function ComplexBookingPage({
   const [newCustomer, setNewCustomer] = useState({ contactName: "", companyName: "", email: "", phone: "" });
   const [legs, setLegs] = useState<EditableLeg[]>([]);
   const [internalNotes, setInternalNotes] = useState("");
+  const [uncertainFields, setUncertainFields] = useState<Set<string>>(new Set());
+  const [extractWarning, setExtractWarning] = useState<string | null>(null);
 
   const selectedCustomer = customers.find((c) => c.id === existingCustomerId);
 
@@ -104,7 +116,7 @@ export function ComplexBookingPage({
       const { error: uploadError } = await supabase.storage.from("documents").upload(path, selected);
       if (uploadError) throw new Error(uploadError.message);
 
-      setFile({ storagePath: path, fileName: selected.name, mimeType: selected.type });
+      setFile({ storagePath: path, fileName: selected.name, mimeType: selected.type, fileSize: selected.size });
       setFileLabel(selected.name);
       setFileSize(selected.size);
     } catch (err) {
@@ -130,6 +142,7 @@ export function ComplexBookingPage({
 
   function extract() {
     setError(null);
+    setExtractWarning(null);
     startTransition(async () => {
       const result = await extractComplexBookingAction({ pastedText, file });
       if (result.error || !result.data) {
@@ -140,12 +153,13 @@ export function ComplexBookingPage({
       const c = result.data.customer;
       if (c.name || c.company || c.email || c.phone) {
         setCustomerMode("new");
-        setNewCustomer({ contactName: c.name ?? "", companyName: c.company ?? "", email: c.email ?? "", phone: c.phone ?? "" });
+        setNewCustomer({ contactName: c.name ?? "", companyName: c.company ?? "", email: c.email ?? "", phone: toE164(c.phone) });
       }
 
       setLegs(
-        result.data.legs.map((leg) => ({
+        result.data.legs.map((leg, i) => ({
           clientId: crypto.randomUUID(),
+          sourceIndex: i,
           journeyType: leg.journey_type,
           pickupAddress: leg.pickup_address,
           destinationAddress: leg.destination_address,
@@ -162,9 +176,23 @@ export function ComplexBookingPage({
         })),
       );
       setInternalNotes(result.data.internal_notes ?? "");
+      setUncertainFields(new Set(result.data.uncertain_fields));
+      setExtractWarning(result.warning);
       notify(`AI found ${result.data.legs.length} leg${result.data.legs.length === 1 ? "" : "s"} — review before creating the lead`);
       setPhase("review");
     });
+  }
+
+  function isUncertain(path: string) {
+    return uncertainFields.has(path);
+  }
+
+  function legPath(leg: EditableLeg, field: string) {
+    return leg.sourceIndex === null ? "" : `legs[${leg.sourceIndex}].${field}`;
+  }
+
+  function fieldClass(base: string, uncertain: boolean) {
+    return uncertain ? `${base} border-amber-400 ring-1 ring-amber-300 bg-amber-50/60` : base;
   }
 
   function updateLeg(clientId: string, patch: Partial<EditableLeg>) {
@@ -314,6 +342,14 @@ export function ComplexBookingPage({
         </button>
       </div>
 
+      {(extractWarning || uncertainFields.size > 0) && (
+        <div className="mt-4 rounded-xl bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-700">
+          {extractWarning ? `${extractWarning} ` : ""}
+          {uncertainFields.size > 0 &&
+            `AI wasn't fully confident about ${uncertainFields.size} field${uncertainFields.size === 1 ? "" : "s"} — check the highlighted ones below.`}
+        </div>
+      )}
+
       <div className="mt-5 text-xs font-black uppercase tracking-wide text-primary-500">Customer</div>
       <div className="mt-2 flex gap-2">
         <button
@@ -354,7 +390,7 @@ export function ComplexBookingPage({
             <input
               value={newCustomer.contactName}
               onChange={(e) => setNewCustomer({ ...newCustomer, contactName: e.target.value })}
-              className="mt-2 w-full rounded-xl border px-3 py-3 font-normal"
+              className={fieldClass("mt-2 w-full rounded-xl border px-3 py-3 font-normal", isUncertain("customer.name"))}
             />
           </label>
           <label className="text-sm font-bold">
@@ -362,7 +398,7 @@ export function ComplexBookingPage({
             <input
               value={newCustomer.companyName}
               onChange={(e) => setNewCustomer({ ...newCustomer, companyName: e.target.value })}
-              className="mt-2 w-full rounded-xl border px-3 py-3 font-normal"
+              className={fieldClass("mt-2 w-full rounded-xl border px-3 py-3 font-normal", isUncertain("customer.company"))}
             />
           </label>
           <label className="text-sm font-bold">
@@ -370,12 +406,16 @@ export function ComplexBookingPage({
             <input
               value={newCustomer.email}
               onChange={(e) => setNewCustomer({ ...newCustomer, email: e.target.value })}
-              className="mt-2 w-full rounded-xl border px-3 py-3 font-normal"
+              className={fieldClass("mt-2 w-full rounded-xl border px-3 py-3 font-normal", isUncertain("customer.email"))}
             />
           </label>
           <label className="text-sm font-bold">
             Phone
-            <PhoneNumberField value={newCustomer.phone} onChange={(v) => setNewCustomer({ ...newCustomer, phone: v ?? "" })} className="mt-2" />
+            <PhoneNumberField
+              value={newCustomer.phone}
+              onChange={(v) => setNewCustomer({ ...newCustomer, phone: v ?? "" })}
+              className={"mt-2" + (isUncertain("customer.phone") ? " rounded-xl ring-2 ring-amber-300" : "")}
+            />
           </label>
         </div>
       )}
@@ -422,14 +462,22 @@ export function ComplexBookingPage({
               </label>
               <label className="text-sm font-bold">
                 Pickup date
-                <DatePicker value={leg.pickupDate} onChange={(v) => updateLeg(leg.clientId, { pickupDate: v })} />
+                <DatePicker
+                  value={leg.pickupDate}
+                  onChange={(v) => updateLeg(leg.clientId, { pickupDate: v })}
+                  className={
+                    isUncertain(legPath(leg, "pickup_date"))
+                      ? "mt-1.5 flex w-full items-center justify-between gap-2 rounded-xl border px-3 py-2.5 text-left text-base font-normal border-amber-400 ring-1 ring-amber-300 bg-amber-50/60"
+                      : undefined
+                  }
+                />
               </label>
               <label className="text-sm font-bold">
                 Pickup address
                 <input
                   value={leg.pickupAddress}
                   onChange={(e) => updateLeg(leg.clientId, { pickupAddress: e.target.value })}
-                  className="mt-1.5 w-full rounded-xl border px-3 py-2.5 font-normal"
+                  className={fieldClass("mt-1.5 w-full rounded-xl border px-3 py-2.5 font-normal", isUncertain(legPath(leg, "pickup_address")))}
                 />
               </label>
               <label className="text-sm font-bold">
@@ -437,22 +485,49 @@ export function ComplexBookingPage({
                 <input
                   value={leg.destinationAddress}
                   onChange={(e) => updateLeg(leg.clientId, { destinationAddress: e.target.value })}
-                  className="mt-1.5 w-full rounded-xl border px-3 py-2.5 font-normal"
+                  className={fieldClass(
+                    "mt-1.5 w-full rounded-xl border px-3 py-2.5 font-normal",
+                    isUncertain(legPath(leg, "destination_address")),
+                  )}
                 />
               </label>
               <label className="text-sm font-bold">
                 Pickup time
-                <TimePicker value={leg.pickupTime} onChange={(v) => updateLeg(leg.clientId, { pickupTime: v })} />
+                <TimePicker
+                  value={leg.pickupTime}
+                  onChange={(v) => updateLeg(leg.clientId, { pickupTime: v })}
+                  className={
+                    isUncertain(legPath(leg, "pickup_time"))
+                      ? "mt-1.5 flex w-full items-center justify-between gap-2 rounded-xl border px-3 py-2.5 text-left text-base font-normal border-amber-400 ring-1 ring-amber-300 bg-amber-50/60"
+                      : undefined
+                  }
+                />
               </label>
               {leg.journeyType === "return" && (
                 <>
                   <label className="text-sm font-bold">
                     Return date
-                    <DatePicker value={leg.returnDate} onChange={(v) => updateLeg(leg.clientId, { returnDate: v })} />
+                    <DatePicker
+                      value={leg.returnDate}
+                      onChange={(v) => updateLeg(leg.clientId, { returnDate: v })}
+                      className={
+                        isUncertain(legPath(leg, "return_date"))
+                          ? "mt-1.5 flex w-full items-center justify-between gap-2 rounded-xl border px-3 py-2.5 text-left text-base font-normal border-amber-400 ring-1 ring-amber-300 bg-amber-50/60"
+                          : undefined
+                      }
+                    />
                   </label>
                   <label className="text-sm font-bold">
                     Return time
-                    <TimePicker value={leg.returnTime} onChange={(v) => updateLeg(leg.clientId, { returnTime: v })} />
+                    <TimePicker
+                      value={leg.returnTime}
+                      onChange={(v) => updateLeg(leg.clientId, { returnTime: v })}
+                      className={
+                        isUncertain(legPath(leg, "return_time"))
+                          ? "mt-1.5 flex w-full items-center justify-between gap-2 rounded-xl border px-3 py-2.5 text-left text-base font-normal border-amber-400 ring-1 ring-amber-300 bg-amber-50/60"
+                          : undefined
+                      }
+                    />
                   </label>
                 </>
               )}
@@ -463,7 +538,10 @@ export function ComplexBookingPage({
                   min={1}
                   value={leg.passengers}
                   onChange={(e) => updateLeg(leg.clientId, { passengers: Number(e.target.value) })}
-                  className="mt-1.5 w-full rounded-xl border px-3 py-2.5 font-normal"
+                  className={fieldClass(
+                    "mt-1.5 w-full rounded-xl border px-3 py-2.5 font-normal",
+                    isUncertain(legPath(leg, "passenger_count")),
+                  )}
                 />
               </label>
               <label className="text-sm font-bold">
@@ -473,7 +551,7 @@ export function ComplexBookingPage({
                   min={0}
                   value={leg.luggage}
                   onChange={(e) => updateLeg(leg.clientId, { luggage: Number(e.target.value) })}
-                  className="mt-1.5 w-full rounded-xl border px-3 py-2.5 font-normal"
+                  className={fieldClass("mt-1.5 w-full rounded-xl border px-3 py-2.5 font-normal", isUncertain(legPath(leg, "luggage_count")))}
                 />
               </label>
               <label className="text-sm font-bold">
@@ -483,7 +561,7 @@ export function ComplexBookingPage({
                   value={leg.vehicleDescription}
                   onChange={(e) => updateLeg(leg.clientId, { vehicleDescription: e.target.value })}
                   placeholder="e.g. 45-seat coach, SUV, minivan"
-                  className="mt-1.5 w-full rounded-xl border px-3 py-2.5 font-normal"
+                  className={fieldClass("mt-1.5 w-full rounded-xl border px-3 py-2.5 font-normal", isUncertain(legPath(leg, "vehicle_notes")))}
                 />
               </label>
               <label className="text-sm font-bold">
@@ -510,7 +588,10 @@ export function ComplexBookingPage({
                 <textarea
                   value={leg.specialRequirements}
                   onChange={(e) => updateLeg(leg.clientId, { specialRequirements: e.target.value })}
-                  className="mt-1.5 min-h-16 w-full rounded-xl border px-3 py-2.5 font-normal"
+                  className={fieldClass(
+                    "mt-1.5 min-h-16 w-full rounded-xl border px-3 py-2.5 font-normal",
+                    isUncertain(legPath(leg, "special_requirements")),
+                  )}
                 />
               </label>
             </div>

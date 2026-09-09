@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { hasPermission, PERMISSIONS } from "@/lib/permissions";
-import { LeadDetailPage, type LeadDetail, type LeadDetailQuote } from "@/components/pages/LeadDetailPage";
+import { LeadDetailPage, type LeadDetail, type LeadDetailQuote, type LeadSourceDocument } from "@/components/pages/LeadDetailPage";
 import type { JourneyLeg } from "@/components/pages/JourneyLegDetail";
 
 export default async function Page({ params }: { params: Promise<{ id: string }> }) {
@@ -42,6 +42,21 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
     quote = quoteRow;
   }
 
+  let sourceDocument: LeadSourceDocument | null = null;
+  if (lead.is_complex_booking) {
+    const { data: doc } = await supabase
+      .from("documents")
+      .select("file_name, storage_path")
+      .eq("lead_id", id)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (doc) {
+      const { data: signed } = await supabase.storage.from("documents").createSignedUrl(doc.storage_path, 3600);
+      sourceDocument = { fileName: doc.file_name, downloadUrl: signed?.signedUrl ?? null };
+    }
+  }
+
   const [canAddEnquiry, canClaim, canRelease] = await Promise.all([
     hasPermission(profile, PERMISSIONS.ENQUIRIES_ADD),
     hasPermission(profile, PERMISSIONS.ENQUIRIES_CLAIM_OPEN_LEADS),
@@ -54,6 +69,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
       legs={(enquiry?.enquiry_legs ?? []) as unknown as JourneyLeg[]}
       enquiryId={enquiry?.id ?? null}
       quote={quote}
+      sourceDocument={sourceDocument}
       currentUserId={profile.id}
       canAddEnquiry={canAddEnquiry}
       canClaim={canClaim}

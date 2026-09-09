@@ -804,6 +804,7 @@ export interface CrmDocument {
   customer_id: string | null;
   supplier_id: string | null;
   quote_id: string | null;
+  lead_id: string | null;
   uploaded_by: string | null;
   created_at: string;
 }

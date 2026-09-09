@@ -14,29 +14,34 @@ export interface ComplexBookingFileRef {
   storagePath: string;
   fileName: string;
   mimeType: string;
+  fileSize?: number;
 }
 
 export async function extractComplexBookingAction(input: {
   pastedText: string;
   file: ComplexBookingFileRef | null;
-}): Promise<{ data: ComplexBookingExtraction | null; error: string | null }> {
+}): Promise<{ data: ComplexBookingExtraction | null; warning: string | null; error: string | null }> {
   const actor = await requireProfile();
   const allowed = await hasPermission(actor, PERMISSIONS.ENQUIRIES_ADD);
-  if (!allowed) return { data: null, error: "You do not have permission to add enquiries." };
+  if (!allowed) return { data: null, warning: null, error: "You do not have permission to add enquiries." };
 
   const pastedText = input.pastedText.trim();
   if (!pastedText && !input.file) {
-    return { data: null, error: "Paste itinerary text or upload a file first." };
+    return { data: null, warning: null, error: "Paste itinerary text or upload a file first." };
   }
 
   try {
     const data = await extractComplexBooking({ pastedText: pastedText || null, file: input.file });
-    if (data.legs.length === 0) {
-      return { data: null, error: "Couldn't find any journey legs in that itinerary — try adding more detail or enter it manually." };
-    }
-    return { data, error: null };
+    // A partial read (e.g. the customer's details came through but no leg was
+    // recognisable) still goes to review rather than being thrown away — the
+    // review form already lets staff add a leg by hand from there.
+    const warning =
+      data.legs.length === 0
+        ? "Couldn't find any journey legs in that itinerary — add one manually below."
+        : null;
+    return { data, warning, error: null };
   } catch (err) {
-    return { data: null, error: err instanceof Error ? err.message : "Could not read this itinerary." };
+    return { data: null, warning: null, error: err instanceof Error ? err.message : "Could not read this itinerary." };
   }
 }
 
@@ -189,6 +194,23 @@ export async function createComplexBookingLeadAction(
 
   if (legsError) {
     return { error: legsError.message };
+  }
+
+  if (input.sourceFile) {
+    // Best-effort: the lead/enquiry are already created, so a failure here
+    // shouldn't roll any of that back — it just means the source file stays
+    // reachable only via Storage directly instead of the Documents module.
+    await supabase.from("documents").insert({
+      tenant_id: actor.tenant_id,
+      doc_type: "itinerary",
+      label: input.sourceFile.fileName,
+      storage_path: input.sourceFile.storagePath,
+      file_name: input.sourceFile.fileName,
+      file_size: input.sourceFile.fileSize ?? null,
+      customer_id: customerId,
+      lead_id: lead.id,
+      uploaded_by: actor.id,
+    });
   }
 
   await recordAudit({
