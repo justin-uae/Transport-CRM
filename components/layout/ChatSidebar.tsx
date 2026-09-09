@@ -90,7 +90,7 @@ export function ChatSidebar({ channels, profiles }: { channels: ChannelListItem[
   }
 
   return (
-    <div className="flex w-full shrink-0 flex-col rounded-3xl border border-slate-200 bg-white shadow-sm lg:w-72">
+    <div className="flex h-56 w-full shrink-0 flex-col rounded-3xl border border-slate-200 bg-white shadow-sm lg:h-full lg:w-72">
       <div className="border-b border-slate-100 p-3">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={15} />

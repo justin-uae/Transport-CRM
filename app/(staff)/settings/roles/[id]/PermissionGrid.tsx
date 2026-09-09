@@ -88,22 +88,24 @@ export function PermissionGrid({
 
       {!readOnly && dirty && (
         <div className="fixed inset-x-0 bottom-0 z-40 flex justify-center px-4 pb-4">
-          <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-5 py-3 shadow-2xl">
+          <div className="flex w-full max-w-md flex-wrap items-center justify-center gap-3 rounded-2xl border border-slate-200 bg-white px-5 py-3 shadow-2xl sm:w-auto">
             <span className="text-sm font-bold text-slate-600">Unsaved permission changes</span>
-            <button
-              onClick={cancel}
-              disabled={pending}
-              className="rounded-xl border px-4 py-2 text-sm font-bold disabled:opacity-60"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={save}
-              disabled={pending}
-              className="rounded-xl bg-primary-500 px-4 py-2 text-sm font-bold text-white disabled:opacity-60"
-            >
-              {pending ? "Saving…" : "Save changes"}
-            </button>
+            <div className="flex gap-3">
+              <button
+                onClick={cancel}
+                disabled={pending}
+                className="rounded-xl border px-4 py-2 text-sm font-bold disabled:opacity-60"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={save}
+                disabled={pending}
+                className="rounded-xl bg-primary-500 px-4 py-2 text-sm font-bold text-white disabled:opacity-60"
+              >
+                {pending ? "Saving…" : "Save changes"}
+              </button>
+            </div>
           </div>
         </div>
       )}

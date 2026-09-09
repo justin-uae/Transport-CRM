@@ -282,7 +282,7 @@ export function SupplierPaymentsPage({
                     {status.replaceAll("_", " ")}
                   </span>
                 </div>
-                <div className="mt-3 grid grid-cols-3 gap-3 rounded-xl bg-slate-50 p-3 text-sm">
+                <div className="mt-3 grid grid-cols-1 gap-3 rounded-xl bg-slate-50 p-3 text-sm sm:grid-cols-3">
                   <div>
                     <div className="text-xs font-bold uppercase text-slate-400">Invoice</div>
                     <b>{money(row.amount, row.currency)}</b>
