@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { requireProfile } from "@/lib/auth";
 import { sendUserEmail } from "@/lib/userEmail";
-import type { EmailAccount } from "@/lib/supabase/database.types";
+import type { EmailAccount, EmailAttachmentMeta } from "@/lib/supabase/database.types";
 
 async function requireOwnAccount() {
   const profile = await requireProfile();
@@ -45,6 +45,7 @@ export async function sendEmailAction(data: {
   subject: string;
   bodyText: string;
   inReplyTo?: string | null;
+  attachments?: EmailAttachmentMeta[];
 }) {
   const to = data.to
     .split(",")
@@ -78,6 +79,7 @@ export async function sendEmailAction(data: {
       subject: data.subject.trim(),
       html: textToSafeHtml(data.bodyText),
       inReplyTo: data.inReplyTo,
+      attachments: data.attachments,
     });
   } catch (err) {
     return { error: err instanceof Error ? err.message : "Could not send the email." };
@@ -85,6 +87,17 @@ export async function sendEmailAction(data: {
 
   revalidatePath("/email");
   return { error: null };
+}
+
+/** A signed, time-limited URL for downloading one attachment — storage RLS
+    (email-attachments bucket) already restricts this to the mailbox owner
+    or admin.manage_users, so no extra ownership check is needed here. */
+export async function getEmailAttachmentUrlAction(storagePath: string) {
+  await requireProfile();
+  const supabase = await createClient();
+  const { data, error } = await supabase.storage.from("email-attachments").createSignedUrl(storagePath, 3600);
+  if (error || !data) return { url: null, error: error?.message ?? "Could not generate a download link." };
+  return { url: data.signedUrl, error: null };
 }
 
 export async function markMessageReadAction(messageId: string) {

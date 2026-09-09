@@ -8,6 +8,7 @@ import { recordAudit } from "@/lib/audit";
 import { recordCustomerPayment, finalizeQuoteFromVerifiedPayments } from "@/lib/quotePayments";
 import { renderAndSendTemplate } from "@/lib/emailTemplates";
 import { generateQuotePdf } from "@/lib/quotePdf";
+import { generateInvoicePdf } from "@/lib/invoicePdf";
 
 /**
  * Manual bank-transfer payment recording, for a deposit, the remaining
@@ -229,4 +230,104 @@ export async function resendQuoteEmailAction(quoteId: string) {
   }
 
   return result;
+}
+
+/**
+ * Emails the invoice PDF to the customer on demand (DOC-01/02) — separate
+ * from resendQuoteEmailAction, which resends the pre-payment quote. Reuses
+ * the existing "payment_received" template (the receipt content already
+ * fits a "here's your invoice" resend) rather than adding a new template
+ * key for what's otherwise the same email. Persists a copy of the generated
+ * PDF into the Documents module each time, the same way any other document
+ * upload is recorded — so every resend leaves a dated, downloadable trail
+ * (DOC-04's "regenerate, audited" without needing a real edit flow, since
+ * nothing about a paid quote's invoice is ever edited).
+ */
+export async function resendInvoiceEmailAction(quoteId: string) {
+  const actor = await requireProfile();
+  const allowed = await hasPermission(actor, PERMISSIONS.QUOTES_RESEND);
+  if (!allowed) return { error: "You do not have permission to resend invoices." };
+
+  const supabase = await createClient();
+  const { data: quote } = await supabase
+    .from("quotes")
+    .select(
+      "id, quote_number, status, public_token, invoice_number, currency, customer_id, customers(contact_name, company_name, email), brands(name), quote_versions!quotes_current_version_id_fkey(selling_price), customer_payments(amount)",
+    )
+    .eq("id", quoteId)
+    .single();
+  if (!quote) return { error: "Quote not found." };
+  if (quote.status !== "paid" || !quote.invoice_number) return { error: "This quote has not been invoiced yet." };
+
+  const customer = quote.customers as unknown as { contact_name: string; company_name: string | null; email: string | null } | null;
+  const brand = quote.brands as unknown as { name: string } | null;
+  const totalPaid = ((quote.customer_payments as unknown as { amount: number }[] | null) ?? []).reduce(
+    (sum, p) => sum + Number(p.amount),
+    0,
+  );
+
+  const invoicePdf = await generateInvoicePdf(supabase, quoteId).catch((err) => {
+    console.error(`generateInvoicePdf failed for quote ${quoteId}:`, err);
+    return null;
+  });
+
+  const result = await renderAndSendTemplate(supabase, {
+    tenantId: actor.tenant_id,
+    key: "payment_received",
+    to: customer?.email,
+    variables: {
+      customer_name: customer?.company_name || customer?.contact_name || "Customer",
+      quote_number: quote.quote_number,
+      brand_name: brand?.name ?? "",
+      currency: quote.currency,
+      amount: totalPaid.toFixed(2),
+      balance: "0.00",
+      link: `${process.env.NEXT_PUBLIC_APP_URL ?? ""}/q/${quote.public_token}`,
+    },
+    attachments: invoicePdf
+      ? [{ filename: `${quote.invoice_number}.pdf`, content: invoicePdf, contentType: "application/pdf" }]
+      : undefined,
+  });
+
+  if (!result.error) {
+    if (invoicePdf) await persistInvoicePdf(supabase, actor, quote.id, quote.invoice_number, invoicePdf);
+    await recordAudit({
+      tenantId: actor.tenant_id,
+      actorId: actor.id,
+      action: "invoice_email_resent",
+      entityType: "quote",
+      entityId: quoteId,
+      newValue: { invoiceNumber: quote.invoice_number },
+    });
+  }
+
+  return result;
+}
+
+async function persistInvoicePdf(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  actor: { id: string; tenant_id: string },
+  quoteId: string,
+  invoiceNumber: string,
+  pdf: Buffer,
+) {
+  const fileName = `${invoiceNumber}.pdf`;
+  const storagePath = `${actor.tenant_id}/${crypto.randomUUID()}-${fileName}`;
+  const { error: uploadError } = await supabase.storage.from("documents").upload(storagePath, pdf, {
+    contentType: "application/pdf",
+  });
+  if (uploadError) {
+    console.error(`persistInvoicePdf: storage upload failed for quote ${quoteId}:`, uploadError.message);
+    return;
+  }
+  await supabase.from("documents").insert({
+    tenant_id: actor.tenant_id,
+    doc_type: "invoice",
+    label: `Invoice ${invoiceNumber}`,
+    storage_path: storagePath,
+    file_name: fileName,
+    file_size: pdf.byteLength,
+    quote_id: quoteId,
+    uploaded_by: actor.id,
+  });
 }

@@ -1,13 +1,24 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useMemo, useRef, useState, useTransition } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Plus, Search, Paperclip, Send, Mail as MailIcon } from "lucide-react";
+import { Plus, Search, Paperclip, Send, Mail as MailIcon, X, FileText, Loader2 } from "lucide-react";
 import { PageHead } from "@/components/ui/PageHead";
 import { useToast } from "@/components/ui/Toast";
-import { sendEmailAction } from "@/app/(staff)/email/mailActions";
+import { sendEmailAction, getEmailAttachmentUrlAction } from "@/app/(staff)/email/mailActions";
+import { createClient } from "@/lib/supabase/client";
 import { EmailTemplatesPage } from "./EmailTemplatesPage";
-import type { EmailAccount, EmailFolder, EmailMessage, EmailTemplate } from "@/lib/supabase/database.types";
+import type { EmailAccount, EmailAttachmentMeta, EmailFolder, EmailMessage, EmailTemplate } from "@/lib/supabase/database.types";
+
+type PendingAttachment = EmailAttachmentMeta & { storagePath: string };
+
+function formatFileSize(bytes: number | null) {
+  if (bytes === null) return "";
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
 
 const FOLDERS: { key: EmailFolder; label: string }[] = [
   { key: "inbox", label: "Inbox" },
@@ -52,12 +63,68 @@ export function EmailCentrePage({
   );
 
   const [replyText, setReplyText] = useState("");
+  const [replyAttachments, setReplyAttachments] = useState<PendingAttachment[]>([]);
   const [composeTo, setComposeTo] = useState("");
   const [composeSubject, setComposeSubject] = useState("");
   const [composeBody, setComposeBody] = useState("");
+  const [composeAttachments, setComposeAttachments] = useState<PendingAttachment[]>([]);
   const [invalidAddresses, setInvalidAddresses] = useState<string[]>([]);
+  const [uploadingReply, setUploadingReply] = useState(false);
+  const [uploadingCompose, setUploadingCompose] = useState(false);
+  const replyFileInput = useRef<HTMLInputElement>(null);
+  const composeFileInput = useRef<HTMLInputElement>(null);
 
-  function send(payload: { to: string; subject: string; bodyText: string; inReplyTo?: string | null }) {
+  async function uploadAttachment(file: File): Promise<PendingAttachment | null> {
+    try {
+      const supabase = createClient();
+      const storagePath = `${account?.tenant_id}/${account?.user_id}/${crypto.randomUUID()}-${file.name}`;
+      const { error } = await supabase.storage.from("email-attachments").upload(storagePath, file, {
+        contentType: file.type || undefined,
+      });
+      if (error) {
+        notify(`Could not attach ${file.name}: ${error.message}`);
+        return null;
+      }
+      return { filename: file.name, size: file.size, contentType: file.type || null, storagePath };
+    } catch (err) {
+      notify(err instanceof Error ? err.message : `Could not attach ${file.name}.`);
+      return null;
+    }
+  }
+
+  async function onReplyFileSelected(file: File | null) {
+    if (!file) return;
+    setUploadingReply(true);
+    const attachment = await uploadAttachment(file);
+    if (attachment) setReplyAttachments((prev) => [...prev, attachment]);
+    setUploadingReply(false);
+  }
+
+  async function onComposeFileSelected(file: File | null) {
+    if (!file) return;
+    setUploadingCompose(true);
+    const attachment = await uploadAttachment(file);
+    if (attachment) setComposeAttachments((prev) => [...prev, attachment]);
+    setUploadingCompose(false);
+  }
+
+  async function downloadAttachment(storagePath: string | null) {
+    if (!storagePath) return;
+    const result = await getEmailAttachmentUrlAction(storagePath);
+    if (result.error || !result.url) {
+      notify(result.error ?? "Could not download this attachment.");
+      return;
+    }
+    window.open(result.url, "_blank", "noopener");
+  }
+
+  function send(payload: {
+    to: string;
+    subject: string;
+    bodyText: string;
+    inReplyTo?: string | null;
+    attachments?: PendingAttachment[];
+  }) {
     setInvalidAddresses([]);
     startTransition(async () => {
       const result = await sendEmailAction(payload);
@@ -68,10 +135,12 @@ export function EmailCentrePage({
       }
       notify("Email sent");
       setReplyText("");
+      setReplyAttachments([]);
       setComposeOpen(false);
       setComposeTo("");
       setComposeSubject("");
       setComposeBody("");
+      setComposeAttachments([]);
       setInvalidAddresses([]);
       router.refresh();
     });
@@ -211,6 +280,25 @@ export function EmailCentrePage({
                       )}
                     </p>
                   </div>
+                  {(selected.customer_id || selected.supplier_id || selected.quote_id) && (
+                    <div className="flex shrink-0 flex-wrap justify-end gap-1.5">
+                      {selected.customer_id && (
+                        <Link href={`/customers/${selected.customer_id}`} className="rounded-full bg-primary-50 px-2.5 py-1 text-xs font-bold text-primary-700">
+                          Customer
+                        </Link>
+                      )}
+                      {selected.supplier_id && (
+                        <Link href={`/suppliers/${selected.supplier_id}`} className="rounded-full bg-primary-50 px-2.5 py-1 text-xs font-bold text-primary-700">
+                          Supplier
+                        </Link>
+                      )}
+                      {selected.quote_id && (
+                        <Link href={`/quotes/${selected.quote_id}`} className="rounded-full bg-primary-50 px-2.5 py-1 text-xs font-bold text-primary-700">
+                          Quote
+                        </Link>
+                      )}
+                    </div>
+                  )}
                 </div>
                 <div className="py-8 text-sm leading-7 text-slate-600">
                   {selected.body_html ? (
@@ -219,6 +307,22 @@ export function EmailCentrePage({
                     <p className="whitespace-pre-wrap">{selected.body_text}</p>
                   )}
                 </div>
+                {selected.has_attachments && selected.attachment_meta.length > 0 && (
+                  <div className="mb-6 flex flex-wrap gap-2">
+                    {selected.attachment_meta.map((a, i) => (
+                      <button
+                        key={i}
+                        onClick={() => downloadAttachment(a.storagePath)}
+                        disabled={!a.storagePath}
+                        className="flex items-center gap-2 rounded-xl border px-3 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+                      >
+                        <FileText size={14} />
+                        {a.filename}
+                        {a.size !== null && <span className="text-slate-400">{formatFileSize(a.size)}</span>}
+                      </button>
+                    ))}
+                  </div>
+                )}
                 {/* The recipient depends on which way the original message went:
                     replying to something you received goes back to its sender,
                     while mailing again from something you sent goes back to the
@@ -231,9 +335,36 @@ export function EmailCentrePage({
                     className="min-h-28 w-full resize-none outline-none"
                     placeholder="Mail again…"
                   />
+                  {replyAttachments.length > 0 && (
+                    <div className="mb-2 flex flex-wrap gap-2">
+                      {replyAttachments.map((a, i) => (
+                        <span key={i} className="flex items-center gap-1.5 rounded-lg bg-slate-100 px-2.5 py-1.5 text-xs font-bold text-slate-600">
+                          <FileText size={13} />
+                          {a.filename}
+                          <button onClick={() => setReplyAttachments((prev) => prev.filter((_, j) => j !== i))} aria-label="Remove attachment">
+                            <X size={13} />
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  )}
                   <div className="flex items-center justify-between border-t pt-3">
-                    <button className="rounded-lg p-2 text-slate-300" disabled title="Attachments coming soon">
-                      <Paperclip size={18} />
+                    <input
+                      ref={replyFileInput}
+                      type="file"
+                      className="hidden"
+                      onChange={(e) => {
+                        onReplyFileSelected(e.target.files?.[0] ?? null);
+                        e.target.value = "";
+                      }}
+                    />
+                    <button
+                      onClick={() => replyFileInput.current?.click()}
+                      disabled={uploadingReply}
+                      className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 disabled:opacity-50"
+                      title="Attach a file"
+                    >
+                      {uploadingReply ? <Loader2 size={18} className="animate-spin" /> : <Paperclip size={18} />}
                     </button>
                     <button
                       disabled={pending || !replyText.trim()}
@@ -246,6 +377,7 @@ export function EmailCentrePage({
                           subject: selected.subject?.startsWith("Re:") ? selected.subject : `Re: ${selected.subject ?? ""}`,
                           bodyText: replyText,
                           inReplyTo: selected.message_id,
+                          attachments: replyAttachments,
                         })
                       }
                       className="flex items-center gap-2 rounded-xl bg-primary-500 px-4 py-2.5 text-sm font-bold text-white disabled:opacity-60"
@@ -307,18 +439,50 @@ export function EmailCentrePage({
                   className="mt-1 min-h-32 w-full rounded-xl border px-3 py-2 font-normal"
                 />
               </label>
+              {composeAttachments.length > 0 && (
+                <div className="flex flex-wrap gap-2">
+                  {composeAttachments.map((a, i) => (
+                    <span key={i} className="flex items-center gap-1.5 rounded-lg bg-slate-100 px-2.5 py-1.5 text-xs font-bold text-slate-600">
+                      <FileText size={13} />
+                      {a.filename}
+                      <button onClick={() => setComposeAttachments((prev) => prev.filter((_, j) => j !== i))} aria-label="Remove attachment">
+                        <X size={13} />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
-            <div className="mt-4 flex justify-end gap-2">
-              <button onClick={() => setComposeOpen(false)} className="rounded-xl border px-4 py-2.5 text-sm font-bold">
-                Cancel
-              </button>
+            <div className="mt-4 flex items-center justify-between gap-2">
+              <input
+                ref={composeFileInput}
+                type="file"
+                className="hidden"
+                onChange={(e) => {
+                  onComposeFileSelected(e.target.files?.[0] ?? null);
+                  e.target.value = "";
+                }}
+              />
               <button
-                disabled={pending}
-                onClick={() => send({ to: composeTo, subject: composeSubject, bodyText: composeBody })}
-                className="rounded-xl bg-primary-500 px-4 py-2.5 text-sm font-bold text-white disabled:opacity-60"
+                onClick={() => composeFileInput.current?.click()}
+                disabled={uploadingCompose}
+                className="flex items-center gap-2 rounded-xl p-2.5 text-sm font-bold text-slate-500 hover:bg-slate-100 disabled:opacity-50"
+                title="Attach a file"
               >
-                {pending ? "Sending…" : "Send"}
+                {uploadingCompose ? <Loader2 size={18} className="animate-spin" /> : <Paperclip size={18} />}
               </button>
+              <div className="flex gap-2">
+                <button onClick={() => setComposeOpen(false)} className="rounded-xl border px-4 py-2.5 text-sm font-bold">
+                  Cancel
+                </button>
+                <button
+                  disabled={pending}
+                  onClick={() => send({ to: composeTo, subject: composeSubject, bodyText: composeBody, attachments: composeAttachments })}
+                  className="rounded-xl bg-primary-500 px-4 py-2.5 text-sm font-bold text-white disabled:opacity-60"
+                >
+                  {pending ? "Sending…" : "Send"}
+                </button>
+              </div>
             </div>
           </div>
         </div>

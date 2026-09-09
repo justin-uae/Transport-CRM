@@ -1,9 +1,22 @@
 import "server-only";
-import { readFileSync } from "fs";
-import path from "path";
-import PDFDocument from "pdfkit";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "./supabase/database.types";
+import {
+  createPdfDocument,
+  money,
+  formatDate,
+  fetchLogoBuffer,
+  sectionHeading,
+  ensureSpace,
+  drawKeyValueBox,
+  drawFooterOnEveryPage,
+  FALLBACK_COLOR,
+  INK,
+  MUTED,
+  PAGE_MARGIN,
+  FONT_REGULAR,
+  FONT_BOLD,
+} from "./pdfDocument";
 
 interface BrandSnapshot {
   name: string;
@@ -11,14 +24,28 @@ interface BrandSnapshot {
   primary_color: string;
 }
 
+interface QuoteLineItemRow {
+  description: string;
+  amount: number;
+}
+
+interface QuoteMilestoneRow {
+  sequence: number;
+  label: string;
+  amount: number;
+  due_date: string | null;
+}
+
 interface VersionRow {
   vehicle_description: string | null;
   selling_price: number;
   deposit_percentage: number | null;
+  deposit_fixed_amount: number | null;
   payment_methods: { stripe: boolean; bank_transfer: boolean } | null;
   customer_notes: string | null;
   terms_snapshot: string | null;
   brand_snapshot: BrandSnapshot | null;
+  quote_line_items: QuoteLineItemRow[] | null;
 }
 
 interface LegRow {
@@ -50,117 +77,15 @@ interface QuotePdfRow {
   customers: { company_name: string | null; contact_name: string; email: string | null; phone: string | null } | null;
   enquiries: { enquiry_legs: LegRow[] } | null;
   quote_versions: VersionRow | null;
+  quote_payment_milestones: QuoteMilestoneRow[] | null;
 }
 
-const FALLBACK_COLOR = "#f97316";
-const INK = "#1e293b";
-const MUTED = "#64748b";
-const PAGE_MARGIN = 50;
-
-// Fixed names this file's own font(...) calls use — never "Helvetica"
-// directly (see resolveFontSources below for why).
-const FONT_REGULAR = "Regular";
-const FONT_BOLD = "Bold";
-
-/**
- * pdfkit's built-in "Helvetica"/"Helvetica-Bold" names aren't real embedded
- * fonts — selecting them makes pdfkit read glyph-width metrics from an .afm
- * file under node_modules/pdfkit/js/data/ at render time. That file has
- * been observed missing in at least one production deployment (Next.js'
- * bundler doesn't reliably carry a dependency's non-JS data files into a
- * trimmed build), which crashes PDF generation entirely.
- *
- * Embedding a real font file sidesteps this: pdfkit reads metrics straight
- * out of the font's own tables, no separate data file involved. Next.js
- * ships one for its own OG-image feature (Geist, permissively licensed),
- * which is about as reliably present as any file can be in a Next.js
- * deployment — so it doubles as our unconditional fallback here. It only
- * ships a single weight, so "Bold" reuses the same buffer (no true bold,
- * per the request that a plain default font is fine) rather than fail.
- * If even that read fails, fall back to the plain named fonts, which is
- * exactly what worked before this file existed.
- */
-function resolveFontSources(): { regular: string | Buffer; bold: string | Buffer } {
-  try {
-    const buffer = readFileSync(
-      path.join(process.cwd(), "node_modules/next/dist/compiled/@vercel/og/Geist-Regular.ttf"),
-    );
-    return { regular: buffer, bold: buffer };
-  } catch {
-    return { regular: "Helvetica", bold: "Helvetica-Bold" };
-  }
-}
-
-// Geist (and most fonts with any OpenType typography) substitutes "fi",
-// "ff", "ffi" etc. with a single ligature glyph. That renders fine visually,
-// but pdfkit/fontkit doesn't always map the ligature glyph back to its full
-// multi-character text in the PDF's extractable text layer — copy/paste and
-// search then silently drop letters ("confirm" -> "confrm", "traffic" ->
-// "trafic"). Disabling the ligature features avoids the substitution
-// entirely, which is the safe tradeoff for a document whose text needs to
-// stay correct when copied, searched, or read by a screen reader.
-//
-// fontkit's ShapingPlan#setFeatureOverrides (what pdfkit's `features` option
-// ultimately reaches) accepts either an array of tags to *enable*, or an
-// object of {tag: boolean} to enable/disable individual ones — @types/pdfkit
-// only declares the array-of-tags form (and its own TextOptions/
-// OpenTypeFeatures types aren't resolvable from here regardless), so this
-// whole shim is kept loosely typed rather than fought into pdfkit's types.
-const NO_LIGATURE_FEATURES = { liga: false, clig: false, calt: false, rclt: false };
-
-/**
- * Patches this document's own .text() so every call — regardless of which
- * of pdfkit's four call shapes (text-only, +options, +x/y, +x/y/options) is
- * used anywhere in this file — always carries the no-ligature features,
- * without having to thread that through every individual call site below.
- */
-function disableLigatures(doc: PDFKit.PDFDocument) {
-  const original = doc.text.bind(doc) as (...args: unknown[]) => PDFKit.PDFDocument;
-  const patched = (str: string, ...rest: unknown[]) => {
-    if (rest.length === 0) {
-      return original(str, { features: NO_LIGATURE_FEATURES });
-    }
-    if (rest.length === 1) {
-      const opts = (rest[0] as Record<string, unknown> | undefined) ?? {};
-      return original(str, { ...opts, features: NO_LIGATURE_FEATURES });
-    }
-    if (rest.length === 2) {
-      return original(str, rest[0], rest[1], { features: NO_LIGATURE_FEATURES });
-    }
-    const opts = (rest[2] as Record<string, unknown> | undefined) ?? {};
-    return original(str, rest[0], rest[1], { ...opts, features: NO_LIGATURE_FEATURES });
-  };
-  (doc as unknown as { text: typeof patched }).text = patched;
-}
-
-function money(amount: number | null | undefined, currency: string) {
-  if (amount === null || amount === undefined) return "—";
-  return new Intl.NumberFormat("en-GB", { style: "currency", currency, maximumFractionDigits: 2 }).format(amount);
-}
-
-function formatDate(value: string | null) {
-  if (!value) return "—";
-  return new Date(value).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
-}
-
-async function fetchLogoBuffer(logoUrl: string | null): Promise<Buffer | null> {
-  if (!logoUrl) return null;
-  try {
-    const res = await fetch(logoUrl);
-    if (!res.ok) return null;
-    const arrayBuffer = await res.arrayBuffer();
-    return Buffer.from(arrayBuffer);
-  } catch {
-    // A broken/unreachable logo URL should never stop the quote email from
-    // sending — fall back to a text-only header.
-    return null;
-  }
-}
-
-function defaultTermsAndConditions(brandName: string, depositPercentage: number | null): string[] {
-  const paymentClause = depositPercentage
-    ? `A deposit of ${depositPercentage}% of the total price is required to confirm this booking. The remaining balance is due no later than 48 hours before the scheduled pickup time, unless otherwise agreed in writing.`
-    : `Full payment of the total price is required to confirm this booking.`;
+function defaultTermsAndConditions(brandName: string, depositPercentage: number | null, paymentClauseOverride?: string): string[] {
+  const paymentClause =
+    paymentClauseOverride ??
+    (depositPercentage
+      ? `A deposit of ${depositPercentage}% of the total price is required to confirm this booking. The remaining balance is due no later than 48 hours before the scheduled pickup time, unless otherwise agreed in writing.`
+      : `Full payment of the total price is required to confirm this booking.`);
 
   return [
     `1. Quote validity — This quotation is valid until the date shown above. ${brandName} reserves the right to revise pricing for any booking confirmed after this date.`,
@@ -194,7 +119,8 @@ export async function generateQuotePdf(
       "id, quote_number, status, currency, expiry_at, created_at, brand_id, " +
         "customers(company_name, contact_name, email, phone), " +
         "enquiries(enquiry_legs(sequence, journey_type, pickup_address, destination_address, via_points, pickup_date, pickup_time, return_date, return_time, passenger_count, luggage_count, wheelchair_required, child_seats, special_requirements, vehicle_types(name))), " +
-        "quote_versions!quotes_current_version_id_fkey(vehicle_description, selling_price, deposit_percentage, payment_methods, customer_notes, terms_snapshot, brand_snapshot)",
+        "quote_versions!quotes_current_version_id_fkey(vehicle_description, selling_price, deposit_percentage, deposit_fixed_amount, payment_methods, customer_notes, terms_snapshot, brand_snapshot, quote_line_items(description, amount)), " +
+        "quote_payment_milestones(sequence, label, amount, due_date)",
     )
     .eq("id", quoteId)
     .single();
@@ -220,36 +146,9 @@ export async function generateQuotePdf(
   const legs = [...(quote.enquiries?.enquiry_legs ?? [])].sort((a, b) => a.sequence - b.sequence);
   const logoBuffer = await fetchLogoBuffer(brand?.logo_url ?? null);
 
-  // font: false skips pdfkit's automatic "Helvetica" load at construction
-  // time — that happens before we'd get a chance to register our own safe
-  // fallback below, so it would crash regardless of resolveFontSources().
-  // @types/pdfkit only declares `font` as `string | undefined`, but pdfkit
-  // itself (`if (defaultFont) { this.font(...) }`) happily treats `false`
-  // as "skip" at runtime — the type is just incomplete here.
-  const doc = new PDFDocument({
-    size: "A4",
-    margin: PAGE_MARGIN,
-    bufferPages: true,
-    font: false as unknown as string,
-  });
-  const { regular, bold } = resolveFontSources();
-  try {
-    doc.registerFont(FONT_REGULAR, regular);
-    doc.registerFont(FONT_BOLD, bold);
-    doc.font(FONT_REGULAR);
-  } catch (err) {
-    // Both the embedded fallback and the named-font path failed — nothing
-    // left to draw text with, so bail out the same way a data-fetch miss
-    // above does.
-    console.error(`quotePdf: could not initialize a font: ${err instanceof Error ? err.message : err}`);
-    return null;
-  }
-  disableLigatures(doc);
-  const chunks: Buffer[] = [];
-  doc.on("data", (chunk) => chunks.push(chunk));
-  const done = new Promise<Buffer>((resolve) => {
-    doc.on("end", () => resolve(Buffer.concat(chunks)));
-  });
+  const built = createPdfDocument("quotePdf");
+  if (!built) return null;
+  const { doc, done } = built;
 
   const pageWidth = doc.page.width;
   const contentWidth = pageWidth - PAGE_MARGIN * 2;
@@ -365,6 +264,17 @@ export async function generateQuotePdf(
 
   // ---- Pricing ---------------------------------------------------------------
   sectionHeading(doc, "Pricing", brandColor, contentWidth);
+
+  if (version.quote_line_items && version.quote_line_items.length > 0) {
+    ensureSpace(doc, 24 * version.quote_line_items.length + 10);
+    drawKeyValueBox(
+      doc,
+      version.quote_line_items.map((li): [string, string] => [li.description, money(li.amount, quote.currency)]),
+      contentWidth,
+    );
+    doc.moveDown(0.6);
+  }
+
   ensureSpace(doc, 44);
   const priceBoxTop = doc.y;
   doc.font(FONT_REGULAR).fontSize(11).fillColor(MUTED).text("Total price", PAGE_MARGIN, priceBoxTop);
@@ -376,8 +286,17 @@ export async function generateQuotePdf(
   doc.fillColor(INK);
   doc.y = priceBoxTop + 44;
 
+  const milestones = [...(quote.quote_payment_milestones ?? [])].sort((a, b) => a.sequence - b.sequence);
   const pricingRows: [string, string][] = [];
-  if (version.deposit_percentage) {
+  if (milestones.length > 0) {
+    for (const m of milestones) {
+      pricingRows.push([m.label + (m.due_date ? ` (due ${formatDate(m.due_date)})` : ""), money(m.amount, quote.currency)]);
+    }
+  } else if (version.deposit_fixed_amount) {
+    const balance = Math.round((version.selling_price - version.deposit_fixed_amount) * 100) / 100;
+    pricingRows.push(["Deposit due now", money(version.deposit_fixed_amount, quote.currency)]);
+    pricingRows.push(["Balance (due before travel)", money(balance, quote.currency)]);
+  } else if (version.deposit_percentage) {
     const deposit = Math.round(version.selling_price * (version.deposit_percentage / 100) * 100) / 100;
     const balance = Math.round((version.selling_price - deposit) * 100) / 100;
     pricingRows.push([`Deposit due now (${version.deposit_percentage}%)`, money(deposit, quote.currency)]);
@@ -401,9 +320,15 @@ export async function generateQuotePdf(
 
   // ---- Terms & conditions -----------------------------------------------------
   sectionHeading(doc, "Terms & Conditions", brandColor, contentWidth);
+  const paymentClauseOverride =
+    milestones.length > 0
+      ? `Payment is due according to the schedule shown above — one milestone at a time, in order. Each instalment must be received by its due date to keep this booking confirmed, unless otherwise agreed in writing.`
+      : version.deposit_fixed_amount
+        ? `A deposit of ${money(version.deposit_fixed_amount, quote.currency)} is required to confirm this booking. The remaining balance is due no later than 48 hours before the scheduled pickup time, unless otherwise agreed in writing.`
+        : undefined;
   const terms = version.terms_snapshot?.trim()
     ? [version.terms_snapshot.trim()]
-    : defaultTermsAndConditions(brandName, version.deposit_percentage);
+    : defaultTermsAndConditions(brandName, version.deposit_percentage, paymentClauseOverride);
   doc.font(FONT_REGULAR).fontSize(9).fillColor(MUTED);
   for (const clause of terms) {
     doc.text(clause, PAGE_MARGIN, doc.y, { width: contentWidth, align: "left" });
@@ -411,91 +336,12 @@ export async function generateQuotePdf(
   }
 
   // ---- Footer on every page ---------------------------------------------------
-  const pageRange = doc.bufferedPageRange();
   const footerLine =
     [company?.legal_name, company?.registered_address, company?.vat_number ? `VAT ${company.vat_number}` : null]
       .filter(Boolean)
       .join(" · ") || brandName;
-  for (let i = pageRange.start; i < pageRange.start + pageRange.count; i++) {
-    doc.switchToPage(i);
-    const footerY = doc.page.height - 40;
-    // Writing at this y sits inside the page's bottom margin, which PDFKit
-    // treats as an overflow — normally that's exactly what triggers the
-    // *next* page, but here it would silently addPage() a blank page and
-    // draw the footer there instead of on page i. Dropping the bottom
-    // margin to 0 for these two calls disables that check.
-    const restoreBottomMargin = doc.page.margins.bottom;
-    doc.page.margins.bottom = 0;
-    doc
-      .font(FONT_REGULAR)
-      .fontSize(8)
-      .fillColor(MUTED)
-      .text(footerLine, PAGE_MARGIN, footerY, { width: contentWidth - 100, align: "left", lineBreak: false });
-    doc.text(`Page ${i - pageRange.start + 1} of ${pageRange.count}`, PAGE_MARGIN, footerY, {
-      width: contentWidth,
-      align: "right",
-      lineBreak: false,
-    });
-    doc.page.margins.bottom = restoreBottomMargin;
-  }
+  drawFooterOnEveryPage(doc, footerLine, contentWidth);
 
   doc.end();
   return done;
-}
-
-function sectionHeading(doc: PDFKit.PDFDocument, title: string, color: string, width: number) {
-  doc.font(FONT_BOLD).fontSize(13).fillColor(color).text(title, PAGE_MARGIN, doc.y, { width });
-  doc.moveDown(0.4);
-  doc.fillColor(INK);
-}
-
-/**
- * Forces a fresh page first if `height` of content wouldn't fit in what's
- * left of the current one. Needed before anything (a background rect, a
- * tight label+value pair) that draws using explicit y-coordinates computed
- * from doc.y and then manually advances doc.y by a fixed amount afterward —
- * pdfkit's own per-line auto page-break can still silently fire mid-way
- * through such a block (each .text() call checks the bottom margin on its
- * own), and once that happens the manual doc.y math after it is left
- * pointing at a stale position from the old page instead of the new one.
- * That produced a real bug: a multi-leg quote whose Pricing section landed
- * near a page's bottom sent the price *value* to a new page while "Total
- * price" stayed managed by page 1, and every section after it inherited the
- * same wrong math — five pages in a row with one stray line of text each.
- */
-function ensureSpace(doc: PDFKit.PDFDocument, height: number) {
-  if (doc.y + height > doc.page.maxY()) {
-    doc.addPage();
-  }
-}
-
-/** A light grey box of label/value rows — the workhorse layout for travel + pricing details. */
-function drawKeyValueBox(doc: PDFKit.PDFDocument, rows: [string, string][], width: number) {
-  const padding = 10;
-  const labelWidth = width * 0.4 - padding;
-  const valueWidth = width * 0.6 - padding;
-
-  // Measure every row's wrapped height up front so the background box can be
-  // drawn once, before any text — filling it after the fact would sit on
-  // top of (and fade) the text.
-  let boxHeight = padding;
-  for (const [, value] of rows) {
-    boxHeight += Math.max(doc.heightOfString(value, { width: valueWidth }), 12) + 8;
-  }
-  ensureSpace(doc, boxHeight);
-  const startY = doc.y;
-  doc.rect(PAGE_MARGIN, startY, width, boxHeight).fillOpacity(0.04).fill(INK).fillOpacity(1);
-
-  let y = startY + padding;
-  for (const [label, value] of rows) {
-    const valueHeight = doc.heightOfString(value, { width: valueWidth });
-    doc.font(FONT_REGULAR).fontSize(9).fillColor(MUTED).text(label, PAGE_MARGIN + padding, y, { width: labelWidth });
-    doc
-      .font(FONT_BOLD)
-      .fontSize(10)
-      .fillColor(INK)
-      .text(value, PAGE_MARGIN + padding + labelWidth, y, { width: valueWidth });
-    y += Math.max(valueHeight, 12) + 8;
-  }
-  doc.y = startY + boxHeight + 4;
 }

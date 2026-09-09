@@ -33,7 +33,7 @@ async function loadPayableQuote(admin: ReturnType<typeof createAdminClient>, tok
   const { data: quote } = await admin
     .from("quotes")
     .select(
-      "id, tenant_id, status, currency, quote_versions!quotes_current_version_id_fkey(selling_price, deposit_percentage, payment_methods), customer_payments(amount)",
+      "id, tenant_id, status, currency, quote_versions!quotes_current_version_id_fkey(selling_price, deposit_percentage, deposit_fixed_amount, payment_methods), customer_payments(amount), quote_payment_milestones(sequence, amount)",
     )
     .eq("public_token", token)
     .single();
@@ -62,6 +62,7 @@ export async function createStripeCheckoutAction(token: string) {
   const version = quote.quote_versions as unknown as {
     selling_price: number;
     deposit_percentage: number | null;
+    deposit_fixed_amount: number | null;
     payment_methods: { stripe: boolean; bank_transfer: boolean };
   } | null;
   if (!version) return { error: "This quote has no priced version.", url: null };
@@ -71,7 +72,8 @@ export async function createStripeCheckoutAction(token: string) {
     (sum, p) => sum + Number(p.amount),
     0,
   );
-  const due = amountDueNow(version, alreadyPaid);
+  const milestones = (quote.quote_payment_milestones as unknown as { sequence: number; amount: number }[] | null) ?? [];
+  const due = amountDueNow(version, alreadyPaid, milestones);
   if (due <= 0) return { error: "This quote has already been paid in full.", url: null };
 
   await admin.from("quotes").update({ payment_method_chosen: "stripe" }).eq("id", quote.id);
@@ -93,7 +95,17 @@ export async function createStripeCheckoutAction(token: string) {
           price_data: {
             currency: quote.currency,
             unit_amount: toStripeAmount(due, quote.currency),
-            product_data: { name: `Quote payment${version.deposit_percentage ? ` (${version.deposit_percentage}% deposit)` : ""}` },
+            product_data: {
+              name: `Quote payment${
+                milestones.length > 0
+                  ? " (instalment)"
+                  : version.deposit_fixed_amount
+                    ? " (deposit)"
+                    : version.deposit_percentage
+                      ? ` (${version.deposit_percentage}% deposit)`
+                      : ""
+              }`,
+            },
           },
           quantity: 1,
         },

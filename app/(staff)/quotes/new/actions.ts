@@ -10,8 +10,20 @@ import { convertToGbp } from "@/lib/fxRates";
 import { sendTemplatedEmail } from "@/lib/emailTemplates";
 import { generateQuotePdf } from "@/lib/quotePdf";
 
+interface MilestoneInput {
+  label: string;
+  amount: number;
+  dueDate: string | null;
+}
+
+interface LineItemInput {
+  description: string;
+  amount: number;
+  category: "waiting_time" | "toll" | "parking" | "other";
+}
+
 export async function createQuoteAction(
-  _prevState: { error: string | null; link: string | null },
+  _prevState: { error: string | null; link: string | null; warnLowSupplierCost?: boolean },
   formData: FormData,
 ) {
   const actor = await requireProfile();
@@ -43,11 +55,17 @@ export async function createQuoteAction(
     return { error: "Enter a selling price greater than zero.", link: null };
   }
 
-  // Required — this is the exact figure the supplier sees and gets
-  // invoiced for once the job is offered to them (job_offer_view).
-  const supplierEstimatedCost = Number(formData.get("supplierEstimatedCost") ?? 0);
-  if (!supplierEstimatedCost || supplierEstimatedCost <= 0) {
-    return { error: "Enter the supplier cost — this is what the supplier will be invoiced for.", link: null };
+  // QTE-02: missing/zero supplier cost is a warning, not a hard block —
+  // staff can still save without one (e.g. the supplier isn't picked yet),
+  // but has to explicitly acknowledge it first.
+  const supplierEstimatedCostRaw = String(formData.get("supplierEstimatedCost") ?? "").trim();
+  const supplierEstimatedCost = supplierEstimatedCostRaw ? Number(supplierEstimatedCostRaw) : null;
+  if ((!supplierEstimatedCost || supplierEstimatedCost <= 0) && formData.get("confirmedLowSupplierCost") !== "true") {
+    return {
+      error: null,
+      link: null,
+      warnLowSupplierCost: true,
+    };
   }
 
   const currency = String(formData.get("currency") ?? brand.default_currency).trim() || brand.default_currency;
@@ -83,8 +101,57 @@ export async function createQuoteAction(
     return { error: quoteError?.message ?? "Could not create the quote.", link: null };
   }
 
+  // QTE-04: a milestone schedule, when provided, is a third payment-plan
+  // mode that supersedes the simple deposit fields entirely (see
+  // amountDueNow in lib/quoteMoney.ts) — so a deposit choice is ignored
+  // whenever milestones are present.
+  let milestones: MilestoneInput[] = [];
+  const milestonesRaw = String(formData.get("milestones") ?? "").trim();
+  if (milestonesRaw) {
+    try {
+      const parsed = JSON.parse(milestonesRaw) as unknown[];
+      milestones = parsed
+        .map((m) => {
+          const row = m as { label?: unknown; amount?: unknown; dueDate?: unknown };
+          const label = String(row.label ?? "").trim();
+          const amount = Number(row.amount ?? 0);
+          if (!label || !amount || amount <= 0) return null;
+          return { label, amount, dueDate: row.dueDate ? String(row.dueDate) : null };
+        })
+        .filter((m): m is MilestoneInput => m !== null);
+    } catch {
+      milestones = [];
+    }
+  }
+
   const depositPercentageRaw = Number(formData.get("depositPercentage") ?? "");
-  const depositPercentage = [25, 50, 75].includes(depositPercentageRaw) ? depositPercentageRaw : null;
+  const depositFixedAmountRaw = Number(formData.get("depositFixedAmount") ?? "");
+  const hasMilestones = milestones.length > 0;
+  const depositPercentage = !hasMilestones && [25, 50, 75].includes(depositPercentageRaw) ? depositPercentageRaw : null;
+  const depositFixedAmount = !hasMilestones && !depositPercentage && depositFixedAmountRaw > 0 ? depositFixedAmountRaw : null;
+
+  // FIN-02: itemised extras — a display breakdown only, never fed into the
+  // selling price or any payment math (see the migration's header comment).
+  let lineItems: LineItemInput[] = [];
+  const lineItemsRaw = String(formData.get("lineItems") ?? "").trim();
+  if (lineItemsRaw) {
+    try {
+      const parsed = JSON.parse(lineItemsRaw) as unknown[];
+      const categories = new Set(["waiting_time", "toll", "parking", "other"]);
+      lineItems = parsed
+        .map((li) => {
+          const row = li as { description?: unknown; amount?: unknown; category?: unknown };
+          const description = String(row.description ?? "").trim();
+          const amount = Number(row.amount ?? 0);
+          const category = categories.has(String(row.category)) ? (row.category as LineItemInput["category"]) : "other";
+          if (!description || !amount) return null;
+          return { description, amount, category };
+        })
+        .filter((li): li is LineItemInput => li !== null);
+    } catch {
+      lineItems = [];
+    }
+  }
 
   // Stripe is only offered once the selling price converts to under £1000
   // GBP, regardless of the quote's own currency — convert in the background
@@ -118,6 +185,7 @@ export async function createQuoteAction(
       selling_price: sellingPrice,
       currency,
       deposit_percentage: depositPercentage,
+      deposit_fixed_amount: depositFixedAmount,
       // System-computed, never a manual staff toggle — below the
       // GBP-converted threshold is Stripe-only, at or above it is
       // bank-transfer-only.
@@ -139,6 +207,32 @@ export async function createQuoteAction(
   }
 
   await supabase.from("quotes").update({ current_version_id: version.id }).eq("id", quote.id);
+
+  if (milestones.length > 0) {
+    await supabase.from("quote_payment_milestones").insert(
+      milestones.map((m, i) => ({
+        tenant_id: actor.tenant_id,
+        quote_id: quote.id,
+        sequence: i + 1,
+        label: m.label,
+        amount: m.amount,
+        due_date: m.dueDate,
+      })),
+    );
+  }
+
+  if (lineItems.length > 0) {
+    await supabase.from("quote_line_items").insert(
+      lineItems.map((li, i) => ({
+        tenant_id: actor.tenant_id,
+        quote_version_id: version.id,
+        sequence: i + 1,
+        description: li.description,
+        amount: li.amount,
+        category: li.category,
+      })),
+    );
+  }
 
   // A quote now genuinely exists for this enquiry — this is the point the
   // originating lead (if any) should read as "converted", not merely when

@@ -14,6 +14,25 @@ import { createQuoteAction } from "./actions";
 
 const STEPS = ["Enquiry", "Pricing", "Review & Send"];
 const DEPOSIT_CHOICES = [25, 50, 75] as const;
+type DepositMode = "full" | "percentage" | "fixed" | "milestones";
+const LINE_ITEM_CATEGORIES = [
+  { value: "waiting_time", label: "Waiting time" },
+  { value: "toll", label: "Toll" },
+  { value: "parking", label: "Parking" },
+  { value: "other", label: "Other" },
+] as const;
+
+interface MilestoneRow {
+  label: string;
+  amount: string;
+  dueDate: string;
+}
+
+interface LineItemRow {
+  description: string;
+  amount: string;
+  category: (typeof LINE_ITEM_CATEGORIES)[number]["value"];
+}
 
 interface CustomerInfo {
   name: string;
@@ -77,10 +96,15 @@ export function NewQuoteForm({
   const [supplierEstimatedCost, setSupplierEstimatedCost] = useState("");
   const [sellingPrice, setSellingPrice] = useState("");
   const [expiryDays, setExpiryDays] = useState("7");
-  const [depositPercentage, setDepositPercentage] = useState<25 | 50 | 75 | null>(null);
+  const [depositMode, setDepositMode] = useState<DepositMode>("full");
+  const [depositPercentage, setDepositPercentage] = useState<25 | 50 | 75>(25);
+  const [depositFixedAmount, setDepositFixedAmount] = useState("");
+  const [milestones, setMilestones] = useState<MilestoneRow[]>([]);
+  const [lineItems, setLineItems] = useState<LineItemRow[]>([]);
   const [customerNotes, setCustomerNotes] = useState("");
   const [terms, setTerms] = useState("");
   const [sendNow, setSendNow] = useState(true);
+  const [confirmedLowSupplierCost, setConfirmedLowSupplierCost] = useState(false);
 
   // Fetched once on mount rather than per keystroke — the live "which
   // payment method will this get" preview below just does the arithmetic
@@ -104,15 +128,43 @@ export function NewQuoteForm({
         ? sellingPriceNum / gbpRates[currencyCode]
         : null;
   const methods = sellingPriceGbp === null ? { stripe: false, bank_transfer: true } : paymentMethodsForGbpValue(sellingPriceGbp);
-  const fullPayment = depositPercentage === null;
 
   const money = (amount: number) =>
     new Intl.NumberFormat("en-GB", { style: "currency", currency, maximumFractionDigits: 2 }).format(amount);
+
+  const validMilestones = milestones.filter((m) => m.label.trim() && Number(m.amount) > 0);
+  const milestonesTotal = validMilestones.reduce((sum, m) => sum + Number(m.amount), 0);
+  const validLineItems = lineItems.filter((li) => li.description.trim() && Number(li.amount) !== 0);
+
+  function addMilestone() {
+    setMilestones((prev) => [...prev, { label: "", amount: "", dueDate: "" }]);
+  }
+  function updateMilestone(index: number, patch: Partial<MilestoneRow>) {
+    setMilestones((prev) => prev.map((m, i) => (i === index ? { ...m, ...patch } : m)));
+  }
+  function removeMilestone(index: number) {
+    setMilestones((prev) => prev.filter((_, i) => i !== index));
+  }
+
+  function addLineItem() {
+    setLineItems((prev) => [...prev, { description: "", amount: "", category: "other" }]);
+  }
+  function updateLineItem(index: number, patch: Partial<LineItemRow>) {
+    setLineItems((prev) => prev.map((li, i) => (i === index ? { ...li, ...patch } : li)));
+  }
+  function removeLineItem(index: number) {
+    setLineItems((prev) => prev.filter((_, i) => i !== index));
+  }
 
   function handleSubmit(formData: FormData) {
     setError(null);
     startTransition(async () => {
       const result = await createQuoteAction({ error: null, link: null }, formData);
+      if (result?.warnLowSupplierCost) {
+        setConfirmedLowSupplierCost(true);
+        setError("No supplier cost entered — click Send/Save again to confirm, or go back and enter one.");
+        return;
+      }
       if (result?.error) {
         setError(result.error);
         return;
@@ -129,6 +181,7 @@ export function NewQuoteForm({
 
   function openConfirm() {
     setError(null);
+    setConfirmedLowSupplierCost(false);
     setConfirmOpen(true);
   }
 
@@ -170,11 +223,27 @@ export function NewQuoteForm({
           <div>
             <dt className="text-xs font-bold uppercase text-slate-400">Payment plan</dt>
             <dd className="mt-0.5 font-semibold">
-              {fullPayment
-                ? "Full payment upfront"
-                : `${depositPercentage}% deposit now${sellingPriceNum ? ` (${money((sellingPriceNum * depositPercentage!) / 100)})` : ""}, balance later`}
+              {depositMode === "full" && "Full payment upfront"}
+              {depositMode === "percentage" &&
+                `${depositPercentage}% deposit now${sellingPriceNum ? ` (${money((sellingPriceNum * depositPercentage) / 100)})` : ""}, balance later`}
+              {depositMode === "fixed" &&
+                `${depositFixedAmount ? money(Number(depositFixedAmount)) : "—"} deposit now, balance later`}
+              {depositMode === "milestones" && `${validMilestones.length}-step payment schedule (${money(milestonesTotal)} total)`}
             </dd>
           </div>
+          {validLineItems.length > 0 && (
+            <div className="col-span-2">
+              <dt className="text-xs font-bold uppercase text-slate-400">Itemised extras</dt>
+              <dd className="mt-1 space-y-1">
+                {validLineItems.map((li, i) => (
+                  <div key={i} className="flex justify-between text-sm font-semibold">
+                    <span className="font-normal text-slate-500">{li.description}</span>
+                    <span>{money(Number(li.amount))}</span>
+                  </div>
+                ))}
+              </dd>
+            </div>
+          )}
           <div>
             <dt className="text-xs font-bold uppercase text-slate-400">Payment method</dt>
             <dd className="mt-0.5 font-semibold">
@@ -234,7 +303,25 @@ export function NewQuoteForm({
   return (
     <form ref={formRef} onSubmit={(e) => e.preventDefault()}>
       <input type="hidden" name="enquiryId" value={enquiryId} />
-      <input type="hidden" name="depositPercentage" value={depositPercentage ?? ""} />
+      <input type="hidden" name="confirmedLowSupplierCost" value={confirmedLowSupplierCost ? "true" : "false"} />
+      <input type="hidden" name="depositPercentage" value={depositMode === "percentage" ? depositPercentage : ""} />
+      <input type="hidden" name="depositFixedAmount" value={depositMode === "fixed" ? depositFixedAmount : ""} />
+      <input
+        type="hidden"
+        name="milestones"
+        value={
+          depositMode === "milestones"
+            ? JSON.stringify(validMilestones.map((m) => ({ label: m.label.trim(), amount: Number(m.amount), dueDate: m.dueDate || null })))
+            : ""
+        }
+      />
+      <input
+        type="hidden"
+        name="lineItems"
+        value={JSON.stringify(
+          validLineItems.map((li) => ({ description: li.description.trim(), amount: Number(li.amount), category: li.category })),
+        )}
+      />
       <Panel>
         <div className="flex items-center">
           {STEPS.map((s, i) => (
@@ -292,15 +379,14 @@ export function NewQuoteForm({
                 <input
                   name="supplierEstimatedCost"
                   type="number"
-                  min={0.01}
+                  min={0}
                   step="0.01"
-                  required
                   value={supplierEstimatedCost}
                   onChange={(e) => setSupplierEstimatedCost(e.target.value)}
                   className="mt-2 w-full rounded-xl border px-3 py-3 font-normal"
                 />
                 <span className="mt-1 block text-xs font-normal text-slate-400">
-                  This is what the supplier will see and be invoiced for — required.
+                  This is what the supplier will see and be invoiced for. Leave blank if not known yet — you&apos;ll be asked to confirm.
                 </span>
               </label>
               <label className="text-sm font-bold">
@@ -331,21 +417,131 @@ export function NewQuoteForm({
                 How does the customer pay?
                 <div className="mt-2 flex flex-wrap gap-3 font-normal">
                   <label className="flex items-center gap-1.5">
-                    <input type="checkbox" checked={fullPayment} onChange={() => setDepositPercentage(null)} />
+                    <input type="radio" name="depositMode" checked={depositMode === "full"} onChange={() => setDepositMode("full")} />
                     Full payment
                   </label>
-                  {DEPOSIT_CHOICES.map((pct) => (
-                    <label key={pct} className="flex items-center gap-1.5">
-                      <input
-                        type="checkbox"
-                        checked={depositPercentage === pct}
-                        onChange={() => setDepositPercentage(depositPercentage === pct ? null : pct)}
-                      />
-                      {pct}% deposit
-                    </label>
-                  ))}
+                  <label className="flex items-center gap-1.5">
+                    <input type="radio" name="depositMode" checked={depositMode === "percentage"} onChange={() => setDepositMode("percentage")} />
+                    Deposit %
+                  </label>
+                  <label className="flex items-center gap-1.5">
+                    <input type="radio" name="depositMode" checked={depositMode === "fixed"} onChange={() => setDepositMode("fixed")} />
+                    Fixed deposit
+                  </label>
+                  <label className="flex items-center gap-1.5">
+                    <input type="radio" name="depositMode" checked={depositMode === "milestones"} onChange={() => setDepositMode("milestones")} />
+                    Payment schedule
+                  </label>
                 </div>
+
+                {depositMode === "percentage" && (
+                  <div className="mt-3 flex flex-wrap gap-3">
+                    {DEPOSIT_CHOICES.map((pct) => (
+                      <label key={pct} className="flex items-center gap-1.5">
+                        <input type="radio" name="depositPercentageChoice" checked={depositPercentage === pct} onChange={() => setDepositPercentage(pct)} />
+                        {pct}% deposit
+                      </label>
+                    ))}
+                  </div>
+                )}
+
+                {depositMode === "fixed" && (
+                  <div className="mt-3">
+                    <input
+                      type="number"
+                      min={0.01}
+                      step="0.01"
+                      value={depositFixedAmount}
+                      onChange={(e) => setDepositFixedAmount(e.target.value)}
+                      placeholder="Deposit amount"
+                      className="w-full max-w-xs rounded-xl border px-3 py-2.5 font-normal"
+                    />
+                  </div>
+                )}
+
+                {depositMode === "milestones" && (
+                  <div className="mt-3 space-y-2">
+                    {milestones.map((m, i) => (
+                      <div key={i} className="flex flex-wrap items-center gap-2">
+                        <input
+                          value={m.label}
+                          onChange={(e) => updateMilestone(i, { label: e.target.value })}
+                          placeholder="e.g. Deposit, 2nd instalment, Balance"
+                          className="min-w-0 flex-1 rounded-lg border px-3 py-2 font-normal"
+                        />
+                        <input
+                          type="number"
+                          min={0.01}
+                          step="0.01"
+                          value={m.amount}
+                          onChange={(e) => updateMilestone(i, { amount: e.target.value })}
+                          placeholder="Amount"
+                          className="w-28 rounded-lg border px-3 py-2 font-normal"
+                        />
+                        <input
+                          type="date"
+                          value={m.dueDate}
+                          onChange={(e) => updateMilestone(i, { dueDate: e.target.value })}
+                          className="rounded-lg border px-3 py-2 font-normal"
+                        />
+                        <button type="button" onClick={() => removeMilestone(i)} className="rounded-lg px-2 py-2 text-xs font-bold text-red-600">
+                          Remove
+                        </button>
+                      </div>
+                    ))}
+                    <button type="button" onClick={addMilestone} className="rounded-lg bg-slate-100 px-3 py-2 text-xs font-bold text-slate-600">
+                      + Add milestone
+                    </button>
+                    {validMilestones.length > 0 && sellingPriceNum > 0 && (
+                      <p className="text-xs font-normal text-slate-400">
+                        Schedule total {money(milestonesTotal)} of {money(sellingPriceNum)} selling price
+                        {Math.abs(milestonesTotal - sellingPriceNum) > 0.01 ? " — doesn't add up to the full price yet" : ""}.
+                      </p>
+                    )}
+                  </div>
+                )}
               </fieldset>
+
+              <div className="text-sm font-bold md:col-span-2">
+                Itemised extras <span className="font-normal text-slate-400">(optional — waiting time, tolls, parking, shown as a breakdown)</span>
+                <div className="mt-2 space-y-2">
+                  {lineItems.map((li, i) => (
+                    <div key={i} className="flex flex-wrap items-center gap-2">
+                      <select
+                        value={li.category}
+                        onChange={(e) => updateLineItem(i, { category: e.target.value as LineItemRow["category"] })}
+                        className="rounded-lg border px-2 py-2 font-normal"
+                      >
+                        {LINE_ITEM_CATEGORIES.map((c) => (
+                          <option key={c.value} value={c.value}>
+                            {c.label}
+                          </option>
+                        ))}
+                      </select>
+                      <input
+                        value={li.description}
+                        onChange={(e) => updateLineItem(i, { description: e.target.value })}
+                        placeholder="Description"
+                        className="min-w-0 flex-1 rounded-lg border px-3 py-2 font-normal"
+                      />
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={li.amount}
+                        onChange={(e) => updateLineItem(i, { amount: e.target.value })}
+                        placeholder="Amount"
+                        className="w-28 rounded-lg border px-3 py-2 font-normal"
+                      />
+                      <button type="button" onClick={() => removeLineItem(i)} className="rounded-lg px-2 py-2 text-xs font-bold text-red-600">
+                        Remove
+                      </button>
+                    </div>
+                  ))}
+                  <button type="button" onClick={addLineItem} className="rounded-lg bg-slate-100 px-3 py-2 text-xs font-bold text-slate-600">
+                    + Add line item
+                  </button>
+                </div>
+              </div>
               <div className="rounded-xl bg-slate-50 p-3 text-sm font-normal md:col-span-2">
                 <span className="font-bold">Payment method: </span>
                 {sellingPriceGbp === null ? (

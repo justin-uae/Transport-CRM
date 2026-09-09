@@ -8,8 +8,15 @@ import { PageHead } from "@/components/ui/PageHead";
 import { SectionTitle } from "@/components/ui/SectionTitle";
 import { QuoteDetailActions } from "@/components/pages/QuoteDetailActions";
 import { JourneyLegDetail, type JourneyLeg } from "@/components/pages/JourneyLegDetail";
-import { formatDateTime } from "@/lib/formatDate";
+import { formatDateTime, formatDate } from "@/lib/formatDate";
 import type { QuoteStatus, QuoteEventType, QuoteDecisionType, CustomerPaymentMethod } from "@/lib/supabase/database.types";
+
+interface LineItemRow {
+  id: string;
+  description: string;
+  amount: number;
+  category: string;
+}
 
 interface VersionRow {
   id: string;
@@ -19,9 +26,19 @@ interface VersionRow {
   selling_price: number;
   currency: string;
   deposit_percentage: number | null;
+  deposit_fixed_amount: number | null;
   customer_notes: string | null;
   terms_snapshot: string | null;
   created_at: string;
+  quote_line_items: LineItemRow[];
+}
+
+interface MilestoneRow {
+  id: string;
+  sequence: number;
+  label: string;
+  amount: number;
+  due_date: string | null;
 }
 
 interface PaymentRow {
@@ -50,6 +67,7 @@ interface QuoteDetailRow {
   quote_events: { event: QuoteEventType; created_at: string }[];
   quote_decisions: { decision: QuoteDecisionType; reason: string | null; free_text: string | null; decided_at: string }[];
   customer_payments: PaymentRow[];
+  quote_payment_milestones: MilestoneRow[];
 }
 
 const STATUS_STYLE: Record<QuoteStatus, string> = {
@@ -89,7 +107,7 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
   const { data: quoteRaw, error: quoteError } = await supabase
     .from("quotes")
     .select(
-      "id, quote_number, status, currency, expiry_at, invoice_number, invoiced_at, public_token, created_at, sent_at, viewed_at, decided_at, customers(company_name, contact_name, phone, email), enquiries(enquiry_legs(sequence, journey_type, pickup_address, destination_address, via_points, pickup_date, pickup_time, return_date, return_time, passenger_count, luggage_count, wheelchair_required, child_seats, special_requirements, vehicle_types(name))), quote_versions!quote_versions_quote_id_fkey(id, version_number, vehicle_description, supplier_estimated_cost, selling_price, currency, deposit_percentage, customer_notes, terms_snapshot, created_at), quote_events(event, created_at), quote_decisions(decision, reason, free_text, decided_at), customer_payments(id, amount, method, paid_at)",
+      "id, quote_number, status, currency, expiry_at, invoice_number, invoiced_at, public_token, created_at, sent_at, viewed_at, decided_at, customers(company_name, contact_name, phone, email), enquiries(enquiry_legs(sequence, journey_type, pickup_address, destination_address, via_points, pickup_date, pickup_time, return_date, return_time, passenger_count, luggage_count, wheelchair_required, child_seats, special_requirements, vehicle_types(name))), quote_versions!quote_versions_quote_id_fkey(id, version_number, vehicle_description, supplier_estimated_cost, selling_price, currency, deposit_percentage, deposit_fixed_amount, customer_notes, terms_snapshot, created_at, quote_line_items(id, description, amount, category)), quote_events(event, created_at), quote_decisions(decision, reason, free_text, decided_at), customer_payments(id, amount, method, paid_at), quote_payment_milestones(id, sequence, label, amount, due_date)",
     )
     .eq("id", id)
     .single();
@@ -116,6 +134,16 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
   const payments = [...(quote.customer_payments ?? [])].sort((a, b) => new Date(a.paid_at).getTime() - new Date(b.paid_at).getTime());
   const paidSoFar = payments.reduce((sum, p) => sum + Number(p.amount), 0);
   const balanceRemaining = Math.max(0, (currentVersion?.selling_price ?? 0) - paidSoFar);
+  const milestones = [...(quote.quote_payment_milestones ?? [])].sort((a, b) => a.sequence - b.sequence);
+  let milestoneCumulative = 0;
+
+  const paymentPlanLabel = milestones.length > 0
+    ? `${milestones.length}-step payment schedule`
+    : currentVersion?.deposit_fixed_amount
+      ? `${money(currentVersion.deposit_fixed_amount, quote.currency)} fixed deposit`
+      : currentVersion?.deposit_percentage
+        ? `${currentVersion.deposit_percentage}% deposit plan`
+        : "Full payment plan";
 
   return (
     <div>
@@ -168,8 +196,40 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
                 <dd className="mt-0.5 text-base font-black text-primary-600">{money(currentVersion?.selling_price, quote.currency)}</dd>
               </div>
             </dl>
+            {currentVersion && currentVersion.quote_line_items.length > 0 && (
+              <div className="mt-4 space-y-1.5 rounded-2xl bg-slate-50 p-4 text-sm">
+                <div className="text-xs font-bold uppercase text-slate-400">Itemised extras</div>
+                {currentVersion.quote_line_items.map((li) => (
+                  <div key={li.id} className="flex justify-between">
+                    <span className="text-slate-500">{li.description}</span>
+                    <b>{money(li.amount, quote.currency)}</b>
+                  </div>
+                ))}
+              </div>
+            )}
             {currentVersion?.customer_notes && <p className="mt-4 text-sm text-slate-600">{currentVersion.customer_notes}</p>}
           </Panel>
+
+          {milestones.length > 0 && (
+            <Panel>
+              <SectionTitle title="Payment schedule" sub="Milestones for this quote" />
+              <div className="mt-4 space-y-2 text-sm">
+                {milestones.map((m) => {
+                  milestoneCumulative += Number(m.amount);
+                  const covered = milestoneCumulative <= paidSoFar + 0.01;
+                  return (
+                    <div key={m.id} className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-b py-1.5 last:border-0">
+                      <span className={covered ? "text-slate-400 line-through" : "text-slate-600"}>
+                        {m.label}
+                        {m.due_date ? ` · due ${formatDate(m.due_date)}` : ""}
+                      </span>
+                      <b className={covered ? "text-slate-400" : ""}>{money(m.amount, quote.currency)}</b>
+                    </div>
+                  );
+                })}
+              </div>
+            </Panel>
+          )}
 
           <Panel>
             <SectionTitle title="Customer" />
@@ -263,14 +323,7 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
           </Panel>
 
           <Panel>
-            <SectionTitle
-              title="Payments"
-              sub={
-                currentVersion?.deposit_percentage
-                  ? `${currentVersion.deposit_percentage}% deposit plan`
-                  : "Full payment plan"
-              }
-            />
+            <SectionTitle title="Payments" sub={paymentPlanLabel} />
             <div className="mt-4 space-y-2 text-sm">
               {payments.map((p) => (
                 <div key={p.id} className="flex flex-wrap justify-between gap-x-3 gap-y-1 border-b py-1.5 last:border-0">

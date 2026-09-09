@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import { useToast } from "@/components/ui/Toast";
 import { ConfirmDetailModal } from "@/components/ui/ConfirmDetailModal";
-import { resendQuoteEmailAction } from "@/app/(staff)/quotes/actions";
+import { resendQuoteEmailAction, resendInvoiceEmailAction } from "@/app/(staff)/quotes/actions";
 import type { QuoteStatus } from "@/lib/supabase/database.types";
 
 interface QuoteSummary {
@@ -46,15 +46,39 @@ export function QuoteDetailActions({ quote }: { quote: QuoteSummary }) {
     });
   }
 
+  function resendInvoice() {
+    startTransition(async () => {
+      const result = await resendInvoiceEmailAction(quote.id);
+      notify(result?.error ? `Could not send invoice: ${result.error}` : "Invoice emailed to the customer");
+      setResendOpen(false);
+    });
+  }
+
   return (
     <>
       {quote.status === "paid" && (
-        <button
-          onClick={() => setResendOpen(true)}
-          className="w-full rounded-xl border px-4 py-2.5 text-sm font-bold"
-        >
-          Resend Invoice
-        </button>
+        <>
+          <a
+            href={`/api/quotes/${quote.id}/invoice-pdf`}
+            target="_blank"
+            rel="noreferrer"
+            className="block w-full rounded-xl border px-4 py-2.5 text-center text-sm font-bold"
+          >
+            Preview Invoice
+          </a>
+          <a
+            href={`/api/quotes/${quote.id}/invoice-pdf?download=1`}
+            className="mt-2 block w-full rounded-xl border px-4 py-2.5 text-center text-sm font-bold"
+          >
+            Download Invoice
+          </a>
+          <button
+            onClick={() => setResendOpen(true)}
+            className="mt-2 w-full rounded-xl border px-4 py-2.5 text-sm font-bold"
+          >
+            Resend Invoice
+          </button>
+        </>
       )}
       {(quote.status === "sent" || quote.status === "viewed") && (
         <button onClick={() => copyLink("Quote")} className="mt-2 w-full rounded-xl border px-4 py-2.5 text-sm font-bold">
@@ -74,20 +98,18 @@ export function QuoteDetailActions({ quote }: { quote: QuoteSummary }) {
       {resendOpen && (
         <ConfirmDetailModal
           open
-          onClose={() => setResendOpen(false)}
-          title="Resend the invoice link?"
-          description="This copies the customer's invoice link to your clipboard so you can share it again."
+          onClose={() => !pending && setResendOpen(false)}
+          title="Resend the invoice?"
+          description="This emails the invoice PDF to the customer again."
           details={[
             { label: "Quote", value: quote.quote_number },
             { label: "Customer", value: quote.customerLabel },
             { label: "Value", value: money(quote.sellingPrice, quote.currency) },
             { label: "Invoice", value: quote.invoice_number ?? "—" },
           ]}
-          confirmLabel="Copy link"
-          onConfirm={() => {
-            copyLink("Invoice");
-            setResendOpen(false);
-          }}
+          pending={pending}
+          confirmLabel="Resend invoice"
+          onConfirm={resendInvoice}
         />
       )}
     </>

@@ -462,6 +462,9 @@ export interface EmailAttachmentMeta {
   filename: string;
   size: number | null;
   contentType: string | null;
+  /** Path in the email-attachments storage bucket, or null for a message
+      synced before EML-01/EML-03 (metadata-only, no binary was kept). */
+  storagePath: string | null;
 }
 
 export interface EmailMessage {
@@ -487,6 +490,9 @@ export interface EmailMessage {
   is_read: boolean;
   occurred_at: string;
   created_at: string;
+  customer_id: string | null;
+  supplier_id: string | null;
+  quote_id: string | null;
 }
 
 export interface QuoteDecision {

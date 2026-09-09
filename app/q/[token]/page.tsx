@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import { Bus } from "lucide-react";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { amountDueNow } from "@/lib/quotePayments";
-import { formatDateTime } from "@/lib/formatDate";
+import { formatDateTime, formatDate } from "@/lib/formatDate";
 import { JourneyLegDetail, type JourneyLeg } from "@/components/pages/JourneyLegDetail";
 import { QuoteDecisionButtons } from "./QuoteDecisionButtons";
 import { PaymentChooser, type BankAccountRow } from "./PaymentChooser";
@@ -13,14 +13,29 @@ interface BrandSnapshot {
   primary_color: string;
 }
 
+interface LineItemRow {
+  description: string;
+  amount: number;
+  category: string;
+}
+
 interface VersionRow {
   vehicle_description: string | null;
   selling_price: number;
   deposit_percentage: number | null;
+  deposit_fixed_amount: number | null;
   payment_methods: { stripe: boolean; bank_transfer: boolean };
   customer_notes: string | null;
   terms_snapshot: string | null;
   brand_snapshot: BrandSnapshot;
+  quote_line_items: LineItemRow[] | null;
+}
+
+interface MilestoneRow {
+  sequence: number;
+  label: string;
+  amount: number;
+  due_date: string | null;
 }
 
 // For now, hardcoded test values — swap for a real bank_accounts row (or
@@ -44,7 +59,7 @@ export default async function PublicQuotePage({ params }: { params: Promise<{ to
   const { data: quote } = await admin
     .from("quotes")
     .select(
-      "id, quote_number, status, currency, expiry_at, brand_id, invoice_number, invoiced_at, payment_method_chosen, customers(company_name, contact_name), enquiries(enquiry_legs(sequence, journey_type, pickup_address, destination_address, via_points, pickup_date, pickup_time, return_date, return_time, passenger_count, luggage_count, wheelchair_required, child_seats, special_requirements, vehicle_types(name))), quote_versions!quotes_current_version_id_fkey(vehicle_description, selling_price, deposit_percentage, payment_methods, customer_notes, terms_snapshot, brand_snapshot), customer_payments(amount)",
+      "id, quote_number, status, currency, expiry_at, brand_id, invoice_number, invoiced_at, payment_method_chosen, customers(company_name, contact_name), enquiries(enquiry_legs(sequence, journey_type, pickup_address, destination_address, via_points, pickup_date, pickup_time, return_date, return_time, passenger_count, luggage_count, wheelchair_required, child_seats, special_requirements, vehicle_types(name))), quote_versions!quotes_current_version_id_fkey(vehicle_description, selling_price, deposit_percentage, deposit_fixed_amount, payment_methods, customer_notes, terms_snapshot, brand_snapshot, quote_line_items(description, amount, category)), customer_payments(amount), quote_payment_milestones(sequence, label, amount, due_date)",
     )
     .eq("public_token", token)
     .single();
@@ -79,7 +94,9 @@ export default async function PublicQuotePage({ params }: { params: Promise<{ to
     new Intl.NumberFormat("en-GB", { style: "currency", currency: quote.currency, maximumFractionDigits: 2 }).format(amount);
 
   const amountPaid = ((quote.customer_payments as unknown as { amount: number }[] | null) ?? []).reduce((sum, p) => sum + Number(p.amount), 0);
-  const amountDue = version ? amountDueNow(version, amountPaid) : 0;
+  const milestones = [...((quote.quote_payment_milestones as unknown as MilestoneRow[] | null) ?? [])].sort((a, b) => a.sequence - b.sequence);
+  const amountDue = version ? amountDueNow(version, amountPaid, milestones) : 0;
+  let milestoneCumulative = 0;
 
   return (
     <div className="grid min-h-screen place-items-center bg-appbg px-4 py-10">
@@ -114,11 +131,40 @@ export default async function PublicQuotePage({ params }: { params: Promise<{ to
                   <b>{formatDateTime(quote.expiry_at)}</b>
                 </div>
               )}
+              {version?.quote_line_items && version.quote_line_items.length > 0 && (
+                <div className="space-y-1 border-b py-2">
+                  {version.quote_line_items.map((li, i) => (
+                    <div key={i} className="flex justify-between text-slate-500">
+                      <span>{li.description}</span>
+                      <span>{money(li.amount)}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
               <div className="flex justify-between py-2">
                 <span className="text-slate-500">Total</span>
                 <b className="text-lg text-primary-600">{version ? money(version.selling_price) : "—"}</b>
               </div>
             </div>
+
+            {milestones.length > 0 && (
+              <div className="space-y-2 rounded-2xl border p-4 text-sm">
+                <div className="text-xs font-bold uppercase tracking-wide text-slate-400">Payment schedule</div>
+                {milestones.map((m) => {
+                  milestoneCumulative += m.amount;
+                  const covered = milestoneCumulative <= amountPaid + 0.01;
+                  return (
+                    <div key={m.sequence} className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-b py-1.5 last:border-0">
+                      <span className={covered ? "text-slate-400 line-through" : "text-slate-600"}>
+                        {m.label}
+                        {m.due_date ? ` · due ${formatDate(m.due_date)}` : ""}
+                      </span>
+                      <b className={covered ? "text-slate-400" : ""}>{money(m.amount)}</b>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
 
           {version?.customer_notes && <p className="mt-4 text-sm text-slate-600">{version.customer_notes}</p>}

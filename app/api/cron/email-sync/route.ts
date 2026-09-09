@@ -42,7 +42,39 @@ async function syncAccount(admin: ReturnType<typeof createAdminClient>, account:
           const parsed = await simpleParser(msg.source);
           const references = Array.isArray(parsed.references) ? parsed.references[0] : parsed.references;
 
+          // Persist each attachment's binary into storage before its Buffer
+          // goes out of scope — attachment_meta previously only recorded
+          // filename/size/contentType and discarded the content entirely.
+          const attachmentMeta: EmailAttachmentMeta[] = [];
+          for (const a of parsed.attachments ?? []) {
+            const filename = a.filename ?? "attachment";
+            let storagePath: string | null = null;
+            try {
+              const path = `${account.tenant_id}/${account.user_id}/${crypto.randomUUID()}-${filename}`;
+              const { error: uploadError } = await admin.storage
+                .from("email-attachments")
+                .upload(path, a.content, { contentType: a.contentType || undefined });
+              if (!uploadError) storagePath = path;
+              else console.error(`email-sync: attachment upload failed for ${filename}: ${uploadError.message}`);
+            } catch (err) {
+              console.error(`email-sync: attachment upload threw for ${filename}:`, err);
+            }
+            attachmentMeta.push({ filename, size: a.size ?? null, contentType: a.contentType ?? null, storagePath });
+          }
+
+          // EML-04: link an inbound message to whichever customer or
+          // supplier already has this sender's address on file, so it shows
+          // up in that record's history without staff manually filing it.
+          // No match just leaves both null — this never blocks the sync.
+          const senderAddress = firstNameOrAddress(parsed.from?.value) ?? account.email_address;
+          const [{ data: matchedCustomer }, { data: matchedSupplier }] = await Promise.all([
+            admin.from("customers").select("id").eq("tenant_id", account.tenant_id).eq("email", senderAddress).maybeSingle(),
+            admin.from("suppliers").select("id").eq("tenant_id", account.tenant_id).eq("email", senderAddress).maybeSingle(),
+          ]);
+
           rows.push({
+            customer_id: matchedCustomer?.id ?? null,
+            supplier_id: matchedSupplier?.id ?? null,
             tenant_id: account.tenant_id,
             email_account_id: account.id,
             direction: "inbound" as const,
@@ -59,14 +91,8 @@ async function syncAccount(admin: ReturnType<typeof createAdminClient>, account:
             body_text: parsed.text ?? null,
             body_html: typeof parsed.html === "string" ? parsed.html : null,
             snippet: (parsed.text ?? "").slice(0, 200),
-            has_attachments: (parsed.attachments?.length ?? 0) > 0,
-            attachment_meta: (parsed.attachments ?? []).map(
-              (a): EmailAttachmentMeta => ({
-                filename: a.filename ?? "attachment",
-                size: a.size ?? null,
-                contentType: a.contentType ?? null,
-              }),
-            ),
+            has_attachments: attachmentMeta.length > 0,
+            attachment_meta: attachmentMeta,
             occurred_at: (parsed.date ?? new Date()).toISOString(),
           });
         }
