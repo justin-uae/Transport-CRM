@@ -6,6 +6,7 @@ import clsx from "clsx";
 import type { Brand } from "@/lib/supabase/database.types";
 import { BrandSwitcher } from "./BrandSwitcher";
 import { NewLeadMenu } from "../ui/NewLeadMenu";
+import { GlobalSearch } from "../ui/GlobalSearch";
 import { useAttendance } from "../ui/AttendanceState";
 import { signOut } from "@/app/(staff)/actions";
 
@@ -42,6 +43,7 @@ export function Header({
         <Menu />
       </button>
       <div className="ml-auto flex items-center gap-2">
+        <GlobalSearch />
         <BrandSwitcher brands={brands} activeBrandId={activeBrandId} />
         <button
           onClick={nextAction}

@@ -1,12 +1,15 @@
 # Render Blueprint — https://render.com/docs/blueprint-spec
 #
-# Deploys the Next.js app as a web service, plus the email-sync cron job
-# (polls every active email_accounts mailbox's INBOX via IMAP — see
-# app/api/cron/email-sync/route.ts). The remaining cron jobs stay commented
-# out until their route handlers exist (Phase 2+: quote-expiry,
-# lead-release-sla, dispatch-wave-escalation, document-expiry, daily-brief) —
-# uncomment and point each at its /api/cron/<name> route as those phases are
-# built.
+# Deploys the Next.js app as a web service, plus two cron jobs:
+#   - email-sync: polls every active email_accounts mailbox's INBOX via IMAP
+#     (app/api/cron/email-sync/route.ts).
+#   - task-automation: sweeps for TSK-02's four automated task triggers —
+#     quote follow-up, payment due, supplier confirmation, travel prep
+#     (app/api/cron/task-automation/route.ts).
+# The remaining cron jobs stay commented out until their route handlers
+# exist (Phase 2+: quote-expiry, lead-release-sla, dispatch-wave-escalation,
+# document-expiry, daily-brief) — uncomment and point each at its
+# /api/cron/<name> route as those phases are built.
 
 services:
   - type: web
@@ -56,6 +59,20 @@ services:
     buildCommand: npm install
     startCommand: >
       curl -sf -X POST "$NEXT_PUBLIC_APP_URL/api/cron/email-sync"
+      -H "Authorization: Bearer $CRON_SECRET"
+    envVars:
+      - key: NEXT_PUBLIC_APP_URL
+        sync: false
+      - key: CRON_SECRET
+        sync: false
+
+  - type: cron
+    name: task-automation
+    runtime: node
+    schedule: "0 * * * *"
+    buildCommand: npm install
+    startCommand: >
+      curl -sf -X POST "$NEXT_PUBLIC_APP_URL/api/cron/task-automation"
       -H "Authorization: Bearer $CRON_SECRET"
     envVars:
       - key: NEXT_PUBLIC_APP_URL

@@ -839,6 +839,10 @@ export interface CrmTask {
   completed_at: string | null;
   created_at: string;
   updated_at: string;
+  /** Tag set only by the /api/cron/task-automation sweep (e.g.
+      "quote_followup") so it can dedup against its own prior runs — null on
+      every manually created task. */
+  source: string | null;
 }
 
 // -----------------------------------------------------------------------------

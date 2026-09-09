@@ -29,6 +29,7 @@ export interface TaskRow {
   customerId: string | null;
   supplierId: string | null;
   quoteId: string | null;
+  isAutomated: boolean;
   canEdit: boolean;
   canDelete: boolean;
 }
@@ -349,6 +350,11 @@ export function TasksPage({
                         </span>
                       </div>
                       {row.linkedLabel && <div className="mt-1 truncate text-xs text-slate-500">{row.linkedLabel}</div>}
+                      {row.isAutomated && (
+                        <span className="mt-1 inline-block rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-500">
+                          Auto
+                        </span>
+                      )}
                       <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
                         {row.dueDate && (
                           <span className={clsx("font-semibold", overdue ? "text-red-600" : "text-slate-500")}>

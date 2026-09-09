@@ -16,6 +16,7 @@ interface TaskListRow {
   customer_id: string | null;
   supplier_id: string | null;
   quote_id: string | null;
+  source: string | null;
   created_at: string;
   profiles: { full_name: string } | null;
   customers: { contact_name: string; company_name: string | null } | null;
@@ -44,7 +45,7 @@ export default async function TasksRoutePage({
   let query = supabase
     .from("tasks")
     .select(
-      "id, title, description, status, priority, due_date, assignee_id, created_by, checklist, customer_id, supplier_id, quote_id, created_at, profiles!tasks_assignee_id_fkey(full_name), customers(contact_name, company_name), suppliers(name), quotes(quote_number)",
+      "id, title, description, status, priority, due_date, assignee_id, created_by, checklist, customer_id, supplier_id, quote_id, source, created_at, profiles!tasks_assignee_id_fkey(full_name), customers(contact_name, company_name), suppliers(name), quotes(quote_number)",
     );
   if (view === "mine") query = query.eq("assignee_id", profile.id);
   if (view === "team") query = query.neq("assignee_id", profile.id);
@@ -99,6 +100,7 @@ export default async function TasksRoutePage({
     customerId: r.customer_id,
     supplierId: r.supplier_id,
     quoteId: r.quote_id,
+    isAutomated: r.source !== null,
     canEdit: r.created_by === profile.id || r.assignee_id === profile.id || profile.is_master_admin,
     canDelete: r.created_by === profile.id || profile.is_master_admin,
   }));
