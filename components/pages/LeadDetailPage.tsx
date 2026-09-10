@@ -2,8 +2,9 @@
 
 import { useState, useTransition } from "react";
 import Link from "next/link";
-import { ArrowLeft } from "lucide-react";
 import { PageHead } from "@/components/ui/PageHead";
+import { Breadcrumb } from "@/components/ui/Breadcrumb";
+import { BackLink } from "@/components/ui/BackLink";
 import { Panel } from "@/components/ui/Panel";
 import { SectionTitle } from "@/components/ui/SectionTitle";
 import { useToast } from "@/components/ui/Toast";
@@ -153,18 +154,19 @@ export function LeadDetailPage({
     });
   }
 
+  const leadLabel =
+    lead.customers?.company_name ||
+    lead.customers?.contact_name ||
+    (lead.pickup_text && lead.destination_text ? `${lead.pickup_text} → ${lead.destination_text}` : "Lead details");
+
   return (
     <div>
+      <Breadcrumb items={[{ label: "Customer Leads", href: "/leads" }, { label: leadLabel }]} />
       <PageHead
         eyebrow="Omnichannel Lead Centre"
         title={lead.customers?.company_name || lead.customers?.contact_name || "Lead details"}
         text={`${STATUS_LABEL[lead.status]} · ${SOURCE_LABEL[lead.source]}${lead.brands?.name ? ` · ${lead.brands.name}` : ""}`}
-        action={
-          <Link href="/leads" className="flex items-center gap-2 text-sm font-bold text-slate-500">
-            <ArrowLeft size={16} />
-            Back to Leads
-          </Link>
-        }
+        action={<BackLink fallbackHref="/leads" label="Back to Leads" />}
       />
 
       {error && <div className="mb-4 rounded-xl bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">{error}</div>}

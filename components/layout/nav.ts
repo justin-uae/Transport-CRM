@@ -22,9 +22,38 @@ import {
   Truck,
   MessageSquareWarning,
   TriangleAlert,
+  Settings,
   type LucideIcon,
 } from "lucide-react";
 import { PERMISSIONS, type PermissionKey } from "@/lib/permissionKeys";
+
+/**
+ * UI-NAV-01 — the sidebar is grouped into these 7 sections (plus Control
+ * Centre, pinned above every group as the one ungrouped item — it's a
+ * dashboard home, not a member of any single section). Order here is the
+ * order groups render in.
+ */
+export type NavGroupKey = "sales" | "operations" | "communications" | "finance" | "people" | "insights" | "administration";
+
+export const NAV_GROUP_ORDER: NavGroupKey[] = [
+  "sales",
+  "operations",
+  "communications",
+  "finance",
+  "people",
+  "insights",
+  "administration",
+];
+
+export const NAV_GROUP_LABELS: Record<NavGroupKey, string> = {
+  sales: "Sales",
+  operations: "Operations",
+  communications: "Communications",
+  finance: "Finance",
+  people: "People",
+  insights: "Insights",
+  administration: "Administration",
+};
 
 export interface NavItem {
   label: string;
@@ -38,6 +67,8 @@ export interface NavItem {
    * items use that key rather than being left ungated.
    */
   anyOf?: PermissionKey[];
+  /** Which sidebar group this renders under. Omitted only for Control Centre, which is pinned above every group. */
+  group?: NavGroupKey;
 }
 
 const WORKSPACE = [PERMISSIONS.GENERAL_WORKSPACE_ACCESS];
@@ -48,6 +79,7 @@ export const NAV: NavItem[] = [
     label: "Customer Leads",
     href: "/leads",
     icon: Users,
+    group: "sales",
     anyOf: [
       PERMISSIONS.ENQUIRIES_VIEW_OWN,
       PERMISSIONS.ENQUIRIES_VIEW_TEAM,
@@ -60,15 +92,35 @@ export const NAV: NavItem[] = [
     label: "Pending Quotes",
     href: "/quotes",
     icon: FileText,
+    group: "sales",
     anyOf: [PERMISSIONS.QUOTES_CREATE, PERMISSIONS.QUOTES_VIEW_SELLING_PRICE],
   },
-  { label: "Confirmed Booking", href: "/bookings", icon: CalendarDays, anyOf: [PERMISSIONS.BOOKINGS_VIEW] },
-  { label: "Lost Booking", href: "/bookings/lost", icon: CalendarX2, anyOf: [PERMISSIONS.BOOKINGS_VIEW] },
-  { label: "Completed Booking", href: "/bookings/completed", icon: CalendarCheck2, anyOf: [PERMISSIONS.BOOKINGS_VIEW] },
+  {
+    label: "Customers",
+    href: "/customers",
+    icon: Building2,
+    group: "sales",
+    anyOf: [
+      PERMISSIONS.ENQUIRIES_VIEW_OWN,
+      PERMISSIONS.ENQUIRIES_VIEW_TEAM,
+      PERMISSIONS.ENQUIRIES_VIEW_ALL,
+      PERMISSIONS.BOOKINGS_VIEW,
+    ],
+  },
+  { label: "Confirmed Booking", href: "/bookings", icon: CalendarDays, group: "operations", anyOf: [PERMISSIONS.BOOKINGS_VIEW] },
+  { label: "Lost Booking", href: "/bookings/lost", icon: CalendarX2, group: "operations", anyOf: [PERMISSIONS.BOOKINGS_VIEW] },
+  {
+    label: "Completed Booking",
+    href: "/bookings/completed",
+    icon: CalendarCheck2,
+    group: "operations",
+    anyOf: [PERMISSIONS.BOOKINGS_VIEW],
+  },
   {
     label: "Dispatch",
     href: "/dispatch",
     icon: Bus,
+    group: "operations",
     // Sales roles can also always dispatch a job they personally created
     // (see canDispatch() in app/(staff)/dispatch/actions.ts) — quotes.create
     // is the marker for "this role can end up owning a paid job", so it
@@ -86,52 +138,86 @@ export const NAV: NavItem[] = [
     ],
   },
   {
-    label: "Customers",
-    href: "/customers",
-    icon: Building2,
-    anyOf: [
-      PERMISSIONS.ENQUIRIES_VIEW_OWN,
-      PERMISSIONS.ENQUIRIES_VIEW_TEAM,
-      PERMISSIONS.ENQUIRIES_VIEW_ALL,
-      PERMISSIONS.BOOKINGS_VIEW,
-    ],
-  },
-  {
     label: "Suppliers",
     href: "/suppliers",
     icon: Truck,
+    group: "operations",
     anyOf: [PERMISSIONS.SUPPLIERS_ADD, PERMISSIONS.SUPPLIERS_VIEW_PERFORMANCE, PERMISSIONS.SUPPLIERS_SEND_JOBS],
   },
-  { label: "Email Centre", href: "/email", icon: Mail, anyOf: WORKSPACE },
-  { label: "WhatsApp", href: "/whatsapp", icon: MessageCircle, anyOf: WORKSPACE },
-  { label: "Calls", href: "/calls", icon: Phone, anyOf: WORKSPACE },
-  { label: "Accounting", href: "/accounting", icon: WalletCards, anyOf: [PERMISSIONS.FINANCE_VIEW_INVOICES] },
+  { label: "Documents", href: "/documents", icon: FolderKanban, group: "operations", anyOf: WORKSPACE },
+  { label: "Tasks", href: "/tasks", icon: ListTodo, group: "operations", anyOf: WORKSPACE },
+  { label: "Customer Experience", href: "/customer-experience", icon: Star, group: "operations", anyOf: WORKSPACE },
+  { label: "Complaints", href: "/complaints", icon: MessageSquareWarning, group: "operations", anyOf: WORKSPACE },
+  { label: "Incidents", href: "/incidents", icon: TriangleAlert, group: "operations", anyOf: WORKSPACE },
+  { label: "Email Centre", href: "/email", icon: Mail, group: "communications", anyOf: WORKSPACE },
+  { label: "WhatsApp", href: "/whatsapp", icon: MessageCircle, group: "communications", anyOf: WORKSPACE },
+  { label: "Calls", href: "/calls", icon: Phone, group: "communications", anyOf: WORKSPACE },
+  { label: "Team Chat", href: "/team-chat", icon: MessagesSquare, group: "communications", anyOf: WORKSPACE },
+  { label: "Accounting", href: "/accounting", icon: WalletCards, group: "finance", anyOf: [PERMISSIONS.FINANCE_VIEW_INVOICES] },
   {
     label: "Customer Payments",
     href: "/accounting/customer-payments",
     icon: WalletCards,
+    group: "finance",
     anyOf: [PERMISSIONS.FINANCE_RECORD_PAYMENTS],
   },
   {
     label: "Supplier Payments",
     href: "/accounting/supplier-payments",
     icon: WalletCards,
+    group: "finance",
     anyOf: [PERMISSIONS.FINANCE_PAY_SUPPLIERS],
   },
-  { label: "Commissions", href: "/commissions", icon: BadgeDollarSign, anyOf: [PERMISSIONS.FINANCE_VIEW_COMMISSIONS] },
-  { label: "Attendance", href: "/attendance", icon: Clock3, anyOf: WORKSPACE },
-  { label: "Business Intelligence", href: "/business-intelligence", icon: BarChart3, anyOf: [PERMISSIONS.FINANCE_VIEW_PROFIT] },
-  { label: "Documents", href: "/documents", icon: FolderKanban, anyOf: WORKSPACE },
-  { label: "KPIs & Targets", href: "/kpis", icon: Target, anyOf: WORKSPACE },
-  { label: "Team Chat", href: "/team-chat", icon: MessagesSquare, anyOf: WORKSPACE },
-  { label: "Tasks", href: "/tasks", icon: ListTodo, anyOf: WORKSPACE },
-  { label: "Customer Experience", href: "/customer-experience", icon: Star, anyOf: WORKSPACE },
-  { label: "Complaints", href: "/complaints", icon: MessageSquareWarning, anyOf: WORKSPACE },
-  { label: "Incidents", href: "/incidents", icon: TriangleAlert, anyOf: WORKSPACE },
+  {
+    label: "Commissions",
+    href: "/commissions",
+    icon: BadgeDollarSign,
+    group: "finance",
+    anyOf: [PERMISSIONS.FINANCE_VIEW_COMMISSIONS],
+  },
+  { label: "Attendance", href: "/attendance", icon: Clock3, group: "people", anyOf: WORKSPACE },
+  { label: "KPIs & Targets", href: "/kpis", icon: Target, group: "people", anyOf: WORKSPACE },
+  {
+    label: "Business Intelligence",
+    href: "/business-intelligence",
+    icon: BarChart3,
+    group: "insights",
+    anyOf: [PERMISSIONS.FINANCE_VIEW_PROFIT],
+  },
   // AI Optimisation — hidden from the sidebar for now (not ready), route/page left in place for when
-  // it's finished. Restore by re-adding the entry below and importing Bot from lucide-react again:
-  // { label: "AI Optimisation", href: "/ai-optimisation", icon: Bot, anyOf: WORKSPACE },
+  // it's finished. Restore by re-adding the entry below (group: "insights") and importing Bot again:
+  // { label: "AI Optimisation", href: "/ai-optimisation", icon: Bot, group: "insights", anyOf: WORKSPACE },
 ];
+
+/**
+ * Settings lives outside NAV/computeVisibleHrefs on purpose — it's gated by
+ * ADMIN_SURFACE_PERMISSIONS (a different shape of check than anyOf, see
+ * app/(staff)/layout.tsx) and must never become someone's "first visible
+ * item" landing page (see defaultLandingHref below). Sidebar renders it as
+ * an ordinary Administration-group item using this shared definition rather
+ * than a separate footer special-case.
+ */
+export const SETTINGS_NAV_ITEM: Omit<NavItem, "anyOf"> & { group: "administration" } = {
+  label: "Settings",
+  href: "/settings",
+  icon: Settings,
+  group: "administration",
+};
+
+export interface NavGroup {
+  key: NavGroupKey;
+  label: string;
+  items: NavItem[];
+}
+
+/** Buckets visible items into their groups, in NAV_GROUP_ORDER, dropping any group with nothing visible in it — satisfies "show only items the current role may access" at the group level too, not just per-item. */
+export function groupNavItems(items: NavItem[]): NavGroup[] {
+  return NAV_GROUP_ORDER.map((key) => ({
+    key,
+    label: NAV_GROUP_LABELS[key],
+    items: items.filter((item) => item.group === key),
+  })).filter((group) => group.items.length > 0);
+}
 
 /** Every nav href the given permission set unlocks, in NAV order. */
 export function computeVisibleHrefs(granted: Set<PermissionKey>): string[] {

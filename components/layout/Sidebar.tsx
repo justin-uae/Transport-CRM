@@ -1,10 +1,30 @@
 "use client";
 
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Bus, Settings, X } from "lucide-react";
+import { Bus, ChevronDown, X } from "lucide-react";
 import clsx from "clsx";
-import { NAV } from "./nav";
+import { NAV, SETTINGS_NAV_ITEM, groupNavItems, type NavGroupKey, type NavItem } from "./nav";
+
+const COLLAPSE_STORAGE_KEY = "sidebar-collapsed-groups";
+
+function loadCollapsedGroups(): Set<NavGroupKey> {
+  try {
+    const raw = window.localStorage.getItem(COLLAPSE_STORAGE_KEY);
+    return raw ? new Set(JSON.parse(raw) as NavGroupKey[]) : new Set();
+  } catch {
+    return new Set();
+  }
+}
+
+function saveCollapsedGroups(groups: Set<NavGroupKey>) {
+  try {
+    window.localStorage.setItem(COLLAPSE_STORAGE_KEY, JSON.stringify([...groups]));
+  } catch {
+    // Private browsing / storage disabled — collapse state just won't persist across visits.
+  }
+}
 
 export function Sidebar({
   mobileOpen,
@@ -28,6 +48,67 @@ export function Sidebar({
     .slice(0, 2)
     .join("")
     .toUpperCase();
+
+  const [collapsed, setCollapsed] = useState<Set<NavGroupKey>>(() => new Set());
+  useEffect(() => {
+    setCollapsed(loadCollapsedGroups());
+  }, []);
+
+  function toggleGroup(key: NavGroupKey) {
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      saveCollapsedGroups(next);
+      return next;
+    });
+  }
+
+  // Pick only the most specific (longest) matching href as active —
+  // otherwise a nested route like /accounting/supplier-payments would light
+  // up both "Accounting" and "Supplier Payments" at once, since the latter's
+  // path also starts with the former's.
+  function isActive(href: string, candidates: string[]) {
+    const activeHref = candidates
+      .filter((h) => pathname === h || pathname.startsWith(`${h}/`))
+      .sort((a, b) => b.length - a.length)[0];
+    return href === activeHref;
+  }
+
+  const pinnedItem = NAV.find((item) => !item.group && visibleHrefs.includes(item.href));
+  const groupableItems = NAV.filter((item) => item.group && visibleHrefs.includes(item.href));
+  const groups = useMemo(() => {
+    const withSettings = canSeeSettings ? [...groupableItems, SETTINGS_NAV_ITEM as NavItem] : groupableItems;
+    return groupNavItems(withSettings);
+  }, [groupableItems, canSeeSettings]);
+
+  const allHrefs = useMemo(() => [pinnedItem?.href, ...groups.flatMap((g) => g.items.map((i) => i.href))].filter((h): h is string => !!h), [pinnedItem, groups]);
+
+  // A group containing the active route always renders expanded, regardless
+  // of stored collapse state — "retain the active location" per UI-NAV-01,
+  // even if the user had previously collapsed that section.
+  const activeGroupKey = groups.find((g) => g.items.some((item) => isActive(item.href, allHrefs)))?.key;
+
+  function renderItem(item: NavItem) {
+    const active = isActive(item.href, allHrefs);
+    const Icon = item.icon;
+    return (
+      <Link
+        key={item.href}
+        href={item.href}
+        onClick={onCloseMobile}
+        className={clsx(
+          "mb-1 flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm transition",
+          active
+            ? "bg-primary-500 font-semibold text-white shadow-lg shadow-orange-950/20"
+            : "text-slate-300 hover:bg-white/5 hover:text-white",
+        )}
+      >
+        <Icon size={18} />
+        <span>{item.label}</span>
+      </Link>
+    );
+  }
 
   return (
     <>
@@ -60,53 +141,29 @@ export function Sidebar({
           </button>
         </div>
         <div className="flex-1 overflow-y-auto p-3">
-          <div className="mb-2 px-3 text-[10px] font-bold uppercase tracking-[.2em] text-slate-500">
-            Workspace
-          </div>
-          {(() => {
-            const visibleItems = NAV.filter((item) => visibleHrefs.includes(item.href));
-            // Pick only the most specific (longest) matching href as active —
-            // otherwise a nested route like /accounting/supplier-payments
-            // would light up both "Accounting" and "Supplier Payments" at
-            // once, since the latter's path also starts with the former's.
-            const activeHref = visibleItems
-              .map((item) => item.href)
-              .filter((href) => pathname === href || pathname.startsWith(`${href}/`))
-              .sort((a, b) => b.length - a.length)[0];
-
-            return visibleItems.map(({ label, href, icon: Icon }) => {
-              const active = href === activeHref;
-              return (
-                <Link
-                  key={href}
-                  href={href}
-                  onClick={onCloseMobile}
-                  className={clsx(
-                    "mb-1 flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm transition",
-                    active
-                      ? "bg-primary-500 font-semibold text-white shadow-lg shadow-orange-950/20"
-                      : "text-slate-300 hover:bg-white/5 hover:text-white",
-                  )}
+          {pinnedItem && (
+            <div className="mb-3 border-b border-white/10 pb-3">{renderItem(pinnedItem)}</div>
+          )}
+          {groups.map((group) => {
+            const isCollapsed = collapsed.has(group.key) && group.key !== activeGroupKey;
+            return (
+              <div key={group.key} className="mb-1">
+                <button
+                  type="button"
+                  onClick={() => toggleGroup(group.key)}
+                  aria-expanded={!isCollapsed}
+                  className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-[10px] font-bold uppercase tracking-[.2em] text-slate-500 hover:text-slate-300"
                 >
-                  <Icon size={18} />
-                  <span>{label}</span>
-                </Link>
-              );
-            });
-          })()}
+                  {group.label}
+                  <ChevronDown size={14} className={clsx("transition-transform", isCollapsed && "-rotate-90")} />
+                </button>
+                {!isCollapsed && <div className="mt-0.5">{group.items.map(renderItem)}</div>}
+              </div>
+            );
+          })}
         </div>
         <div className="border-t border-white/10 p-4">
-          {canSeeSettings && (
-            <Link
-              href="/settings"
-              onClick={onCloseMobile}
-              className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-slate-300 hover:bg-white/5"
-            >
-              <Settings size={18} />
-              Settings
-            </Link>
-          )}
-          <div className="mt-3 flex items-center gap-3 rounded-2xl bg-white/5 p-3">
+          <div className="flex items-center gap-3 rounded-2xl bg-white/5 p-3">
             <div className="grid h-10 w-10 place-items-center rounded-full bg-primary-500 font-bold">
               {initials}
             </div>

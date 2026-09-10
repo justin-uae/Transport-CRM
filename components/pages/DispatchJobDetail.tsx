@@ -1,11 +1,12 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Search, X } from "lucide-react";
+import { Search, X } from "lucide-react";
 import { Panel } from "@/components/ui/Panel";
 import { PageHead } from "@/components/ui/PageHead";
+import { Breadcrumb } from "@/components/ui/Breadcrumb";
+import { BackLink } from "@/components/ui/BackLink";
 import { SectionTitle } from "@/components/ui/SectionTitle";
 import { useToast } from "@/components/ui/Toast";
 import { ConfirmDetailModal } from "@/components/ui/ConfirmDetailModal";
@@ -580,16 +581,12 @@ export function DispatchJobDetail({
 
   return (
     <div>
+      <Breadcrumb items={[{ label: "Dispatch", href: "/dispatch" }, { label: job.quotes?.quote_number ?? "Job" }]} />
       <PageHead
         eyebrow="Operations"
         title={job.quotes?.quote_number ?? "Job"}
         text={customer?.company_name || customer?.contact_name || undefined}
-        action={
-          <Link href="/dispatch" className="flex items-center gap-2 text-sm font-bold text-slate-500">
-            <ArrowLeft size={16} />
-            Back to Dispatch
-          </Link>
-        }
+        action={<BackLink fallbackHref="/dispatch" label="Back to Dispatch" />}
       />
 
       <div className="grid gap-5 lg:grid-cols-3">

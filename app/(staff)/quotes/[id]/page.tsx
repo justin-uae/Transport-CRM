@@ -1,11 +1,12 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft } from "lucide-react";
 import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { hasPermission, PERMISSIONS } from "@/lib/permissions";
 import { Panel } from "@/components/ui/Panel";
 import { PageHead } from "@/components/ui/PageHead";
+import { Breadcrumb } from "@/components/ui/Breadcrumb";
+import { BackLink } from "@/components/ui/BackLink";
 import { SectionTitle } from "@/components/ui/SectionTitle";
 import { QuoteDetailActions } from "@/components/pages/QuoteDetailActions";
 import { JourneyLegDetail, type JourneyLeg } from "@/components/pages/JourneyLegDetail";
@@ -151,16 +152,12 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
 
   return (
     <div>
+      <Breadcrumb items={[{ label: "Pending Quotes", href: "/quotes" }, { label: quote.quote_number }]} />
       <PageHead
         eyebrow="Sales Workspace"
         title={quote.quote_number}
         text={customer?.company_name || customer?.contact_name || undefined}
-        action={
-          <Link href="/quotes" className="flex items-center gap-2 text-sm font-bold text-slate-500">
-            <ArrowLeft size={16} />
-            Back to Quotes
-          </Link>
-        }
+        action={<BackLink fallbackHref="/quotes" label="Back to Quotes" />}
       />
 
       <div className="grid gap-5 lg:grid-cols-3">

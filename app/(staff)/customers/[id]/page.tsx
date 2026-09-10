@@ -2,6 +2,8 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { FileText, MapPin, Banknote, CheckSquare } from "lucide-react";
 import { PageHead } from "@/components/ui/PageHead";
+import { Breadcrumb } from "@/components/ui/Breadcrumb";
+import { BackLink } from "@/components/ui/BackLink";
 import { Panel } from "@/components/ui/Panel";
 import { SectionTitle } from "@/components/ui/SectionTitle";
 import { requireProfile } from "@/lib/auth";
@@ -169,10 +171,12 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
 
   return (
     <div>
+      <Breadcrumb items={[{ label: "Customers", href: "/customers" }, { label: customer.company_name || customer.contact_name }]} />
       <PageHead
         eyebrow="Sales Workspace"
         title={customer.company_name || customer.contact_name}
         text={customer.company_name ? customer.contact_name : undefined}
+        action={<BackLink fallbackHref="/customers" label="Back to Customers" />}
       />
 
       <div className="grid gap-5 lg:grid-cols-2">

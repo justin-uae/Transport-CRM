@@ -1,6 +1,8 @@
 import { notFound } from "next/navigation";
 import { FileText, Truck } from "lucide-react";
 import { PageHead } from "@/components/ui/PageHead";
+import { Breadcrumb } from "@/components/ui/Breadcrumb";
+import { BackLink } from "@/components/ui/BackLink";
 import { Panel } from "@/components/ui/Panel";
 import { SectionTitle } from "@/components/ui/SectionTitle";
 import { requireProfile } from "@/lib/auth";
@@ -30,19 +32,23 @@ export default async function SupplierDetailPage({ params }: { params: Promise<{
 
   return (
     <div>
+      <Breadcrumb items={[{ label: "Suppliers", href: "/suppliers" }, { label: supplier.name }]} />
       <PageHead
         eyebrow="Operations"
         title={supplier.name}
         text={`${supplier.type === "individual" ? "Individual driver" : "Company / travel agency"} · ${supplier.region ?? "No region set"}`}
         action={
-          supplier.status === "submitted" || supplier.status === "invited" ? (
-            <div className="flex flex-wrap gap-2">
-              {supplier.status === "invited" && (
-                <ResendSupplierInviteButton supplierId={supplier.id} email={supplier.email} />
-              )}
-              <SupplierDecisionButtons supplierId={supplier.id} />
-            </div>
-          ) : undefined
+          <div className="flex flex-wrap items-center gap-3">
+            <BackLink fallbackHref="/suppliers" label="Back to Suppliers" />
+            {(supplier.status === "submitted" || supplier.status === "invited") && (
+              <div className="flex flex-wrap gap-2">
+                {supplier.status === "invited" && (
+                  <ResendSupplierInviteButton supplierId={supplier.id} email={supplier.email} />
+                )}
+                <SupplierDecisionButtons supplierId={supplier.id} />
+              </div>
+            )}
+          </div>
         }
       />
 
