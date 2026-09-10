@@ -14,20 +14,19 @@ import type { SupplierPaymentStatus } from "@/lib/supabase/database.types";
 
 export interface SupplierInvoiceRow {
   id: string;
-  job_id: string;
+  job_allocation_id: string;
   amount: number;
   currency: string;
   notes: string | null;
   file_name: string;
   storage_path: string;
   forwarded_at: string | null;
-  jobs: {
+  job_allocations: {
     id: string;
     status: string;
     supplier_payment_status: SupplierPaymentStatus;
-    region: string | null;
     suppliers: { id: string; name: string; phone: string | null; email: string | null } | null;
-    quotes: { quote_number: string; customers: { company_name: string | null; contact_name: string } | null } | null;
+    jobs: { quotes: { quote_number: string; customers: { company_name: string | null; contact_name: string } | null } | null } | null;
     supplier_payments: {
       id: string;
       amount: number;
@@ -50,7 +49,7 @@ function money(amount: number, currency: string) {
 }
 
 function paidSoFar(row: SupplierInvoiceRow) {
-  return (row.jobs?.supplier_payments ?? []).reduce((sum, p) => sum + p.amount, 0);
+  return (row.job_allocations?.supplier_payments ?? []).reduce((sum, p) => sum + p.amount, 0);
 }
 
 export function SupplierPaymentsPage({
@@ -79,18 +78,18 @@ export function SupplierPaymentsPage({
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
 
-  const outstanding = invoices.filter((row) => row.jobs?.supplier_payment_status !== "paid");
-  const paidHistory = invoices.filter((row) => row.jobs?.supplier_payment_status === "paid");
+  const outstanding = invoices.filter((row) => row.job_allocations?.supplier_payment_status !== "paid");
+  const paidHistory = invoices.filter((row) => row.job_allocations?.supplier_payment_status === "paid");
 
   const supplierOptions = useMemo(() => {
-    const names = new Set(invoices.map((row) => row.jobs?.suppliers?.name).filter((n): n is string => !!n));
+    const names = new Set(invoices.map((row) => row.job_allocations?.suppliers?.name).filter((n): n is string => !!n));
     return [...names].sort();
   }, [invoices]);
 
   /** Latest payment date on the invoice (Paid History rows always have at
       least one) — used for both display and the date-range filter there. */
   function latestPaymentDate(row: SupplierInvoiceRow): string | null {
-    const dates = (row.jobs?.supplier_payments ?? []).map((p) => p.paid_at).sort();
+    const dates = (row.job_allocations?.supplier_payments ?? []).map((p) => p.paid_at).sort();
     return dates.length > 0 ? dates[dates.length - 1]! : null;
   }
 
@@ -98,13 +97,13 @@ export function SupplierPaymentsPage({
     const base = tab === "outstanding" ? outstanding : paidHistory;
     const q = search.trim().toLowerCase();
     return base.filter((row) => {
-      if (supplierFilter && row.jobs?.suppliers?.name !== supplierFilter) return false;
+      if (supplierFilter && row.job_allocations?.suppliers?.name !== supplierFilter) return false;
       if (q) {
         const haystack = [
-          row.jobs?.suppliers?.name,
-          row.jobs?.quotes?.quote_number,
-          row.jobs?.quotes?.customers?.company_name,
-          row.jobs?.quotes?.customers?.contact_name,
+          row.job_allocations?.suppliers?.name,
+          row.job_allocations?.jobs?.quotes?.quote_number,
+          row.job_allocations?.jobs?.quotes?.customers?.company_name,
+          row.job_allocations?.jobs?.quotes?.customers?.contact_name,
         ]
           .filter(Boolean)
           .join(" ")
@@ -122,14 +121,17 @@ export function SupplierPaymentsPage({
 
   function exportVisible() {
     downloadCsv(`supplier-payments-${tab}`, visible, [
-      { header: "Supplier", value: (row) => row.jobs?.suppliers?.name },
-      { header: "Quote number", value: (row) => row.jobs?.quotes?.quote_number },
-      { header: "Customer", value: (row) => row.jobs?.quotes?.customers?.company_name || row.jobs?.quotes?.customers?.contact_name },
+      { header: "Supplier", value: (row) => row.job_allocations?.suppliers?.name },
+      { header: "Quote number", value: (row) => row.job_allocations?.jobs?.quotes?.quote_number },
+      {
+        header: "Customer",
+        value: (row) => row.job_allocations?.jobs?.quotes?.customers?.company_name || row.job_allocations?.jobs?.quotes?.customers?.contact_name,
+      },
       { header: "Currency", value: (row) => row.currency },
       { header: "Invoice amount", value: (row) => row.amount },
       { header: "Paid so far", value: (row) => paidSoFar(row) },
       { header: "Balance", value: (row) => row.amount - paidSoFar(row) },
-      { header: "Status", value: (row) => row.jobs?.supplier_payment_status ?? "unpaid" },
+      { header: "Status", value: (row) => row.job_allocations?.supplier_payment_status ?? "unpaid" },
       { header: "Forwarded", value: (row) => (row.forwarded_at ? formatDate(row.forwarded_at) : "") },
       { header: "Latest payment date", value: (row) => { const d = latestPaymentDate(row); return d ? formatDate(d) : ""; } },
     ]);
@@ -178,7 +180,7 @@ export function SupplierPaymentsPage({
         proofFileName = proofFile.name;
       }
 
-      const result = await recordSupplierPaymentAction(target.job_id, {
+      const result = await recordSupplierPaymentAction(target.job_allocation_id, {
         amount: enteredAmount,
         currency: target.currency,
         bankReference,
@@ -267,15 +269,15 @@ export function SupplierPaymentsPage({
           {visible.map((row) => {
             const paid = paidSoFar(row);
             const bal = row.amount - paid;
-            const customer = row.jobs?.quotes?.customers;
-            const status = row.jobs?.supplier_payment_status ?? "unpaid";
+            const customer = row.job_allocations?.jobs?.quotes?.customers;
+            const status = row.job_allocations?.supplier_payment_status ?? "unpaid";
             return (
               <div key={row.id} className="rounded-2xl border p-4">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div>
-                    <b>{row.jobs?.suppliers?.name ?? "Unknown supplier"}</b>
+                    <b>{row.job_allocations?.suppliers?.name ?? "Unknown supplier"}</b>
                     <div className="text-xs text-slate-500">
-                      {row.jobs?.quotes?.quote_number} · {customer?.company_name || customer?.contact_name || "—"}
+                      {row.job_allocations?.jobs?.quotes?.quote_number} · {customer?.company_name || customer?.contact_name || "—"}
                     </div>
                   </div>
                   <span className={`rounded-full px-2.5 py-1 text-xs font-bold capitalize ${STATUS_STYLE[status]}`}>
@@ -296,9 +298,9 @@ export function SupplierPaymentsPage({
                     <b className="text-primary-600">{money(bal, row.currency)}</b>
                   </div>
                 </div>
-                {(row.jobs?.supplier_payments?.length ?? 0) > 0 && (
+                {(row.job_allocations?.supplier_payments?.length ?? 0) > 0 && (
                   <div className="mt-3 space-y-1 border-t pt-3 text-xs text-slate-500">
-                    {row.jobs!.supplier_payments.map((p) => (
+                    {row.job_allocations!.supplier_payments.map((p) => (
                       <div key={p.id} className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
                         <span>
                           {money(p.amount, row.currency)} · {formatDateTime(p.paid_at)}
@@ -348,7 +350,7 @@ export function SupplierPaymentsPage({
           pending={pending}
           error={modalError}
           details={[
-            { label: "Supplier", value: target.jobs?.suppliers?.name ?? "—" },
+            { label: "Supplier", value: target.job_allocations?.suppliers?.name ?? "—" },
             { label: "Invoice total", value: money(target.amount, target.currency) },
             { label: "Balance before", value: money(balance, target.currency) },
             { label: "Balance after this payment", value: money(Math.max(remainingAfter, 0), target.currency) },

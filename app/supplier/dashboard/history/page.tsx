@@ -3,7 +3,7 @@ import clsx from "clsx";
 import { requireSupplier } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { SupplierJobListPage } from "@/components/pages/SupplierJobListPage";
-import type { JobOfferView } from "@/lib/supabase/database.types";
+import type { JobAllocationOfferView } from "@/lib/supabase/database.types";
 
 const PAGE_SIZE = 20;
 
@@ -36,13 +36,13 @@ export default async function JobHistoryPage({
   const from = (page - 1) * PAGE_SIZE;
   const to = from + PAGE_SIZE - 1;
 
-  let query = supabase.from("job_offer_view").select("*", { count: "exact" });
+  let query = supabase.from("job_allocation_offer_view").select("*", { count: "exact" });
   if (status === "completed") {
-    query = query.eq("job_status", "completed");
+    query = query.eq("allocation_status", "completed");
   } else if (status === "rejected") {
     query = query.or("offer_status.eq.rejected,offer_status.eq.withdrawn");
   } else {
-    query = query.or("job_status.eq.completed,offer_status.eq.rejected,offer_status.eq.withdrawn");
+    query = query.or("allocation_status.eq.completed,offer_status.eq.rejected,offer_status.eq.withdrawn");
   }
   if (q) query = query.ilike("region", `%${q}%`);
 
@@ -52,7 +52,7 @@ export default async function JobHistoryPage({
     <SupplierJobListPage
       title="Job history"
       text="Completed, rejected and withdrawn jobs."
-      jobs={(data ?? []) as JobOfferView[]}
+      jobs={(data ?? []) as JobAllocationOfferView[]}
       page={page}
       pageSize={PAGE_SIZE}
       total={count ?? 0}

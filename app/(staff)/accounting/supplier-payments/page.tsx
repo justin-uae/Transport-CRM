@@ -14,7 +14,7 @@ export default async function Page() {
   const { data: invoices } = await supabase
     .from("job_supplier_invoices")
     .select(
-      "id, job_id, amount, currency, notes, file_name, storage_path, forwarded_at, jobs(id, status, supplier_payment_status, region, suppliers(id, name, phone, email), quotes(quote_number, customers(company_name, contact_name)), supplier_payments(id, amount, bank_reference, notes, paid_at, proof_storage_path))",
+      "id, job_allocation_id, amount, currency, notes, file_name, storage_path, forwarded_at, job_allocations(id, status, supplier_payment_status, suppliers(id, name, phone, email), jobs(quotes(quote_number, customers(company_name, contact_name))), supplier_payments(id, amount, bank_reference, notes, paid_at, proof_storage_path))",
     )
     .eq("status", "forwarded_to_accounting")
     .order("forwarded_at", { ascending: false });
@@ -30,7 +30,7 @@ export default async function Page() {
   const invoiceUrlById = new Map(signedInvoiceUrls.map((s) => [s.id, s.url]));
 
   const proofPaths = rows.flatMap((row) =>
-    (row.jobs?.supplier_payments ?? [])
+    (row.job_allocations?.supplier_payments ?? [])
       .filter((p) => p.proof_storage_path)
       .map((p) => ({ id: p.id, path: p.proof_storage_path as string })),
   );

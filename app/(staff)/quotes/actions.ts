@@ -9,6 +9,7 @@ import { recordCustomerPayment, finalizeQuoteFromVerifiedPayments } from "@/lib/
 import { renderAndSendTemplate } from "@/lib/emailTemplates";
 import { generateQuotePdf } from "@/lib/quotePdf";
 import { generateInvoicePdf } from "@/lib/invoicePdf";
+import { cancelAllocation } from "@/lib/dispatchAllocations";
 
 /**
  * Manual bank-transfer payment recording, for a deposit, the remaining
@@ -339,8 +340,20 @@ export async function cancelBookingAction(quoteId: string, reason: string) {
 
   const { data: job } = await supabase.from("jobs").select("id").eq("quote_id", quoteId).maybeSingle();
   if (job) {
+    // Set the booking's rollup status to 'cancelled' first — recalc_job_status()
+    // guards against overwriting a 'cancelled' job, so this must land before
+    // the allocation cancellations below, or their own status-change triggers
+    // would otherwise bounce jobs.status back to 'unassigned'.
     await supabase.from("jobs").update({ status: "cancelled" }).eq("id", job.id);
-    await supabase.from("job_offers").update({ status: "withdrawn" }).eq("job_id", job.id).eq("status", "sent");
+
+    const { data: liveAllocations } = await supabase
+      .from("job_allocations")
+      .select("id")
+      .eq("job_id", job.id)
+      .not("status", "in", "(completed,cancelled)");
+    for (const allocation of liveAllocations ?? []) {
+      await cancelAllocation(supabase, allocation.id);
+    }
   }
 
   const verifiedPaid = ((quote.customer_payments as unknown as { amount: number; verification_status: string }[] | null) ?? [])

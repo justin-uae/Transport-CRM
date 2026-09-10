@@ -114,14 +114,19 @@ async function runPaymentDue(admin: Admin) {
 async function runSupplierConfirmation(admin: Admin) {
   const cutoff = new Date(Date.now() - SUPPLIER_CONFIRMATION_HOURS * 3600000).toISOString();
   const { data: offers } = await admin
-    .from("job_offers")
-    .select("id, supplier_id, offered_at, jobs(tenant_id, quote_id, created_by, quotes(quote_number)), suppliers(name)")
+    .from("job_allocation_offers")
+    .select(
+      "id, supplier_id, offered_at, job_allocations(jobs(tenant_id, quote_id, created_by, quotes(quote_number))), suppliers(name)",
+    )
     .eq("status", "sent")
     .lte("offered_at", cutoff);
 
   let created = 0;
   for (const o of offers ?? []) {
-    const job = o.jobs as unknown as { tenant_id: string; quote_id: string; created_by: string | null; quotes: { quote_number: string } | null } | null;
+    const allocation = o.job_allocations as unknown as {
+      jobs: { tenant_id: string; quote_id: string; created_by: string | null; quotes: { quote_number: string } | null } | null;
+    } | null;
+    const job = allocation?.jobs ?? null;
     if (!job) continue;
     if (await hasOpenTask(admin, "supplier_confirmation", job.quote_id, o.supplier_id)) continue;
 

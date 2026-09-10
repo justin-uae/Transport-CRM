@@ -16,11 +16,11 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ p
   const { data: jobs, count } = await supabase
     .from("jobs")
     .select(
-      "id, status, region, completed_at, quotes(quote_number, currency, customers(company_name, contact_name), quote_versions!quotes_current_version_id_fkey(selling_price)), suppliers(name)",
+      "id, status, region, quotes(quote_number, currency, customers(company_name, contact_name), quote_versions!quotes_current_version_id_fkey(selling_price)), job_allocations(status, completed_at, suppliers(name))",
       { count: "exact" },
     )
     .eq("status", "completed")
-    .order("completed_at", { ascending: false })
+    .order("created_at", { ascending: false })
     .range(from, to);
 
   return (

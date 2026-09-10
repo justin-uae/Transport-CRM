@@ -1,17 +1,18 @@
-import type { JobOfferView } from "@/lib/supabase/database.types";
+import type { JobAllocationOfferView } from "@/lib/supabase/database.types";
 
 /**
- * Collapses (offer_status, job_status) into one status a supplier actually
- * cares about — shared by the job list pages, the landing overview and the
- * detail page so the label/badge/filtering logic isn't copy-pasted per page.
+ * Collapses (offer_status, allocation_status) into one status a supplier
+ * actually cares about — shared by the job list pages, the landing overview
+ * and the detail page so the label/badge/filtering logic isn't copy-pasted
+ * per page.
  */
 export type SupplierJobStatusKey = "new" | "accepted" | "confirmed" | "completed" | "rejected" | "withdrawn" | "cancelled";
 
-export function jobStatusKey(job: JobOfferView): SupplierJobStatusKey {
+export function jobStatusKey(job: JobAllocationOfferView): SupplierJobStatusKey {
   if (job.offer_status === "withdrawn") return "withdrawn";
   if (job.offer_status === "rejected") return "rejected";
   if (job.offer_status === "sent") return "new";
-  switch (job.job_status) {
+  switch (job.allocation_status) {
     case "confirmed":
       return "confirmed";
     case "completed":
@@ -46,11 +47,11 @@ const STATUS_DETAIL_TEXT: Record<SupplierJobStatusKey, string> = {
   cancelled: "Cancelled",
 };
 
-export function statusLabel(job: JobOfferView): string {
+export function statusLabel(job: JobAllocationOfferView): string {
   return STATUS_LABEL[jobStatusKey(job)];
 }
 
-export function statusDetailText(job: JobOfferView): string {
+export function statusDetailText(job: JobAllocationOfferView): string {
   return STATUS_DETAIL_TEXT[jobStatusKey(job)];
 }
 
@@ -64,18 +65,18 @@ export const STATUS_BADGE_STYLE: Record<SupplierJobStatusKey, string> = {
   cancelled: "bg-slate-100 text-slate-500",
 };
 
-export function statusBadgeStyle(job: JobOfferView): string {
+export function statusBadgeStyle(job: JobAllocationOfferView): string {
   return STATUS_BADGE_STYLE[jobStatusKey(job)];
 }
 
-export function isNewOffer(job: JobOfferView): boolean {
+export function isNewOffer(job: JobAllocationOfferView): boolean {
   return job.offer_status === "sent";
 }
 
-export function isActiveJob(job: JobOfferView): boolean {
-  return job.offer_status === "accepted" && (job.job_status === "accepted_by_supplier" || job.job_status === "confirmed");
+export function isActiveJob(job: JobAllocationOfferView): boolean {
+  return job.offer_status === "accepted" && (job.allocation_status === "accepted_by_supplier" || job.allocation_status === "confirmed");
 }
 
-export function isClosed(job: JobOfferView): boolean {
-  return job.job_status === "completed" || job.offer_status === "rejected" || job.offer_status === "withdrawn";
+export function isClosed(job: JobAllocationOfferView): boolean {
+  return job.allocation_status === "completed" || job.offer_status === "rejected" || job.offer_status === "withdrawn";
 }

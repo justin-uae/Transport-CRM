@@ -1,7 +1,7 @@
 import { requireSupplier } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { SupplierJobListPage } from "@/components/pages/SupplierJobListPage";
-import type { JobOfferView } from "@/lib/supabase/database.types";
+import type { JobAllocationOfferView } from "@/lib/supabase/database.types";
 
 const PAGE_SIZE = 20;
 
@@ -16,10 +16,10 @@ export default async function ActiveJobsPage({ searchParams }: { searchParams: P
   const to = from + PAGE_SIZE - 1;
 
   let query = supabase
-    .from("job_offer_view")
+    .from("job_allocation_offer_view")
     .select("*", { count: "exact" })
     .eq("offer_status", "accepted")
-    .in("job_status", ["accepted_by_supplier", "confirmed"]);
+    .in("allocation_status", ["accepted_by_supplier", "confirmed"]);
   if (q) query = query.ilike("region", `%${q}%`);
 
   const { data, count } = await query.order("offered_at", { ascending: false }).range(from, to);
@@ -28,7 +28,7 @@ export default async function ActiveJobsPage({ searchParams }: { searchParams: P
     <SupplierJobListPage
       title="Active jobs"
       text="Jobs you've accepted — confirm them, then mark completed once the trip is done."
-      jobs={(data ?? []) as JobOfferView[]}
+      jobs={(data ?? []) as JobAllocationOfferView[]}
       page={page}
       pageSize={PAGE_SIZE}
       total={count ?? 0}

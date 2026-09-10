@@ -5,7 +5,7 @@ import { SearchInput } from "@/components/ui/SearchInput";
 import { Pagination } from "@/components/ui/Pagination";
 import { statusLabel, statusBadgeStyle } from "@/lib/supplierJobStatus";
 import { formatDateAndTime } from "@/lib/formatDate";
-import type { JobOfferView } from "@/lib/supabase/database.types";
+import type { JobAllocationOfferView } from "@/lib/supabase/database.types";
 
 /** Shared list shell for the New/Active/History job pages — search + responsive card/table + pagination. */
 export function SupplierJobListPage({
@@ -21,7 +21,7 @@ export function SupplierJobListPage({
 }: {
   title: string;
   text: string;
-  jobs: JobOfferView[];
+  jobs: JobAllocationOfferView[];
   page: number;
   pageSize: number;
   total: number;
@@ -39,7 +39,7 @@ export function SupplierJobListPage({
         </div>
         <div className="space-y-3 sm:hidden">
           {jobs.map((job) => (
-            <Link key={job.offer_id} href={`/supplier/dashboard/${job.job_id}`} className="block rounded-2xl border p-4 hover:bg-slate-50">
+            <Link key={job.offer_id} href={`/supplier/dashboard/${job.job_allocation_id}`} className="block rounded-2xl border p-4 hover:bg-slate-50">
               <div className="flex items-center justify-between gap-2">
                 <b>{job.region ?? "Region not set"}</b>
                 <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${statusBadgeStyle(job)}`}>{statusLabel(job)}</span>
@@ -72,7 +72,7 @@ export function SupplierJobListPage({
                     <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${statusBadgeStyle(job)}`}>{statusLabel(job)}</span>
                   </td>
                   <td className="whitespace-nowrap text-right">
-                    <Link href={`/supplier/dashboard/${job.job_id}`} className="shrink-0 whitespace-nowrap rounded-lg border px-3 py-2 text-xs font-bold">
+                    <Link href={`/supplier/dashboard/${job.job_allocation_id}`} className="shrink-0 whitespace-nowrap rounded-lg border px-3 py-2 text-xs font-bold">
                       View
                     </Link>
                   </td>

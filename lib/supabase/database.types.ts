@@ -600,14 +600,6 @@ export interface Job {
   customer_id: string | null;
   region: string | null;
   status: JobStatus;
-  assigned_supplier_id: string | null;
-  offered_at: string | null;
-  responded_at: string | null;
-  confirmed_at: string | null;
-  completed_at: string | null;
-  supplier_invoice_note: string | null;
-  supplier_invoice_url: string | null;
-  supplier_payment_status: SupplierPaymentStatus;
   created_by: string | null;
   created_at: string;
 }
@@ -616,6 +608,7 @@ export interface SupplierPayment {
   id: string;
   tenant_id: string;
   job_id: string;
+  job_allocation_id: string;
   amount: number;
   currency: string;
   bank_reference: string | null;
@@ -628,27 +621,10 @@ export interface SupplierPayment {
 }
 
 // -----------------------------------------------------------------------------
-// Multi-supplier dispatch (0007_multisupplier_dispatch.sql) — a job can be
-// offered to several suppliers at once; job_offers tracks each supplier's
-// own response, jobs.assigned_supplier_id only populates once one accepts.
-// -----------------------------------------------------------------------------
-
-export type JobOfferStatus = "sent" | "accepted" | "rejected" | "withdrawn";
-
-export interface JobOffer {
-  id: string;
-  tenant_id: string;
-  job_id: string;
-  supplier_id: string;
-  status: JobOfferStatus;
-  offered_at: string;
-  responded_at: string | null;
-}
-
-// -----------------------------------------------------------------------------
 // Supplier invoice upload (0008_supplier_invoice_upload.sql) — a supplier
-// uploads their own invoice once a job is confirmed/completed; a staff
-// member with dispatch.transfer_supplier_invoice forwards it to accounting.
+// uploads their own invoice once an allocation is confirmed/completed; a
+// staff member with dispatch.transfer_supplier_invoice forwards it to
+// accounting.
 // -----------------------------------------------------------------------------
 
 export type SupplierInvoiceStatus = "submitted" | "forwarded_to_accounting";
@@ -657,6 +633,7 @@ export interface JobSupplierInvoice {
   id: string;
   tenant_id: string;
   job_id: string;
+  job_allocation_id: string;
   supplier_id: string;
   amount: number;
   currency: string;
@@ -670,8 +647,56 @@ export interface JobSupplierInvoice {
   updated_at: string;
 }
 
-/** Supplier-safe read of a job offer — full address/customer contact only once confirmed. */
-export interface JobOfferLeg {
+// -----------------------------------------------------------------------------
+// Multi-supplier / multi-vehicle dispatch (0054_job_allocations.sql, BKG-02)
+// — a job (the stable 1:1-with-quote booking container) can be split into
+// several job_allocations, each covering a subset of the booking's
+// enquiry_legs (via job_allocation_legs) and carrying its own supplier,
+// vehicle note, agreed cost, and accept/confirm/complete lifecycle.
+// job_allocation_offers replaces the old job_offers broadcast mechanism at
+// allocation granularity. JobOfferStatus is reused unchanged (same enum).
+// -----------------------------------------------------------------------------
+
+export type JobOfferStatus = "sent" | "accepted" | "rejected" | "withdrawn";
+
+export interface JobAllocation {
+  id: string;
+  tenant_id: string;
+  job_id: string;
+  status: JobStatus;
+  assigned_supplier_id: string | null;
+  vehicle_notes: string | null;
+  agreed_cost: number | null;
+  currency: string | null;
+  offered_at: string | null;
+  responded_at: string | null;
+  confirmed_at: string | null;
+  completed_at: string | null;
+  supplier_payment_status: SupplierPaymentStatus;
+  manual_invoice_note: string | null;
+  manual_invoice_url: string | null;
+  created_by: string | null;
+  created_at: string;
+}
+
+export interface JobAllocationLeg {
+  id: string;
+  job_allocation_id: string;
+  enquiry_leg_id: string;
+}
+
+export interface JobAllocationOffer {
+  id: string;
+  tenant_id: string;
+  job_allocation_id: string;
+  supplier_id: string;
+  status: JobOfferStatus;
+  offered_at: string;
+  responded_at: string | null;
+}
+
+/** Supplier-safe read of one allocation's legs — only the legs actually in that allocation, never the whole booking's itinerary. */
+export interface JobAllocationOfferLeg {
   sequence: number;
   journey_type: JourneyType;
   pickup_address: string;
@@ -689,30 +714,32 @@ export interface JobOfferLeg {
   vehicle_types: { name: string } | null;
 }
 
-export interface JobOfferView {
+export interface JobAllocationOfferView {
   offer_id: string;
-  job_id: string;
+  job_allocation_id: string;
   offer_status: JobOfferStatus;
-  job_status: JobStatus;
+  allocation_status: JobStatus;
   region: string | null;
+  vehicle_notes: string | null;
+  agreed_cost: number | null;
+  currency: string | null;
   supplier_payment_status: SupplierPaymentStatus;
+  manual_invoice_note: string | null;
+  manual_invoice_url: string | null;
   offered_at: string;
   responded_at: string | null;
   confirmed_at: string | null;
   completed_at: string | null;
-  supplier_invoice_note: string | null;
-  supplier_invoice_url: string | null;
   pickup_date: string | null;
   pickup_time: string | null;
   passenger_count: number | null;
   vehicle_type_id: string | null;
-  supplier_estimated_cost: number | null;
   quote_currency: string;
   pickup_address: string | null;
   destination_address: string | null;
   customer_name: string | null;
   customer_phone: string | null;
-  legs: JobOfferLeg[] | null;
+  legs: JobAllocationOfferLeg[] | null;
 }
 
 // -----------------------------------------------------------------------------
@@ -1036,7 +1063,9 @@ export interface Database {
       supplier_vehicles: Table<SupplierVehicle>;
       supplier_documents: Table<SupplierDocument>;
       jobs: Table<Job>;
-      job_offers: Table<JobOffer>;
+      job_allocations: Table<JobAllocation>;
+      job_allocation_legs: Table<JobAllocationLeg>;
+      job_allocation_offers: Table<JobAllocationOffer>;
       job_supplier_invoices: Table<JobSupplierInvoice>;
       supplier_payments: Table<SupplierPayment>;
       customer_payments: Table<CustomerPayment>;
@@ -1055,7 +1084,7 @@ export interface Database {
       customer_feedback: Table<CustomerFeedback>;
     };
     Views: {
-      job_offer_view: { Row: JobOfferView; Relationships: [] };
+      job_allocation_offer_view: { Row: JobAllocationOfferView; Relationships: [] };
     };
     Functions: {
       current_tenant_id: { Args: Record<string, never>; Returns: string };
@@ -1064,8 +1093,8 @@ export interface Database {
       can_view_assignment: { Args: { p_assigned_user_id: string | null }; Returns: boolean };
       claim_lead: { Args: { p_lead_id: string }; Returns: Lead };
       release_lead: { Args: { p_lead_id: string }; Returns: Lead };
-      accept_job_offer: { Args: { p_job_id: string }; Returns: Job };
-      reject_job_offer: { Args: { p_job_id: string }; Returns: JobOffer };
+      accept_job_allocation_offer: { Args: { p_allocation_id: string }; Returns: JobAllocation };
+      reject_job_allocation_offer: { Args: { p_allocation_id: string }; Returns: JobAllocationOffer };
       next_document_number: {
         Args: { p_brand_id: string; p_doc_type: string; p_prefix: string };
         Returns: string;

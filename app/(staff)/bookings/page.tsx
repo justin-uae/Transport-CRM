@@ -15,7 +15,7 @@ export default async function Page() {
   const { data: jobs } = await supabase
     .from("jobs")
     .select(
-      `id, status, region, created_at, quotes(quote_number, currency, customers(company_name, contact_name), ${legsSelect}, ${versionSelect}), suppliers(name)`,
+      `id, status, region, created_at, quotes(quote_number, currency, customers(company_name, contact_name), ${legsSelect}, ${versionSelect}), job_allocations(status, suppliers(name))`,
     )
     .in("status", ["unassigned", "offered", "accepted_by_supplier", "confirmed"])
     .order("created_at", { ascending: false });

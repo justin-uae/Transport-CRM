@@ -55,8 +55,17 @@ export async function calculateAndRecordCommission(supabase: SupabaseClient<Data
   const version = quote.quote_versions as unknown as { selling_price: number; supplier_estimated_cost: number | null } | null;
   if (!version) return;
 
+  // Prefer the real, agreed-at-dispatch-time cost recorded per allocation
+  // (BKG-02) over the sales-time estimate — it's more accurate, and is the
+  // only correct source once a booking has been split across suppliers.
+  // Falls back to the quote's own estimate if no allocation has a cost
+  // entered yet, so this never blocks a commission on missing data.
+  const { data: allocations } = await supabase.from("job_allocations").select("agreed_cost").eq("job_id", jobId);
+  const hasAgreedCost = (allocations ?? []).some((a) => a.agreed_cost != null);
+  const allocationCostTotal = (allocations ?? []).reduce((sum, a) => sum + (a.agreed_cost ?? 0), 0);
+
   const sellingPrice = version.selling_price;
-  const supplierCost = version.supplier_estimated_cost ?? 0;
+  const supplierCost = hasAgreedCost ? allocationCostTotal : (version.supplier_estimated_cost ?? 0);
   const grossProfit = sellingPrice - supplierCost;
   const ratePercent = await getCommissionRate(supabase, job.tenant_id, quote.created_by);
   const amount = Math.max(0, grossProfit) * (ratePercent / 100);

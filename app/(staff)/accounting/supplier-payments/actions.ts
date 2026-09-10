@@ -7,7 +7,7 @@ import { hasPermission, PERMISSIONS } from "@/lib/permissions";
 import { recordAudit } from "@/lib/audit";
 
 export async function recordSupplierPaymentAction(
-  jobId: string,
+  allocationId: string,
   data: {
     amount: number;
     currency: string;
@@ -27,9 +27,10 @@ export async function recordSupplierPaymentAction(
 
   const supabase = await createClient();
 
-  const [{ data: invoice }, { data: paidRows }] = await Promise.all([
-    supabase.from("job_supplier_invoices").select("amount").eq("job_id", jobId).single(),
-    supabase.from("supplier_payments").select("amount").eq("job_id", jobId),
+  const [{ data: invoice }, { data: paidRows }, { data: allocation }] = await Promise.all([
+    supabase.from("job_supplier_invoices").select("amount").eq("job_allocation_id", allocationId).single(),
+    supabase.from("supplier_payments").select("amount").eq("job_allocation_id", allocationId),
+    supabase.from("job_allocations").select("job_id").eq("id", allocationId).single(),
   ]);
   const alreadyPaid = (paidRows ?? []).reduce((sum, p) => sum + p.amount, 0);
   const willFullySettle = invoice != null && alreadyPaid + data.amount >= invoice.amount;
@@ -39,7 +40,7 @@ export async function recordSupplierPaymentAction(
 
   const { error } = await supabase.from("supplier_payments").insert({
     tenant_id: actor.tenant_id,
-    job_id: jobId,
+    job_allocation_id: allocationId,
     amount: data.amount,
     currency: data.currency || "EUR",
     bank_reference: data.bankReference.trim() || null,
@@ -54,12 +55,12 @@ export async function recordSupplierPaymentAction(
     tenantId: actor.tenant_id,
     actorId: actor.id,
     action: "supplier_payment_recorded",
-    entityType: "job",
-    entityId: jobId,
+    entityType: "job_allocation",
+    entityId: allocationId,
     newValue: { amount: data.amount, currency: data.currency, bankReference: data.bankReference },
   });
 
   revalidatePath("/accounting/supplier-payments");
-  revalidatePath(`/dispatch/${jobId}`);
+  if (allocation) revalidatePath(`/dispatch/${allocation.job_id}`);
   return { error: null };
 }

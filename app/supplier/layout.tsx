@@ -7,7 +7,7 @@ export default async function SupplierLayout({ children }: { children: React.Rea
   const supabase = await createClient();
 
   const { count } = await supabase
-    .from("job_offer_view")
+    .from("job_allocation_offer_view")
     .select("offer_id", { count: "exact", head: true })
     .eq("offer_status", "sent");
 

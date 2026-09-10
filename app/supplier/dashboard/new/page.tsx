@@ -1,7 +1,7 @@
 import { requireSupplier } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { SupplierJobListPage } from "@/components/pages/SupplierJobListPage";
-import type { JobOfferView } from "@/lib/supabase/database.types";
+import type { JobAllocationOfferView } from "@/lib/supabase/database.types";
 
 const PAGE_SIZE = 20;
 
@@ -15,7 +15,7 @@ export default async function NewJobsPage({ searchParams }: { searchParams: Prom
   const from = (page - 1) * PAGE_SIZE;
   const to = from + PAGE_SIZE - 1;
 
-  let query = supabase.from("job_offer_view").select("*", { count: "exact" }).eq("offer_status", "sent");
+  let query = supabase.from("job_allocation_offer_view").select("*", { count: "exact" }).eq("offer_status", "sent");
   if (q) query = query.ilike("region", `%${q}%`);
 
   const { data, count } = await query.order("offered_at", { ascending: false }).range(from, to);
@@ -24,7 +24,7 @@ export default async function NewJobsPage({ searchParams }: { searchParams: Prom
     <SupplierJobListPage
       title="New job offers"
       text="Jobs offered to you that haven't been accepted or rejected yet — open one to review and respond."
-      jobs={(data ?? []) as JobOfferView[]}
+      jobs={(data ?? []) as JobAllocationOfferView[]}
       page={page}
       pageSize={PAGE_SIZE}
       total={count ?? 0}

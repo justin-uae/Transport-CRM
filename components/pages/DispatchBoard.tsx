@@ -1,27 +1,17 @@
 "use client";
 
-import { useState, useTransition } from "react";
 import Link from "next/link";
 import { Panel } from "@/components/ui/Panel";
 import { PageHead } from "@/components/ui/PageHead";
 import { Pagination } from "@/components/ui/Pagination";
-import { useToast } from "@/components/ui/Toast";
-import { attachSupplierInvoiceAction } from "@/app/(staff)/dispatch/actions";
-import type { JobOfferStatus, JobStatus } from "@/lib/supabase/database.types";
+import type { JobStatus } from "@/lib/supabase/database.types";
 
 export interface JobRow {
   id: string;
   status: JobStatus;
   region: string | null;
-  offered_at: string | null;
-  confirmed_at: string | null;
-  completed_at: string | null;
-  assigned_supplier_id: string | null;
-  supplier_invoice_note: string | null;
-  supplier_invoice_url: string | null;
   quotes: { quote_number: string; customers: { company_name: string | null; contact_name: string } | null } | null;
-  suppliers: { name: string } | null;
-  job_offers: { id: string; status: JobOfferStatus; suppliers: { name: string } | null }[];
+  job_allocations: { id: string; status: JobStatus; suppliers: { name: string } | null }[];
 }
 
 export interface SupplierOption {
@@ -40,39 +30,23 @@ const STATUS_STYLE: Record<JobStatus, string> = {
   cancelled: "bg-slate-100 text-slate-500",
 };
 
-function offersSummary(job: JobRow) {
-  if (job.suppliers) return `Assigned to ${job.suppliers.name}`;
-  const live = job.job_offers.filter((o) => o.status === "sent");
-  if (live.length > 0) return `${live.length} offer${live.length === 1 ? "" : "s"} pending`;
-  if (job.status === "unassigned") return "Not yet offered";
-  return null;
+function allocationSummary(job: JobRow) {
+  const live = job.job_allocations.filter((a) => a.status !== "cancelled");
+  if (live.length === 0) return "Not yet allocated";
+  if (live.length === 1) {
+    const a = live[0]!;
+    return a.suppliers ? `Assigned to ${a.suppliers.name}` : "1 allocation, not yet assigned";
+  }
+  const confirmedOrLater = live.filter((a) => a.status === "confirmed" || a.status === "completed").length;
+  return `${live.length} allocations · ${confirmedOrLater} confirmed`;
 }
 
 function JobCard({ job }: { job: JobRow }) {
-  const notify = useToast();
-  const [pending, startTransition] = useTransition();
-  const [note, setNote] = useState(job.supplier_invoice_note ?? "");
-  const [url, setUrl] = useState(job.supplier_invoice_url ?? "");
-
-  function saveInvoice() {
-    startTransition(async () => {
-      try {
-        await attachSupplierInvoiceAction(job.id, note, url);
-        notify("Invoice reference saved");
-      } catch (err) {
-        notify(err instanceof Error ? err.message : "Could not save the invoice reference.");
-      }
-    });
-  }
-
-  const customer = job.quotes?.customers;
-  const summary = offersSummary(job);
-
   return (
     <div className="rounded-2xl border p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
-          <b>{customer?.company_name || customer?.contact_name || "Customer"}</b>
+          <b>{job.quotes?.customers?.company_name || job.quotes?.customers?.contact_name || "Customer"}</b>
           <div className="text-xs text-slate-500">
             {job.quotes?.quote_number} · {job.region ?? "No region"}
           </div>
@@ -90,34 +64,7 @@ function JobCard({ job }: { job: JobRow }) {
         </div>
       </div>
 
-      {summary && <p className="mt-2 text-xs text-slate-500">{summary}</p>}
-
-      {job.status === "completed" && (
-        <div className="mt-3 space-y-2 border-t pt-3">
-          <div className="text-xs font-bold text-slate-500">Supplier invoice (paid outside the CRM)</div>
-          <div className="flex flex-wrap gap-2">
-            <input
-              value={note}
-              onChange={(e) => setNote(e.target.value)}
-              placeholder="Invoice note"
-              className="flex-1 rounded-lg border px-3 py-2 text-sm"
-            />
-            <input
-              value={url}
-              onChange={(e) => setUrl(e.target.value)}
-              placeholder="Invoice link (optional)"
-              className="flex-1 rounded-lg border px-3 py-2 text-sm"
-            />
-            <button
-              disabled={pending}
-              onClick={saveInvoice}
-              className="rounded-lg border px-3 py-2 text-xs font-bold disabled:opacity-60"
-            >
-              Save
-            </button>
-          </div>
-        </div>
-      )}
+      <p className="mt-2 text-xs text-slate-500">{allocationSummary(job)}</p>
     </div>
   );
 }
@@ -138,7 +85,7 @@ export function DispatchBoard({
       <PageHead
         eyebrow="Operations"
         title="Dispatch"
-        text="Assign paid bookings to one or more approved suppliers — whoever accepts first gets the job. Open a job to search suppliers and offer it."
+        text="Assign paid bookings to one or more approved suppliers — split multi-leg bookings across suppliers as needed. Open a job to allocate legs and offer them."
       />
       <Panel>
         <div className="space-y-3">

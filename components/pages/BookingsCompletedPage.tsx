@@ -9,14 +9,23 @@ export interface CompletedBookingJob {
   id: string;
   status: string;
   region: string | null;
-  completed_at: string | null;
   quotes: {
     quote_number: string;
     currency: string;
     customers: { company_name: string | null; contact_name: string } | null;
     quote_versions: { selling_price: number } | null;
   } | null;
-  suppliers: { name: string } | null;
+  job_allocations: { status: string; completed_at: string | null; suppliers: { name: string } | null }[];
+}
+
+function latestCompletion(allocations: CompletedBookingJob["job_allocations"]): string | null {
+  const dates = allocations.map((a) => a.completed_at).filter((d): d is string => !!d).sort();
+  return dates.length > 0 ? dates[dates.length - 1]! : null;
+}
+
+function supplierSummary(allocations: CompletedBookingJob["job_allocations"]): string {
+  const names = allocations.map((a) => a.suppliers?.name).filter((n): n is string => !!n);
+  return names.length > 0 ? `Supplier: ${names.join(", ")}` : "—";
 }
 
 function money(amount: number | undefined | null, currency: string) {
@@ -55,11 +64,11 @@ export function BookingsCompletedPage({
                   <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-bold text-emerald-700">Completed</span>
                 </div>
                 <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-sm text-slate-600">
-                  <span>{job.suppliers ? `Supplier: ${job.suppliers.name}` : "—"}</span>
+                  <span>{supplierSummary(job.job_allocations)}</span>
                   <span className="font-bold">{money(job.quotes?.quote_versions?.selling_price, job.quotes?.currency ?? "EUR")}</span>
                 </div>
-                {job.completed_at && (
-                  <p className="mt-1 text-xs text-slate-400">Completed {formatDateTime(job.completed_at)}</p>
+                {latestCompletion(job.job_allocations) && (
+                  <p className="mt-1 text-xs text-slate-400">Completed {formatDateTime(latestCompletion(job.job_allocations)!)}</p>
                 )}
                 <Link
                   href={`/dispatch/${job.id}`}

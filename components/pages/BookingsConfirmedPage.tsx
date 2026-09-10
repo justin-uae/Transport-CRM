@@ -21,7 +21,15 @@ export interface ConfirmedBookingJob {
     enquiries: LegsRef;
     quote_versions: VersionRef;
   } | null;
-  suppliers: { name: string } | null;
+  job_allocations: { status: JobStatus; suppliers: { name: string } | null }[];
+}
+
+function allocationSummary(allocations: { status: JobStatus; suppliers: { name: string } | null }[]) {
+  const live = allocations.filter((a) => a.status !== "cancelled");
+  if (live.length === 0) return null;
+  if (live.length === 1) return live[0]!.suppliers ? `Assigned to ${live[0]!.suppliers!.name}` : null;
+  const assigned = live.filter((a) => a.suppliers).length;
+  return `${assigned} of ${live.length} suppliers assigned`;
 }
 
 const JOB_STATUS_LABEL: Record<JobStatus, string> = {
@@ -79,7 +87,9 @@ export function BookingsConfirmedPage({ jobs }: { jobs: ConfirmedBookingJob[] })
                   </span>
                   <span className="font-bold">{money(job.quotes?.quote_versions?.selling_price, job.quotes?.currency ?? "EUR")}</span>
                 </div>
-                {job.suppliers && <p className="mt-1 text-xs text-slate-500">Assigned to {job.suppliers.name}</p>}
+                {allocationSummary(job.job_allocations) && (
+                  <p className="mt-1 text-xs text-slate-500">{allocationSummary(job.job_allocations)}</p>
+                )}
                 <Link
                   href={`/dispatch/${job.id}`}
                   className="mt-3 inline-block rounded-lg border border-primary-300 px-3 py-2 text-xs font-bold text-primary-700"

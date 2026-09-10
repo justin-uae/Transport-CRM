@@ -11,10 +11,15 @@ import { useToast } from "@/components/ui/Toast";
 import { ConfirmDetailModal } from "@/components/ui/ConfirmDetailModal";
 import { JourneyLegDetail } from "@/components/pages/JourneyLegDetail";
 import { InvoiceUploadForm } from "@/app/supplier/dashboard/InvoiceUploadForm";
-import { acceptJobOfferAction, rejectJobOfferAction, confirmJobAction, completeJobAction } from "@/app/supplier/dashboard/actions";
+import {
+  acceptJobAllocationOfferAction,
+  rejectJobAllocationOfferAction,
+  confirmAllocationAction,
+  completeAllocationAction,
+} from "@/app/supplier/dashboard/actions";
 import { statusDetailText } from "@/lib/supplierJobStatus";
 import { formatDateAndTime } from "@/lib/formatDate";
-import type { JobOfferView, JobSupplierInvoice, SupplierPaymentStatus } from "@/lib/supabase/database.types";
+import type { JobAllocationOfferView, JobSupplierInvoice, SupplierPaymentStatus } from "@/lib/supabase/database.types";
 
 const PAYMENT_STATUS_STYLE: Record<SupplierPaymentStatus, string> = {
   unpaid: "bg-blue-50 text-blue-700",
@@ -46,7 +51,7 @@ export function SupplierJobDetail({
   invoiceUrl,
   supplierId,
 }: {
-  job: JobOfferView;
+  job: JobAllocationOfferView;
   invoice: JobSupplierInvoice | null;
   invoiceUrl: string | null;
   supplierId: string;
@@ -66,7 +71,7 @@ export function SupplierJobDetail({
     setModalError(null);
     startTransition(async () => {
       try {
-        await acceptJobOfferAction(job.job_id);
+        await acceptJobAllocationOfferAction(job.job_allocation_id);
         closeModal();
         notify("Accepted — please confirm to proceed");
         router.refresh();
@@ -80,7 +85,7 @@ export function SupplierJobDetail({
     setModalError(null);
     startTransition(async () => {
       try {
-        await rejectJobOfferAction(job.job_id);
+        await rejectJobAllocationOfferAction(job.job_allocation_id);
         closeModal();
         notify("Job rejected");
         router.refresh();
@@ -94,7 +99,7 @@ export function SupplierJobDetail({
     setModalError(null);
     startTransition(async () => {
       try {
-        await confirmJobAction(job.job_id);
+        await confirmAllocationAction(job.job_allocation_id);
         closeModal();
         notify("Job confirmed");
         router.refresh();
@@ -108,7 +113,7 @@ export function SupplierJobDetail({
     setModalError(null);
     startTransition(async () => {
       try {
-        await completeJobAction(job.job_id);
+        await completeAllocationAction(job.job_allocation_id);
         closeModal();
         notify("Job marked as completed");
         router.refresh();
@@ -118,7 +123,7 @@ export function SupplierJobDetail({
     });
   }
 
-  const rate = money(job.supplier_estimated_cost, job.quote_currency);
+  const rate = money(job.agreed_cost, job.quote_currency);
   const journeyDetails = [
     { label: "Region", value: job.region ?? "—" },
     { label: "Date & time", value: job.pickup_date ? formatDateAndTime(job.pickup_date, job.pickup_time) : "TBC" },
@@ -211,12 +216,12 @@ export function SupplierJobDetail({
               </button>
             </>
           )}
-          {job.offer_status === "accepted" && job.job_status === "accepted_by_supplier" && (
+          {job.offer_status === "accepted" && job.allocation_status === "accepted_by_supplier" && (
             <button onClick={() => setModal("confirm")} className="rounded-xl bg-primary-500 px-5 py-2.5 text-sm font-bold text-white">
               Confirm this job
             </button>
           )}
-          {job.job_status === "confirmed" && job.supplier_payment_status === "paid" && (
+          {job.allocation_status === "confirmed" && job.supplier_payment_status === "paid" && (
             <button onClick={() => setModal("complete")} className="rounded-xl bg-emerald-600 px-5 py-2.5 text-sm font-bold text-white">
               Mark Completed
             </button>
@@ -273,14 +278,14 @@ export function SupplierJobDetail({
         onConfirm={complete}
       />
 
-      {job.job_status === "completed" && (job.supplier_invoice_note || job.supplier_invoice_url) && (
+      {job.allocation_status === "completed" && (job.manual_invoice_note || job.manual_invoice_url) && (
         <div className="mt-5">
           <Panel>
             <SectionTitle title="Payment reference from admin" />
             <div className="mt-3 text-sm">
-              {job.supplier_invoice_note && <p>{job.supplier_invoice_note}</p>}
-              {job.supplier_invoice_url && (
-                <a href={job.supplier_invoice_url} target="_blank" rel="noreferrer" className="mt-1 block font-bold text-primary-600">
+              {job.manual_invoice_note && <p>{job.manual_invoice_note}</p>}
+              {job.manual_invoice_url && (
+                <a href={job.manual_invoice_url} target="_blank" rel="noreferrer" className="mt-1 block font-bold text-primary-600">
                   View invoice
                 </a>
               )}
@@ -289,7 +294,7 @@ export function SupplierJobDetail({
         </div>
       )}
 
-      {(job.job_status === "confirmed" || job.job_status === "completed") && (
+      {(job.allocation_status === "confirmed" || job.allocation_status === "completed") && (
         <div className="mt-5">
           <Panel>
             <SectionTitle title="Invoice" />
@@ -314,10 +319,10 @@ export function SupplierJobDetail({
               </div>
             ) : (
               <InvoiceUploadForm
-                jobId={job.job_id}
+                allocationId={job.job_allocation_id}
                 supplierId={supplierId}
                 invoice={invoice}
-                prefillAmount={job.supplier_estimated_cost}
+                prefillAmount={job.agreed_cost}
                 prefillCurrency={job.quote_currency}
               />
             )}

@@ -5,7 +5,7 @@ import { Panel } from "@/components/ui/Panel";
 import { Kpi } from "@/components/ui/Kpi";
 import { statusLabel, statusBadgeStyle } from "@/lib/supplierJobStatus";
 import { formatDateAndTime } from "@/lib/formatDate";
-import type { JobOfferView } from "@/lib/supabase/database.types";
+import type { JobAllocationOfferView } from "@/lib/supabase/database.types";
 
 export function SupplierOverview({
   newOffers,
@@ -18,7 +18,7 @@ export function SupplierOverview({
   activeJobs: number;
   completedJobs: number;
   pendingInvoices: number;
-  recentJobs: JobOfferView[];
+  recentJobs: JobAllocationOfferView[];
 }) {
   return (
     <div>
@@ -48,7 +48,7 @@ export function SupplierOverview({
           {recentJobs.map((job) => (
             <Link
               key={job.offer_id}
-              href={`/supplier/dashboard/${job.job_id}`}
+              href={`/supplier/dashboard/${job.job_allocation_id}`}
               className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border p-4 hover:bg-slate-50"
             >
               <div>

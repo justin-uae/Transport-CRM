@@ -50,7 +50,7 @@ interface SupplierInvoiceRow {
   id: string;
   amount: number;
   currency: string;
-  supplier_payments: { amount: number }[] | null;
+  job_allocations: { supplier_payments: { amount: number }[] | null } | null;
 }
 
 /**
@@ -85,9 +85,12 @@ export async function getAccountingSummary(
         "id, quote_number, status, currency, decided_at, customers(company_name, contact_name), quote_versions!quotes_current_version_id_fkey(selling_price, supplier_estimated_cost), customer_payments(amount, paid_at)",
       )
       .in("status", ["accepted", "partially_paid", "paid"]),
+    // supplier_payments has no direct FK to job_supplier_invoices — both key
+    // off job_allocations (0054_job_allocations.sql) — so the embed chains
+    // through it explicitly rather than relying on a shared-parent guess.
     supabase
       .from("job_supplier_invoices")
-      .select("id, amount, currency, supplier_payments(amount)")
+      .select("id, amount, currency, job_allocations(supplier_payments(amount))")
       .eq("status", "forwarded_to_accounting"),
     getGbpRates().catch(() => ({}) as Record<string, number>),
   ]);
@@ -156,7 +159,7 @@ export async function getAccountingSummary(
   let supplierPayableGbp = 0;
   let supplierPayableCount = 0;
   for (const inv of invoices) {
-    const paid = (inv.supplier_payments ?? []).reduce((sum, p) => sum + Number(p.amount), 0);
+    const paid = (inv.job_allocations?.supplier_payments ?? []).reduce((sum, p) => sum + Number(p.amount), 0);
     const balance = Math.max(0, Number(inv.amount) - paid);
     if (balance > 0) {
       const converted = toGbp(balance, inv.currency, rates);

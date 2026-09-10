@@ -8,16 +8,16 @@ import { uploadSupplierInvoiceAction } from "./actions";
 import type { JobSupplierInvoice } from "@/lib/supabase/database.types";
 
 export function InvoiceUploadForm({
-  jobId,
+  allocationId,
   supplierId,
   invoice,
   prefillAmount = null,
   prefillCurrency = null,
 }: {
-  jobId: string;
+  allocationId: string;
   supplierId: string;
   invoice: JobSupplierInvoice | null;
-  /** The company's own supplier-cost estimate, captured at quote creation — this is the amount that gets invoiced, not editable here. */
+  /** The agreed cost for this allocation — this is the amount that gets invoiced, not editable here. */
   prefillAmount?: number | null;
   prefillCurrency?: string | null;
 }) {
@@ -62,7 +62,7 @@ export function InvoiceUploadForm({
       }
 
       try {
-        await uploadSupplierInvoiceAction(jobId, { notes, storagePath, fileName });
+        await uploadSupplierInvoiceAction(allocationId, { notes, storagePath, fileName });
         notify(invoice ? "Invoice updated" : "Invoice uploaded");
         setFile(null);
         router.refresh();

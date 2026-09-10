@@ -3,16 +3,19 @@
 import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Search } from "lucide-react";
+import { ArrowLeft, Search, X } from "lucide-react";
 import { Panel } from "@/components/ui/Panel";
 import { PageHead } from "@/components/ui/PageHead";
 import { SectionTitle } from "@/components/ui/SectionTitle";
 import { useToast } from "@/components/ui/Toast";
 import { ConfirmDetailModal } from "@/components/ui/ConfirmDetailModal";
 import {
-  offerJobToSuppliersAction,
-  withdrawAllOffersAction,
-  attachSupplierInvoiceAction,
+  createAllocationAction,
+  editAllocationLegsAction,
+  offerAllocationToSuppliersAction,
+  withdrawAllocationOffersAction,
+  cancelAllocationAction,
+  attachManualInvoiceNoteAction,
   transferSupplierInvoiceToAccountingAction,
 } from "@/app/(staff)/dispatch/actions";
 import { JourneyLegDetail, type JourneyLeg } from "@/components/pages/JourneyLegDetail";
@@ -20,47 +23,21 @@ import { formatDateTime, formatDateAndTime } from "@/lib/formatDate";
 import type { JobOfferStatus, JobStatus, JobSupplierInvoice, SupplierPaymentStatus } from "@/lib/supabase/database.types";
 import type { SupplierOption } from "@/components/pages/DispatchBoard";
 
+type DispatchLeg = JourneyLeg & { id: string };
+
 export interface JobDetailRow {
   id: string;
   status: JobStatus;
   region: string | null;
-  supplier_payment_status: SupplierPaymentStatus;
-  offered_at: string | null;
-  responded_at: string | null;
-  confirmed_at: string | null;
-  completed_at: string | null;
-  supplier_invoice_note: string | null;
-  supplier_invoice_url: string | null;
   created_at: string;
   quotes: {
     quote_number: string;
     currency: string;
     customers: { company_name: string | null; contact_name: string; phone: string | null; email: string | null } | null;
-    enquiries: { enquiry_legs: JourneyLeg[] } | null;
+    enquiries: { enquiry_legs: DispatchLeg[] } | null;
     quote_versions: { selling_price: number } | null;
   } | null;
-  suppliers: { id: string; name: string; region: string | null; phone: string | null; email: string | null } | null;
-  job_offers: {
-    id: string;
-    status: JobOfferStatus;
-    offered_at: string;
-    responded_at: string | null;
-    suppliers: { id: string; name: string; region: string | null } | null;
-  }[];
 }
-
-const OFFER_STATUS_STYLE: Record<JobOfferStatus, string> = {
-  sent: "bg-blue-50 text-blue-700",
-  accepted: "bg-emerald-50 text-emerald-700",
-  rejected: "bg-red-50 text-red-700",
-  withdrawn: "bg-slate-100 text-slate-500",
-};
-
-const PAYMENT_STATUS_STYLE: Record<SupplierPaymentStatus, string> = {
-  unpaid: "bg-slate-100 text-slate-600",
-  partially_paid: "bg-amber-50 text-amber-700",
-  paid: "bg-emerald-50 text-emerald-700",
-};
 
 interface SupplierPaymentRow {
   id: string;
@@ -70,47 +47,107 @@ interface SupplierPaymentRow {
   paid_at: string;
 }
 
-function money(amount: number | undefined, currency: string) {
-  if (amount === undefined) return "—";
+export interface JobAllocationRow {
+  id: string;
+  status: JobStatus;
+  assigned_supplier_id: string | null;
+  vehicle_notes: string | null;
+  agreed_cost: number | null;
+  currency: string | null;
+  supplier_payment_status: SupplierPaymentStatus;
+  manual_invoice_note: string | null;
+  manual_invoice_url: string | null;
+  offered_at: string | null;
+  confirmed_at: string | null;
+  completed_at: string | null;
+  created_at: string;
+  suppliers: { id: string; name: string; region: string | null; phone: string | null; email: string | null } | null;
+  job_allocation_legs: { enquiry_leg_id: string }[];
+  job_allocation_offers: {
+    id: string;
+    status: JobOfferStatus;
+    offered_at: string;
+    responded_at: string | null;
+    suppliers: { id: string; name: string; region: string | null } | null;
+  }[];
+  job_supplier_invoices: JobSupplierInvoice | null;
+  supplier_payments: SupplierPaymentRow[];
+}
+
+const OFFER_STATUS_STYLE: Record<JobOfferStatus, string> = {
+  sent: "bg-blue-50 text-blue-700",
+  accepted: "bg-emerald-50 text-emerald-700",
+  rejected: "bg-red-50 text-red-700",
+  withdrawn: "bg-slate-100 text-slate-500",
+};
+
+const STATUS_STYLE: Record<JobStatus, string> = {
+  unassigned: "bg-slate-100 text-slate-600",
+  offered: "bg-blue-50 text-blue-700",
+  accepted_by_supplier: "bg-amber-50 text-amber-700",
+  rejected_by_supplier: "bg-red-50 text-red-700",
+  confirmed: "bg-emerald-50 text-emerald-700",
+  completed: "bg-emerald-50 text-emerald-700",
+  cancelled: "bg-slate-100 text-slate-500",
+};
+
+const PAYMENT_STATUS_STYLE: Record<SupplierPaymentStatus, string> = {
+  unpaid: "bg-slate-100 text-slate-600",
+  partially_paid: "bg-amber-50 text-amber-700",
+  paid: "bg-emerald-50 text-emerald-700",
+};
+
+function money(amount: number | undefined | null, currency: string) {
+  if (amount === undefined || amount === null) return "—";
   return new Intl.NumberFormat("en-GB", { style: "currency", currency, maximumFractionDigits: 0 }).format(amount);
 }
 
-export function DispatchJobDetail({
-  job,
-  suppliers,
-  invoice,
+function legRouteSummary(legs: DispatchLeg[]) {
+  if (legs.length === 0) return "—";
+  if (legs.length === 1) return `${legs[0]!.pickup_address} → ${legs[0]!.destination_address}`;
+  const sequences = legs.map((l) => l.sequence).sort((a, b) => a - b);
+  return `Legs ${sequences.join(", ")}`;
+}
+
+function AllocationCard({
+  jobId,
+  allocation,
+  legs,
   invoiceUrl,
-  supplierPayments,
-  canTransferInvoice,
+  suppliers,
   canDispatchJobs,
+  canTransferInvoice,
 }: {
-  job: JobDetailRow;
-  suppliers: SupplierOption[];
-  invoice: JobSupplierInvoice | null;
+  jobId: string;
+  allocation: JobAllocationRow;
+  legs: DispatchLeg[];
   invoiceUrl: string | null;
-  supplierPayments: SupplierPaymentRow[];
-  canTransferInvoice: boolean;
+  suppliers: SupplierOption[];
   canDispatchJobs: boolean;
+  canTransferInvoice: boolean;
 }) {
   const router = useRouter();
   const notify = useToast();
   const [pending, startTransition] = useTransition();
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<string[]>(() =>
-    suppliers.filter((s) => s.region && job.region?.toLowerCase().includes(s.region.toLowerCase())).map((s) => s.id),
+    suppliers
+      .filter((s) => s.region && legs.some((l) => l.pickup_address.toLowerCase().includes(s.region!.toLowerCase())))
+      .map((s) => s.id),
   );
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [withdrawOpen, setWithdrawOpen] = useState(false);
+  const [cancelOpen, setCancelOpen] = useState(false);
   const [transferOpen, setTransferOpen] = useState(false);
   const [modalError, setModalError] = useState<string | null>(null);
-  const [note, setNote] = useState(job.supplier_invoice_note ?? "");
-  const [url, setUrl] = useState(job.supplier_invoice_url ?? "");
+  const [note, setNote] = useState(allocation.manual_invoice_note ?? "");
+  const [url, setUrl] = useState(allocation.manual_invoice_url ?? "");
+  const [editingLegs, setEditingLegs] = useState(false);
 
-  const legs = [...(job.quotes?.enquiries?.enquiry_legs ?? [])].sort((a, b) => a.sequence - b.sequence);
-  const firstLeg = legs[0];
-  const customer = job.quotes?.customers;
-  const canOffer = canDispatchJobs && (job.status === "unassigned" || job.status === "rejected_by_supplier");
-  const canWithdraw = canDispatchJobs && job.status === "offered";
+  const canOffer = canDispatchJobs && (allocation.status === "unassigned" || allocation.status === "rejected_by_supplier");
+  const canWithdraw = canDispatchJobs && allocation.status === "offered";
+  const canCancel = canDispatchJobs && !["completed", "cancelled"].includes(allocation.status);
+  const invoice = allocation.job_supplier_invoices;
 
   const filteredSuppliers = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -125,12 +162,12 @@ export function DispatchJobDetail({
   function offer() {
     startTransition(async () => {
       try {
-        await offerJobToSuppliersAction(job.id, selected);
-        notify(`Job offered to ${selected.length} supplier${selected.length === 1 ? "" : "s"}`);
+        await offerAllocationToSuppliersAction(allocation.id, selected);
+        notify(`Offered to ${selected.length} supplier${selected.length === 1 ? "" : "s"}`);
         setConfirmOpen(false);
         router.refresh();
       } catch (err) {
-        setModalError(err instanceof Error ? err.message : "Could not offer this job.");
+        setModalError(err instanceof Error ? err.message : "Could not offer this allocation.");
       }
     });
   }
@@ -138,8 +175,8 @@ export function DispatchJobDetail({
   function withdraw() {
     startTransition(async () => {
       try {
-        await withdrawAllOffersAction(job.id);
-        notify("Offers withdrawn — job is back to unassigned");
+        await withdrawAllocationOffersAction(allocation.id);
+        notify("Offers withdrawn");
         setWithdrawOpen(false);
         router.refresh();
       } catch (err) {
@@ -148,10 +185,23 @@ export function DispatchJobDetail({
     });
   }
 
+  function cancel() {
+    startTransition(async () => {
+      try {
+        await cancelAllocationAction(allocation.id);
+        notify("Allocation cancelled — its legs are available again");
+        setCancelOpen(false);
+        router.refresh();
+      } catch (err) {
+        setModalError(err instanceof Error ? err.message : "Could not cancel this allocation.");
+      }
+    });
+  }
+
   function transfer() {
     startTransition(async () => {
       try {
-        await transferSupplierInvoiceToAccountingAction(job.id);
+        await transferSupplierInvoiceToAccountingAction(allocation.id);
         notify("Invoice forwarded to accounting");
         setTransferOpen(false);
         router.refresh();
@@ -161,10 +211,10 @@ export function DispatchJobDetail({
     });
   }
 
-  function saveInvoice() {
+  function saveNote() {
     startTransition(async () => {
       try {
-        await attachSupplierInvoiceAction(job.id, note, url);
+        await attachManualInvoiceNoteAction(allocation.id, note, url);
         notify("Invoice reference saved");
       } catch (err) {
         notify(err instanceof Error ? err.message : "Could not save the invoice reference.");
@@ -172,7 +222,361 @@ export function DispatchJobDetail({
     });
   }
 
+  function removeLeg(legId: string) {
+    const remaining = legs.filter((l) => l.id !== legId).map((l) => l.id);
+    if (remaining.length === 0) {
+      notify("An allocation needs at least one leg — cancel it instead.");
+      return;
+    }
+    startTransition(async () => {
+      try {
+        await editAllocationLegsAction(allocation.id, remaining);
+        notify("Leg removed from this allocation");
+        router.refresh();
+      } catch (err) {
+        notify(err instanceof Error ? err.message : "Could not update this allocation's legs.");
+      }
+    });
+  }
+
   const selectedNames = suppliers.filter((s) => selected.includes(s.id)).map((s) => s.name);
+
+  return (
+    <div className="rounded-2xl border p-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <b>{legRouteSummary(legs)}</b>
+          {allocation.vehicle_notes && <div className="text-xs text-slate-500">{allocation.vehicle_notes}</div>}
+        </div>
+        <span className={`rounded-full px-2.5 py-1 text-xs font-bold capitalize ${STATUS_STYLE[allocation.status]}`}>
+          {allocation.status.replaceAll("_", " ")}
+        </span>
+      </div>
+
+      {allocation.status === "unassigned" && (
+        <div className="mt-3">
+          <button
+            type="button"
+            onClick={() => setEditingLegs((v) => !v)}
+            className="text-xs font-bold text-primary-600 hover:underline"
+          >
+            {editingLegs ? "Done editing legs" : "Edit legs"}
+          </button>
+          {editingLegs && (
+            <div className="mt-2 space-y-1">
+              {legs.map((l) => (
+                <div key={l.id} className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2 text-sm">
+                  <span>
+                    Leg {l.sequence} · {l.pickup_address} → {l.destination_address}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => removeLeg(l.id)}
+                    disabled={pending}
+                    className="rounded-lg p-1 text-red-500 hover:bg-red-50"
+                    aria-label="Remove leg from this allocation"
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {allocation.agreed_cost != null && (
+        <p className="mt-2 text-sm text-slate-600">
+          Agreed cost: <b>{money(allocation.agreed_cost, allocation.currency ?? "EUR")}</b>
+        </p>
+      )}
+
+      {allocation.suppliers && (
+        <div className="mt-3 rounded-xl bg-emerald-50 px-4 py-3 text-sm font-bold text-emerald-700">
+          Assigned to {allocation.suppliers.name}
+          {allocation.suppliers.phone && ` · ${allocation.suppliers.phone}`}
+        </div>
+      )}
+
+      {allocation.job_allocation_offers.length > 0 && (
+        <div className="mt-3 space-y-2">
+          {allocation.job_allocation_offers.map((o) => (
+            <div key={o.id} className="flex items-center justify-between rounded-xl border px-4 py-3 text-sm">
+              <div>
+                <b>{o.suppliers?.name ?? "Unknown supplier"}</b>
+                <div className="text-xs text-slate-400">{o.suppliers?.region ?? "No region"}</div>
+              </div>
+              <span className={`rounded-full px-2.5 py-1 text-xs font-bold capitalize ${OFFER_STATUS_STYLE[o.status]}`}>{o.status}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {canOffer && (
+        <div className="mt-4 rounded-xl border p-3">
+          <div className="text-xs font-black uppercase tracking-wide text-primary-500">Offer to suppliers</div>
+          <div className="relative mt-2">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search suppliers by name or region…"
+              className="w-full rounded-lg border bg-slate-50 py-2 pl-8 pr-3 text-sm outline-none"
+            />
+          </div>
+          <div className="mt-2 max-h-48 space-y-1 overflow-y-auto">
+            {filteredSuppliers.map((s) => (
+              <label key={s.id} className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm hover:bg-slate-50">
+                <input type="checkbox" checked={selected.includes(s.id)} onChange={() => toggleSupplier(s.id)} />
+                <span className="flex-1">{s.name}</span>
+                {s.region && <span className="text-xs text-slate-400">{s.region}</span>}
+              </label>
+            ))}
+            {filteredSuppliers.length === 0 && <p className="py-3 text-center text-xs text-slate-500">No matching suppliers.</p>}
+          </div>
+          <button
+            type="button"
+            disabled={pending || selected.length === 0}
+            onClick={() => {
+              setModalError(null);
+              setConfirmOpen(true);
+            }}
+            className="mt-3 w-full rounded-xl bg-primary-500 px-4 py-2.5 text-sm font-bold text-white disabled:opacity-60"
+          >
+            Offer to {selected.length} supplier{selected.length === 1 ? "" : "s"}
+          </button>
+        </div>
+      )}
+
+      {canWithdraw && (
+        <button
+          disabled={pending}
+          onClick={() => {
+            setModalError(null);
+            setWithdrawOpen(true);
+          }}
+          className="mt-4 rounded-xl border border-red-200 px-4 py-2.5 text-sm font-bold text-red-600 disabled:opacity-60"
+        >
+          Withdraw all offers
+        </button>
+      )}
+
+      {invoice && (
+        <div className="mt-4 border-t pt-4">
+          <div className="text-xs font-black uppercase tracking-wide text-primary-500">Supplier&apos;s uploaded invoice</div>
+          <div className="mt-2 flex items-center justify-between rounded-xl border px-4 py-3 text-sm">
+            <div>
+              <b>
+                {invoice.currency} {invoice.amount.toFixed(2)}
+              </b>
+              <div className="text-xs text-slate-400">{invoice.notes || "No notes"}</div>
+            </div>
+            {invoiceUrl ? (
+              <a href={invoiceUrl} target="_blank" rel="noreferrer" className="text-xs font-bold text-primary-600">
+                View file
+              </a>
+            ) : (
+              <span className="text-xs text-slate-400">{invoice.file_name}</span>
+            )}
+          </div>
+          {invoice.status === "forwarded_to_accounting" ? (
+            <div
+              className={`mt-3 rounded-xl px-4 py-3 text-sm font-bold ${
+                allocation.supplier_payment_status === "paid" ? "bg-emerald-50 text-emerald-700" : "bg-blue-50 text-blue-700"
+              }`}
+            >
+              {allocation.supplier_payment_status === "paid"
+                ? "Paid in full"
+                : allocation.supplier_payment_status === "partially_paid"
+                  ? "Forwarded to accounting — partially paid"
+                  : "Forwarded to accounting — awaiting payment"}
+            </div>
+          ) : canTransferInvoice ? (
+            <button
+              disabled={pending}
+              onClick={() => {
+                setModalError(null);
+                setTransferOpen(true);
+              }}
+              className="mt-3 rounded-xl bg-primary-500 px-4 py-2.5 text-sm font-bold text-white disabled:opacity-60"
+            >
+              Transfer to Accountant
+            </button>
+          ) : null}
+        </div>
+      )}
+
+      {invoice?.status === "forwarded_to_accounting" && (
+        <div className="mt-4 border-t pt-4">
+          <div className="flex items-start justify-between">
+            <div className="text-xs font-black uppercase tracking-wide text-primary-500">Supplier Payment</div>
+            <span className={`rounded-full px-2.5 py-1 text-xs font-bold capitalize ${PAYMENT_STATUS_STYLE[allocation.supplier_payment_status]}`}>
+              {allocation.supplier_payment_status.replaceAll("_", " ")}
+            </span>
+          </div>
+          <div className="mt-2 space-y-2 text-sm">
+            {allocation.supplier_payments.map((p) => (
+              <div key={p.id} className="flex flex-wrap justify-between gap-x-3 gap-y-1 border-b py-1.5 last:border-0">
+                <span className="text-slate-500">
+                  {formatDateTime(p.paid_at)}
+                  {p.bank_reference ? ` · ${p.bank_reference}` : ""}
+                </span>
+                <b>{money(p.amount, p.currency)}</b>
+              </div>
+            ))}
+            {allocation.supplier_payments.length === 0 && <p className="text-slate-500">No payments recorded yet.</p>}
+          </div>
+        </div>
+      )}
+
+      {allocation.status === "completed" && canDispatchJobs && (
+        <div className="mt-4 border-t pt-4">
+          <div className="text-xs font-black uppercase tracking-wide text-primary-500">Manual payment reference</div>
+          <div className="mt-2 flex flex-wrap gap-2">
+            <input
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              placeholder="Invoice note"
+              className="flex-1 rounded-lg border px-3 py-2 text-sm"
+            />
+            <input
+              value={url}
+              onChange={(e) => setUrl(e.target.value)}
+              placeholder="Invoice link (optional)"
+              className="flex-1 rounded-lg border px-3 py-2 text-sm"
+            />
+            <button disabled={pending} onClick={saveNote} className="rounded-lg border px-3 py-2 text-xs font-bold disabled:opacity-60">
+              Save
+            </button>
+          </div>
+        </div>
+      )}
+
+      {canCancel && (
+        <button
+          disabled={pending}
+          onClick={() => {
+            setModalError(null);
+            setCancelOpen(true);
+          }}
+          className="mt-4 text-xs font-bold text-red-600 hover:underline disabled:opacity-60"
+        >
+          Cancel this allocation
+        </button>
+      )}
+
+      <ConfirmDetailModal
+        open={confirmOpen}
+        onClose={() => !pending && setConfirmOpen(false)}
+        title={`Offer this allocation to ${selected.length} supplier${selected.length === 1 ? "" : "s"}?`}
+        description="Whoever accepts first gets it — the others' offers are automatically withdrawn."
+        pending={pending}
+        error={modalError}
+        details={[
+          { label: "Legs", value: legRouteSummary(legs) },
+          { label: "Suppliers", value: selectedNames.join(", ") || "—" },
+        ]}
+        confirmLabel="Send offers"
+        onConfirm={offer}
+      />
+      <ConfirmDetailModal
+        open={withdrawOpen}
+        onClose={() => !pending && setWithdrawOpen(false)}
+        title="Withdraw all outstanding offers?"
+        description="This allocation goes back to unassigned so you can offer it to a different set of suppliers."
+        pending={pending}
+        error={modalError}
+        destructive
+        confirmLabel="Withdraw offers"
+        onConfirm={withdraw}
+      />
+      <ConfirmDetailModal
+        open={cancelOpen}
+        onClose={() => !pending && setCancelOpen(false)}
+        title="Cancel this allocation?"
+        description="Its legs become available again to add to a new or different allocation."
+        pending={pending}
+        error={modalError}
+        destructive
+        confirmLabel="Cancel allocation"
+        onConfirm={cancel}
+      />
+      {invoice && (
+        <ConfirmDetailModal
+          open={transferOpen}
+          onClose={() => !pending && setTransferOpen(false)}
+          title="Transfer this invoice to Accountant?"
+          description="The accountant will see the invoice and can then pay the supplier by bank transfer."
+          pending={pending}
+          error={modalError}
+          details={[
+            { label: "Supplier", value: allocation.suppliers?.name ?? "—" },
+            { label: "Amount", value: `${invoice.currency} ${invoice.amount.toFixed(2)}` },
+          ]}
+          confirmLabel="Transfer to Accountant"
+          onConfirm={transfer}
+        />
+      )}
+    </div>
+  );
+}
+
+export function DispatchJobDetail({
+  job,
+  allocations,
+  invoiceUrls,
+  suppliers,
+  canTransferInvoice,
+  canDispatchJobs,
+}: {
+  job: JobDetailRow;
+  allocations: JobAllocationRow[];
+  invoiceUrls: Record<string, string | null>;
+  suppliers: SupplierOption[];
+  canTransferInvoice: boolean;
+  canDispatchJobs: boolean;
+}) {
+  const router = useRouter();
+  const notify = useToast();
+  const [pending, startTransition] = useTransition();
+  const [createError, setCreateError] = useState<string | null>(null);
+  const [selectedLegIds, setSelectedLegIds] = useState<string[]>([]);
+  const [vehicleNotes, setVehicleNotes] = useState("");
+  const [agreedCost, setAgreedCost] = useState("");
+
+  const legs = [...(job.quotes?.enquiries?.enquiry_legs ?? [])].sort((a, b) => a.sequence - b.sequence);
+  const customer = job.quotes?.customers;
+  const currency = job.quotes?.currency ?? "EUR";
+
+  const claimedLegIds = useMemo(
+    () => new Set(allocations.flatMap((a) => a.job_allocation_legs.map((l) => l.enquiry_leg_id))),
+    [allocations],
+  );
+  const legsById = useMemo(() => new Map(legs.map((l) => [l.id, l])), [legs]);
+
+  function toggleLeg(legId: string) {
+    setSelectedLegIds((prev) => (prev.includes(legId) ? prev.filter((id) => id !== legId) : [...prev, legId]));
+  }
+
+  function createAllocation() {
+    setCreateError(null);
+    if (selectedLegIds.length === 0) {
+      setCreateError("Select at least one leg.");
+      return;
+    }
+    startTransition(async () => {
+      try {
+        await createAllocationAction(job.id, selectedLegIds, vehicleNotes, agreedCost ? Number(agreedCost) : null, currency);
+        notify("Allocation created — offer it to suppliers below");
+        setSelectedLegIds([]);
+        setVehicleNotes("");
+        setAgreedCost("");
+        router.refresh();
+      } catch (err) {
+        setCreateError(err instanceof Error ? err.message : "Could not create this allocation.");
+      }
+    });
+  }
 
   return (
     <div>
@@ -193,245 +597,106 @@ export function DispatchJobDetail({
           <Panel>
             <SectionTitle title="Journey" sub={legs.length > 1 ? `${legs.length} legs` : "Pickup, destination and passenger details"} />
             <div className="mt-4">
-              {legs.map((leg, i) => (
-                <JourneyLegDetail key={leg.sequence} leg={leg} index={i} total={legs.length} />
-              ))}
+              {legs.map((leg, i) => {
+                const claimed = claimedLegIds.has(leg.id);
+                const owningAllocation = allocations.find((a) => a.job_allocation_legs.some((l) => l.enquiry_leg_id === leg.id));
+                return (
+                  <div key={leg.id} className="mb-2">
+                    <div className="flex items-center justify-between">
+                      <label className="flex items-center gap-2 text-sm font-bold">
+                        {!claimed && canDispatchJobs && (
+                          <input type="checkbox" checked={selectedLegIds.includes(leg.id)} onChange={() => toggleLeg(leg.id)} />
+                        )}
+                        {claimed && (
+                          <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-bold text-slate-500">
+                            {owningAllocation?.suppliers?.name
+                              ? `Assigned to ${owningAllocation.suppliers.name}`
+                              : "In an allocation"}
+                          </span>
+                        )}
+                      </label>
+                    </div>
+                    <JourneyLegDetail leg={leg} index={i} total={legs.length} />
+                  </div>
+                );
+              })}
               {legs.length === 0 && <p className="text-sm text-slate-500">No journey details recorded.</p>}
             </div>
             <dl className="mt-4 grid grid-cols-1 gap-x-4 gap-y-3 rounded-2xl bg-slate-50 p-4 text-sm sm:grid-cols-2">
               <div>
                 <dt className="text-xs font-bold uppercase text-slate-400">Value</dt>
-                <dd className="mt-0.5 font-semibold">
-                  {money(job.quotes?.quote_versions?.selling_price, job.quotes?.currency ?? "EUR")}
-                </dd>
+                <dd className="mt-0.5 font-semibold">{money(job.quotes?.quote_versions?.selling_price, currency)}</dd>
               </div>
               <div>
                 <dt className="text-xs font-bold uppercase text-slate-400">Customer contact</dt>
                 <dd className="mt-0.5 font-semibold">{customer?.phone || customer?.email || "—"}</dd>
               </div>
             </dl>
+
+            {canDispatchJobs && selectedLegIds.length > 0 && (
+              <div className="mt-4 rounded-2xl border p-4">
+                <div className="text-xs font-black uppercase tracking-wide text-primary-500">
+                  Create allocation from {selectedLegIds.length} selected leg{selectedLegIds.length === 1 ? "" : "s"}
+                </div>
+                <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                  <input
+                    value={vehicleNotes}
+                    onChange={(e) => setVehicleNotes(e.target.value)}
+                    placeholder="Vehicle notes (optional)"
+                    className="rounded-lg border px-3 py-2 text-sm"
+                  />
+                  <input
+                    value={agreedCost}
+                    onChange={(e) => setAgreedCost(e.target.value)}
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    placeholder={`Agreed cost (${currency}, optional)`}
+                    className="rounded-lg border px-3 py-2 text-sm"
+                  />
+                </div>
+                {createError && <p className="mt-2 text-xs font-semibold text-red-600">{createError}</p>}
+                <button
+                  disabled={pending}
+                  onClick={createAllocation}
+                  className="mt-3 rounded-xl bg-primary-500 px-4 py-2.5 text-sm font-bold text-white disabled:opacity-60"
+                >
+                  {pending ? "Creating…" : "Create allocation"}
+                </button>
+              </div>
+            )}
           </Panel>
 
           <Panel>
-            <SectionTitle title="Supplier offers" sub="Every supplier this job has been offered to" />
-            {job.suppliers && (
-              <div className="mt-3 rounded-xl bg-emerald-50 px-4 py-3 text-sm font-bold text-emerald-700">
-                Assigned to {job.suppliers.name}
-                {job.suppliers.phone && ` · ${job.suppliers.phone}`}
-              </div>
-            )}
-            <div className="mt-3 space-y-2">
-              {job.job_offers.map((o) => (
-                <div key={o.id} className="flex items-center justify-between rounded-xl border px-4 py-3 text-sm">
-                  <div>
-                    <b>{o.suppliers?.name ?? "Unknown supplier"}</b>
-                    <div className="text-xs text-slate-400">{o.suppliers?.region ?? "No region"}</div>
-                  </div>
-                  <span className={`rounded-full px-2.5 py-1 text-xs font-bold capitalize ${OFFER_STATUS_STYLE[o.status]}`}>
-                    {o.status}
-                  </span>
-                </div>
+            <SectionTitle
+              title={`Allocations (${allocations.length})`}
+              sub="Each allocation covers one or more legs assigned to a single supplier"
+            />
+            <div className="mt-3 space-y-4">
+              {allocations.map((allocation) => (
+                <AllocationCard
+                  key={allocation.id}
+                  jobId={job.id}
+                  allocation={allocation}
+                  legs={allocation.job_allocation_legs
+                    .map((l) => legsById.get(l.enquiry_leg_id))
+                    .filter((l): l is DispatchLeg => !!l)
+                    .sort((a, b) => a.sequence - b.sequence)}
+                  invoiceUrl={invoiceUrls[allocation.id] ?? null}
+                  suppliers={suppliers}
+                  canDispatchJobs={canDispatchJobs}
+                  canTransferInvoice={canTransferInvoice}
+                />
               ))}
-              {job.job_offers.length === 0 && <p className="text-sm text-slate-500">No offers sent yet.</p>}
+              {allocations.length === 0 && (
+                <p className="rounded-xl bg-slate-50 py-6 text-center text-sm text-slate-500">
+                  No allocations yet — select one or more legs above to create the first one.
+                </p>
+              )}
             </div>
-            {canWithdraw && (
-              <button
-                disabled={pending}
-                onClick={() => {
-                  setModalError(null);
-                  setWithdrawOpen(true);
-                }}
-                className="mt-4 rounded-xl border border-red-200 px-4 py-2.5 text-sm font-bold text-red-600 disabled:opacity-60"
-              >
-                Withdraw all offers
-              </button>
-            )}
           </Panel>
-
-          {invoice && (
-            <Panel>
-              <SectionTitle title="Supplier's uploaded invoice" sub="Submitted by the supplier once they confirmed the job" />
-              <div className="mt-3 flex items-center justify-between rounded-xl border px-4 py-3 text-sm">
-                <div>
-                  <b>
-                    {invoice.currency} {invoice.amount.toFixed(2)}
-                  </b>
-                  <div className="text-xs text-slate-400">{invoice.notes || "No notes"}</div>
-                </div>
-                {invoiceUrl ? (
-                  <a href={invoiceUrl} target="_blank" rel="noreferrer" className="text-xs font-bold text-primary-600">
-                    View file
-                  </a>
-                ) : (
-                  <span className="text-xs text-slate-400">{invoice.file_name}</span>
-                )}
-              </div>
-              {invoice.status === "forwarded_to_accounting" ? (
-                <div
-                  className={`mt-3 rounded-xl px-4 py-3 text-sm font-bold ${
-                    job.supplier_payment_status === "paid" ? "bg-emerald-50 text-emerald-700" : "bg-blue-50 text-blue-700"
-                  }`}
-                >
-                  {job.supplier_payment_status === "paid"
-                    ? "Paid in full"
-                    : job.supplier_payment_status === "partially_paid"
-                      ? "Forwarded to accounting — partially paid"
-                      : "Forwarded to accounting — awaiting payment"}
-                </div>
-              ) : canTransferInvoice ? (
-                <button
-                  disabled={pending}
-                  onClick={() => {
-                    setModalError(null);
-                    setTransferOpen(true);
-                  }}
-                  className="mt-4 rounded-xl bg-primary-500 px-4 py-2.5 text-sm font-bold text-white disabled:opacity-60"
-                >
-                  Transfer to Accountant
-                </button>
-              ) : null}
-            </Panel>
-          )}
-
-          {invoice?.status === "forwarded_to_accounting" && (
-            <Panel>
-              <div className="flex items-start justify-between">
-                <SectionTitle title="Supplier Payment" sub="Recorded by Finance once paid by bank transfer" />
-                <span className={`rounded-full px-2.5 py-1 text-xs font-bold capitalize ${PAYMENT_STATUS_STYLE[job.supplier_payment_status]}`}>
-                  {job.supplier_payment_status.replaceAll("_", " ")}
-                </span>
-              </div>
-              <div className="mt-3 space-y-2 text-sm">
-                {supplierPayments.map((p) => (
-                  <div key={p.id} className="flex flex-wrap justify-between gap-x-3 gap-y-1 border-b py-1.5 last:border-0">
-                    <span className="text-slate-500">
-                      {formatDateTime(p.paid_at)}
-                      {p.bank_reference ? ` · ${p.bank_reference}` : ""}
-                    </span>
-                    <b>{money(p.amount, p.currency)}</b>
-                  </div>
-                ))}
-                {supplierPayments.length === 0 && <p className="text-slate-500">No payments recorded yet.</p>}
-              </div>
-            </Panel>
-          )}
-
-          {job.status === "completed" && canDispatchJobs && (
-            <Panel>
-              <SectionTitle title="Manual payment reference" sub="Optional note/link recorded outside the supplier's own invoice upload" />
-              <div className="mt-4 flex flex-wrap gap-2">
-                <input
-                  value={note}
-                  onChange={(e) => setNote(e.target.value)}
-                  placeholder="Invoice note"
-                  className="flex-1 rounded-lg border px-3 py-2 text-sm"
-                />
-                <input
-                  value={url}
-                  onChange={(e) => setUrl(e.target.value)}
-                  placeholder="Invoice link (optional)"
-                  className="flex-1 rounded-lg border px-3 py-2 text-sm"
-                />
-                <button
-                  disabled={pending}
-                  onClick={saveInvoice}
-                  className="rounded-lg border px-3 py-2 text-xs font-bold disabled:opacity-60"
-                >
-                  Save
-                </button>
-              </div>
-            </Panel>
-          )}
-        </div>
-
-        <div>
-          {canOffer && (
-            <Panel>
-              <SectionTitle title="Offer to suppliers" sub="Search and select one or more approved suppliers" />
-              <div className="relative mt-4">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-                <input
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Search suppliers by name or region…"
-                  className="w-full rounded-xl border bg-slate-50 py-2.5 pl-9 pr-3 text-sm outline-none"
-                />
-              </div>
-              <div className="mt-3 max-h-72 space-y-1 overflow-y-auto">
-                {filteredSuppliers.map((s) => (
-                  <label key={s.id} className="flex items-center gap-2 rounded-lg px-2 py-2 text-sm hover:bg-slate-50">
-                    <input
-                      type="checkbox"
-                      checked={selected.includes(s.id)}
-                      onChange={() => toggleSupplier(s.id)}
-                    />
-                    <span className="flex-1">{s.name}</span>
-                    {s.region && <span className="text-xs text-slate-400">{s.region}</span>}
-                  </label>
-                ))}
-                {filteredSuppliers.length === 0 && (
-                  <p className="py-4 text-center text-sm text-slate-500">No matching suppliers.</p>
-                )}
-              </div>
-              <button
-                disabled={pending || selected.length === 0}
-                onClick={() => {
-                  setModalError(null);
-                  setConfirmOpen(true);
-                }}
-                className="mt-4 w-full rounded-xl bg-primary-500 px-4 py-2.5 text-sm font-bold text-white disabled:opacity-60"
-              >
-                Offer to {selected.length} supplier{selected.length === 1 ? "" : "s"}
-              </button>
-            </Panel>
-          )}
         </div>
       </div>
-
-      <ConfirmDetailModal
-        open={confirmOpen}
-        onClose={() => !pending && setConfirmOpen(false)}
-        title={`Offer this job to ${selected.length} supplier${selected.length === 1 ? "" : "s"}?`}
-        description="Whoever accepts first gets the job — the others' offers are automatically withdrawn."
-        pending={pending}
-        error={modalError}
-        details={[
-          { label: "Journey", value: firstLeg ? `${firstLeg.pickup_address} → ${firstLeg.destination_address}` : "—" },
-          { label: "Date", value: firstLeg?.pickup_date ? formatDateAndTime(firstLeg.pickup_date, firstLeg.pickup_time) : "—" },
-          { label: "Suppliers", value: selectedNames.join(", ") || "—" },
-        ]}
-        confirmLabel="Send offers"
-        onConfirm={offer}
-      />
-
-      <ConfirmDetailModal
-        open={withdrawOpen}
-        onClose={() => !pending && setWithdrawOpen(false)}
-        title="Withdraw all outstanding offers?"
-        description="This job goes back to unassigned so you can offer it to a different set of suppliers."
-        pending={pending}
-        error={modalError}
-        destructive
-        confirmLabel="Withdraw offers"
-        onConfirm={withdraw}
-      />
-
-      {invoice && (
-        <ConfirmDetailModal
-          open={transferOpen}
-          onClose={() => !pending && setTransferOpen(false)}
-          title="Transfer this invoice to Accountant?"
-          description="The accountant will see the invoice and job details and can then pay the supplier by bank transfer."
-          pending={pending}
-          error={modalError}
-          details={[
-            { label: "Supplier", value: job.suppliers?.name ?? "—" },
-            { label: "Amount", value: `${invoice.currency} ${invoice.amount.toFixed(2)}` },
-          ]}
-          confirmLabel="Transfer to Accountant"
-          onConfirm={transfer}
-        />
-      )}
     </div>
   );
 }
