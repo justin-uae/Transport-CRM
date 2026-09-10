@@ -7,7 +7,7 @@ import "server-only";
 // send shouldn't take down the webhook that's mid-conversation with a real
 // customer, it just means that one prompt didn't arrive and gets logged.
 
-const DEFAULT_BASE_URL = "https://waba-sandbox.360dialog.io";
+const DEFAULT_BASE_URL = "https://waba-v2.360dialog.io";
 
 async function sendMessage(payload: Record<string, unknown>): Promise<void> {
   const apiKey = process.env.WHATSAPP_API_KEY;
