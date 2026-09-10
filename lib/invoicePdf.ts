@@ -34,6 +34,7 @@ interface VersionRow {
   selling_price: number;
   brand_snapshot: BrandSnapshot | null;
   quote_line_items: LineItemRow[] | null;
+  terms_snapshot: string | null;
 }
 
 interface PaymentRow {
@@ -89,7 +90,7 @@ export async function generateInvoicePdf(
     .select(
       "id, quote_number, currency, brand_id, tenant_id, invoice_number, invoiced_at, " +
         "customers(company_name, contact_name, email, phone, billing_address), " +
-        "quote_versions!quotes_current_version_id_fkey(vehicle_description, selling_price, brand_snapshot, quote_line_items(description, amount)), " +
+        "quote_versions!quotes_current_version_id_fkey(vehicle_description, selling_price, brand_snapshot, quote_line_items(description, amount), terms_snapshot), " +
         "customer_payments(amount, method, paid_at)",
     )
     .eq("id", quoteId)
@@ -118,6 +119,8 @@ export async function generateInvoicePdf(
     .eq("tenant_id", quote.tenant_id)
     .order("sort_order");
   const bankAccounts = (bankAccountsRaw ?? []) as unknown as BankAccountRow[];
+
+  const { data: tenantRow } = await supabase.from("tenants").select("terms_and_conditions").eq("id", quote.tenant_id).maybeSingle();
 
   const brand = version.brand_snapshot;
   const brandName = brand?.name ?? "Invoice";
@@ -264,6 +267,14 @@ export async function generateInvoicePdf(
         width: contentWidth,
       });
     }
+  }
+
+  // ---- Terms & conditions -----------------------------------------------------
+  const terms = version.terms_snapshot?.trim() || tenantRow?.terms_and_conditions?.trim();
+  if (terms) {
+    doc.moveDown(1);
+    sectionHeading(doc, "Terms & Conditions", brandColor, contentWidth);
+    doc.font(FONT_REGULAR).fontSize(9).fillColor(MUTED).text(terms, PAGE_MARGIN, doc.y, { width: contentWidth });
   }
 
   // ---- Footer on every page ---------------------------------------------------

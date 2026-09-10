@@ -15,6 +15,7 @@ interface VersionRow {
   vehicle_description: string | null;
   selling_price: number;
   brand_snapshot: BrandSnapshot;
+  terms_snapshot: string | null;
 }
 
 interface LegRow {
@@ -43,12 +44,16 @@ export default async function InvoiceDownloadPage({ params }: { params: Promise<
   const { data: quote } = await admin
     .from("quotes")
     .select(
-      "id, quote_number, status, currency, brand_id, tenant_id, invoice_number, invoiced_at, customers(company_name, contact_name, email, phone, billing_address), enquiries(enquiry_legs(sequence, pickup_address, destination_address, pickup_date, pickup_time, passenger_count)), quote_versions!quotes_current_version_id_fkey(vehicle_description, selling_price, brand_snapshot)",
+      "id, quote_number, status, currency, brand_id, tenant_id, invoice_number, invoiced_at, customers(company_name, contact_name, email, phone, billing_address), enquiries(enquiry_legs(sequence, pickup_address, destination_address, pickup_date, pickup_time, passenger_count)), quote_versions!quotes_current_version_id_fkey(vehicle_description, selling_price, brand_snapshot, terms_snapshot)",
     )
     .eq("public_token", token)
     .single();
 
   if (!quote || quote.status !== "paid") notFound();
+
+  // Same fallback chain as the public quote page and quote PDF: a per-quote
+  // override if one was set, else the tenant-wide Terms & Conditions.
+  const { data: tenant } = await admin.from("tenants").select("terms_and_conditions").eq("id", quote.tenant_id).maybeSingle();
 
   // Tenant-wide payment profiles — every profile is shown, not just ones
   // matching the quote's currency.
@@ -175,6 +180,15 @@ export default async function InvoiceDownloadPage({ params }: { params: Promise<
                   {account.sort_code && ` · Sort code ${account.sort_code}`}
                 </div>
               ))}
+            </div>
+          )}
+
+          {(version?.terms_snapshot?.trim() || tenant?.terms_and_conditions?.trim()) && (
+            <div className="mt-8 border-t pt-4">
+              <div className="text-xs font-bold uppercase text-slate-400">Terms &amp; Conditions</div>
+              <p className="mt-2 whitespace-pre-line text-xs text-slate-400">
+                {version?.terms_snapshot?.trim() || tenant?.terms_and_conditions}
+              </p>
             </div>
           )}
         </div>

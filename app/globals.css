@@ -20,15 +20,15 @@ body {
   background-color: var(--color-appbg);
 }
 
-/* Inputs sit inside labels styled text-sm/text-xs (for the label text itself)
-   and inherit that font-size since they don't set their own — anything under
-   16px makes iOS Safari auto-zoom the page on focus. A component can still
-   opt into a smaller size by setting a text-size class directly on the
-   input/select/textarea itself, which wins over this via class specificity. */
+/* Anything under 16px makes iOS Safari auto-zoom the page on focus. !important
+   is deliberate here — many inputs across the app carry a text-sm/text-xs
+   class directly (14px/12px), which would otherwise win over a plain
+   input/select/textarea rule via class-vs-type-selector specificity and
+   silently reintroduce the zoom-on-focus bug on exactly those fields. */
 input,
 select,
 textarea {
-  font-size: 1rem;
+  font-size: 1rem !important;
 }
 
 /* Dial-code phone input (components/ui/PhoneNumberField.tsx) — restyles
