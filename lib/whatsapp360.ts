@@ -18,7 +18,7 @@ async function sendMessage(payload: Record<string, unknown>): Promise<void> {
   const baseUrl = process.env.WHATSAPP_API_BASE_URL || DEFAULT_BASE_URL;
 
   try {
-    const res = await fetch(`${baseUrl}/v1/messages`, {
+    const res = await fetch(`${baseUrl}/messages`, {
       method: "POST",
       headers: { "Content-Type": "application/json", "D360-API-KEY": apiKey },
       body: JSON.stringify(payload),
