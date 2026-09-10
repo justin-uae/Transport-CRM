@@ -1,4 +1,4 @@
-import { Building2, Landmark } from "lucide-react";
+import { Building2 } from "lucide-react";
 import { PageHead } from "@/components/ui/PageHead";
 import { Panel } from "@/components/ui/Panel";
 import { SearchInput } from "@/components/ui/SearchInput";
@@ -7,7 +7,6 @@ import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { NewCompanyForm } from "./NewCompanyForm";
 import { NewBrandForm } from "./NewBrandForm";
-import { NewBankAccountForm } from "./NewBankAccountForm";
 import { BrandCredentials } from "./BrandCredentials";
 
 // Companies stay few (legal entities), but brands don't — the "Join as a
@@ -33,20 +32,19 @@ export default async function BrandsPage({
   let brandsQuery = supabase
     .from("brands")
     .select(
-      "id, name, slug, webhook_secret, default_currency, primary_color, is_active, company:companies(id, legal_name), bank_accounts(id, account_name, bank_name, currency, iban, account_number)",
+      "id, name, slug, webhook_secret, default_currency, primary_color, is_active, company:companies(id, legal_name)",
       { count: "exact" },
     );
   if (q) {
     brandsQuery = brandsQuery.or(`name.ilike.%${q}%,slug.ilike.%${q}%`);
   }
 
-  const [{ data: companies }, { data: brands, count }, { data: allBrands }] = await Promise.all([
+  const [{ data: companies }, { data: brands, count }] = await Promise.all([
     supabase.from("companies").select("id, legal_name, trading_name, default_currency").order("legal_name"),
     // Newest-first while brands are still being bulk-added (easiest to spot
     // the one you just created) — switch to .order("name") once onboarding
     // settles down and alphabetical is more useful for finding a brand.
     brandsQuery.order("created_at", { ascending: false }).range(from, to),
-    supabase.from("brands").select("id, name, default_currency").order("name"),
   ]);
 
   return (
@@ -95,23 +93,6 @@ export default async function BrandsPage({
                     </div>
                   </div>
                 </div>
-                {(brand.bank_accounts ?? []).length > 0 && (
-                  <div className="mt-3 space-y-2 border-t pt-3">
-                    {(brand.bank_accounts ?? []).map((account) => (
-                      <div key={account.id} className="flex items-start gap-2 text-xs">
-                        <Landmark size={14} className="mt-0.5 shrink-0 text-slate-400" />
-                        <div>
-                          <div className="font-bold">
-                            {account.account_name} · {account.bank_name}
-                          </div>
-                          <div className="text-slate-500">
-                            {account.iban ?? account.account_number ?? "—"} · {account.currency}
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
                 <BrandCredentials slug={brand.slug} secret={brand.webhook_secret} />
               </div>
             );
@@ -127,7 +108,6 @@ export default async function BrandsPage({
 
       <div className="mt-6 flex flex-wrap gap-4">
         <NewBrandForm companies={(companies ?? []).map((c) => ({ id: c.id, legal_name: c.legal_name }))} />
-        <NewBankAccountForm brands={allBrands ?? []} />
       </div>
     </div>
   );

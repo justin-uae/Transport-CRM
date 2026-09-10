@@ -12,6 +12,8 @@ export interface Tenant {
   id: string;
   name: string;
   slug: string;
+  /** Tenant-wide Terms & Conditions boilerplate — the fallback quotes fall back to (both the PDF and the public quote page) when a quote has no per-quote terms_snapshot override. Admin-editable from Settings → Bank Details & Terms. */
+  terms_and_conditions: string | null;
   created_at: string;
 }
 
@@ -536,15 +538,23 @@ export type JobStatus =
 export interface BankAccount {
   id: string;
   tenant_id: string;
-  brand_id: string;
+  /** Nullable since 0055_bank_details_and_terms.sql — bank details are tenant-wide payment profiles now, not tied to a specific brand. */
+  brand_id: string | null;
+  /** e.g. "UK Local Payments", "International GBP Payments" — distinguishes the tenant's several simultaneous payment profiles. */
+  profile_label: string | null;
   account_name: string;
   bank_name: string;
   account_number: string | null;
   iban: string | null;
   sort_code: string | null;
   swift_bic: string | null;
+  /** Remittance address to quote if a sender's bank asks for one (e.g. Wise's own address) — free text, not this company's registered address. */
+  bank_address: string | null;
+  /** Free text shown alongside this profile, e.g. expected transfer timing ("SWIFT payments take 4-5 working days"). */
+  payment_notes: string | null;
   currency: string;
   is_default: boolean;
+  sort_order: number;
   created_at: string;
 }
 

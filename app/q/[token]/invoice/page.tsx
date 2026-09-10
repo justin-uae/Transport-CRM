@@ -27,6 +27,7 @@ interface LegRow {
 }
 
 interface BankAccountRow {
+  profile_label: string | null;
   account_name: string;
   bank_name: string;
   account_number: string | null;
@@ -42,19 +43,20 @@ export default async function InvoiceDownloadPage({ params }: { params: Promise<
   const { data: quote } = await admin
     .from("quotes")
     .select(
-      "id, quote_number, status, currency, brand_id, invoice_number, invoiced_at, customers(company_name, contact_name, email, phone, billing_address), enquiries(enquiry_legs(sequence, pickup_address, destination_address, pickup_date, pickup_time, passenger_count)), quote_versions!quotes_current_version_id_fkey(vehicle_description, selling_price, brand_snapshot)",
+      "id, quote_number, status, currency, brand_id, tenant_id, invoice_number, invoiced_at, customers(company_name, contact_name, email, phone, billing_address), enquiries(enquiry_legs(sequence, pickup_address, destination_address, pickup_date, pickup_time, passenger_count)), quote_versions!quotes_current_version_id_fkey(vehicle_description, selling_price, brand_snapshot)",
     )
     .eq("public_token", token)
     .single();
 
   if (!quote || quote.status !== "paid") notFound();
 
-  const { data: bankAccount } = await admin
+  // Tenant-wide payment profiles — every profile is shown, not just ones
+  // matching the quote's currency.
+  const { data: bankAccounts } = await admin
     .from("bank_accounts")
-    .select("account_name, bank_name, account_number, iban, sort_code, swift_bic")
-    .eq("brand_id", quote.brand_id)
-    .eq("is_default", true)
-    .maybeSingle();
+    .select("profile_label, account_name, bank_name, account_number, iban, sort_code, swift_bic")
+    .eq("tenant_id", quote.tenant_id)
+    .order("sort_order");
 
   const customer = quote.customers as unknown as {
     company_name: string | null;
@@ -102,7 +104,7 @@ export default async function InvoiceDownloadPage({ params }: { params: Promise<
             </div>
           </div>
 
-          <div className="mt-6 grid grid-cols-2 gap-6 text-sm">
+          <div className="mt-6 grid grid-cols-1 gap-6 text-sm sm:grid-cols-2">
             <div>
               <div className="text-xs font-bold uppercase text-slate-400">Billed to</div>
               <div className="mt-1 font-bold">{customer?.company_name || customer?.contact_name}</div>
@@ -110,7 +112,7 @@ export default async function InvoiceDownloadPage({ params }: { params: Promise<
               {customer?.email && <div className="text-slate-500">{customer.email}</div>}
               {customer?.phone && <div className="text-slate-500">{customer.phone}</div>}
             </div>
-            <div className="text-right">
+            <div className="sm:text-right">
               <div className="text-xs font-bold uppercase text-slate-400">Quote reference</div>
               <div className="mt-1 font-bold">{quote.quote_number}</div>
               <span className="mt-2 inline-block rounded-full bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-700">
@@ -162,13 +164,17 @@ export default async function InvoiceDownloadPage({ params }: { params: Promise<
             </tfoot>
           </table>
 
-          {bankAccount && (
+          {bankAccounts && bankAccounts.length > 0 && (
             <div className="mt-8 rounded-2xl bg-slate-50 p-4 text-xs text-slate-500">
               <div className="font-bold text-slate-600">Paid via bank transfer to</div>
-              <div className="mt-1">
-                {bankAccount.account_name} · {bankAccount.bank_name}
-                {bankAccount.iban && ` · IBAN ${bankAccount.iban}`}
-              </div>
+              {bankAccounts.map((account, i) => (
+                <div key={i} className="mt-1">
+                  {account.profile_label ? `${account.profile_label}: ` : ""}
+                  {account.account_name} · {account.bank_name}
+                  {account.iban && ` · IBAN ${account.iban}`}
+                  {account.sort_code && ` · Sort code ${account.sort_code}`}
+                </div>
+              ))}
             </div>
           )}
         </div>

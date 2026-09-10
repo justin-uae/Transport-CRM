@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { Users, ShieldCheck, Building2, History, Settings as SettingsIcon } from "lucide-react";
+import { Users, ShieldCheck, Building2, History, Landmark, Settings as SettingsIcon } from "lucide-react";
 import { requireProfile } from "@/lib/auth";
 import { getGrantedPermissions } from "@/lib/permissions";
 import { ADMIN_SURFACE_PERMISSIONS } from "@/lib/permissionKeys";
@@ -11,6 +11,7 @@ const SETTINGS_NAV = [
   { label: "Users", href: "/settings/users", icon: Users },
   { label: "Roles & Permissions", href: "/settings/roles", icon: ShieldCheck },
   { label: "Companies & Brands", href: "/settings/brands", icon: Building2 },
+  { label: "Bank Details & Terms", href: "/settings/bank-details", icon: Landmark },
   { label: "Audit Log", href: "/settings/audit-log", icon: History },
 ];
 

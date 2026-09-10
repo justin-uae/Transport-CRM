@@ -74,10 +74,23 @@ interface QuotePdfRow {
   expiry_at: string | null;
   created_at: string;
   brand_id: string;
+  tenant_id: string;
   customers: { company_name: string | null; contact_name: string; email: string | null; phone: string | null } | null;
   enquiries: { enquiry_legs: LegRow[] } | null;
   quote_versions: VersionRow | null;
   quote_payment_milestones: QuoteMilestoneRow[] | null;
+}
+
+interface BankAccountRow {
+  profile_label: string | null;
+  account_name: string;
+  bank_name: string;
+  account_number: string | null;
+  iban: string | null;
+  sort_code: string | null;
+  swift_bic: string | null;
+  bank_address: string | null;
+  payment_notes: string | null;
 }
 
 function defaultTermsAndConditions(brandName: string, depositPercentage: number | null, paymentClauseOverride?: string): string[] {
@@ -116,7 +129,7 @@ export async function generateQuotePdf(
   const { data: quoteRaw } = await supabase
     .from("quotes")
     .select(
-      "id, quote_number, status, currency, expiry_at, created_at, brand_id, " +
+      "id, quote_number, status, currency, expiry_at, created_at, brand_id, tenant_id, " +
         "customers(company_name, contact_name, email, phone), " +
         "enquiries(enquiry_legs(sequence, journey_type, pickup_address, destination_address, via_points, pickup_date, pickup_time, return_date, return_time, passenger_count, luggage_count, wheelchair_required, child_seats, special_requirements, vehicle_types(name))), " +
         "quote_versions!quotes_current_version_id_fkey(vehicle_description, selling_price, deposit_percentage, deposit_fixed_amount, payment_methods, customer_notes, terms_snapshot, brand_snapshot, quote_line_items(description, amount)), " +
@@ -138,6 +151,21 @@ export async function generateQuotePdf(
   const company = brandRow?.companies as unknown as
     | { legal_name: string; registered_address: string | null; vat_number: string | null }
     | null;
+
+  // Tenant-wide payment profiles — every profile is shown (not filtered by
+  // the quote's currency), only when bank transfer is actually an accepted
+  // method for this quote.
+  let bankAccounts: BankAccountRow[] = [];
+  if (version.payment_methods?.bank_transfer) {
+    const { data: bankAccountsRaw } = await supabase
+      .from("bank_accounts")
+      .select("profile_label, account_name, bank_name, account_number, iban, sort_code, swift_bic, bank_address, payment_notes")
+      .eq("tenant_id", quote.tenant_id)
+      .order("sort_order");
+    bankAccounts = (bankAccountsRaw ?? []) as unknown as BankAccountRow[];
+  }
+
+  const { data: tenantRow } = await supabase.from("tenants").select("terms_and_conditions").eq("id", quote.tenant_id).maybeSingle();
 
   const brand = version.brand_snapshot;
   const brandName = brand?.name ?? "Quotation";
@@ -316,7 +344,36 @@ export async function generateQuotePdf(
     doc.font(FONT_REGULAR).fontSize(10).fillColor(MUTED).text(version.customer_notes, PAGE_MARGIN, doc.y, { width: contentWidth });
   }
 
-  doc.moveDown(1.2);
+  // ---- Payment details ---------------------------------------------------------
+  if (bankAccounts.length > 0) {
+    doc.moveDown(1.2);
+    sectionHeading(doc, "Payment Details", brandColor, contentWidth);
+    for (const account of bankAccounts) {
+      const rows: [string, string][] = [];
+      if (account.iban) rows.push(["IBAN", account.iban]);
+      if (account.account_number) rows.push(["Account number", account.account_number]);
+      if (account.sort_code) rows.push(["Sort code", account.sort_code]);
+      if (account.swift_bic) rows.push(["SWIFT / BIC", account.swift_bic]);
+      doc
+        .font(FONT_BOLD)
+        .fontSize(9)
+        .fillColor(brandColor)
+        .text((account.profile_label ?? "Bank transfer").toUpperCase(), PAGE_MARGIN, doc.y);
+      doc.moveDown(0.2);
+      drawKeyValueBox(doc, [["Account holder", account.account_name], ["Bank", account.bank_name], ...rows], contentWidth);
+      if (account.bank_address || account.payment_notes) {
+        doc.moveDown(0.2);
+        doc
+          .font(FONT_REGULAR)
+          .fontSize(8)
+          .fillColor(MUTED)
+          .text([account.bank_address, account.payment_notes].filter(Boolean).join(" — "), PAGE_MARGIN, doc.y, { width: contentWidth });
+      }
+      doc.moveDown(0.5);
+    }
+  }
+
+  doc.moveDown(0.7);
 
   // ---- Terms & conditions -----------------------------------------------------
   sectionHeading(doc, "Terms & Conditions", brandColor, contentWidth);
@@ -328,7 +385,9 @@ export async function generateQuotePdf(
         : undefined;
   const terms = version.terms_snapshot?.trim()
     ? [version.terms_snapshot.trim()]
-    : defaultTermsAndConditions(brandName, version.deposit_percentage, paymentClauseOverride);
+    : tenantRow?.terms_and_conditions?.trim()
+      ? [tenantRow.terms_and_conditions.trim()]
+      : defaultTermsAndConditions(brandName, version.deposit_percentage, paymentClauseOverride);
   doc.font(FONT_REGULAR).fontSize(9).fillColor(MUTED);
   for (const clause of terms) {
     doc.text(clause, PAGE_MARGIN, doc.y, { width: contentWidth, align: "left" });

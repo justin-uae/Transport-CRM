@@ -42,11 +42,22 @@ interface PaymentRow {
   paid_at: string;
 }
 
+interface BankAccountRow {
+  profile_label: string | null;
+  account_name: string;
+  bank_name: string;
+  account_number: string | null;
+  iban: string | null;
+  sort_code: string | null;
+  swift_bic: string | null;
+}
+
 interface InvoicePdfRow {
   id: string;
   quote_number: string;
   currency: string;
   brand_id: string;
+  tenant_id: string;
   invoice_number: string | null;
   invoiced_at: string | null;
   customers: {
@@ -76,7 +87,7 @@ export async function generateInvoicePdf(
   const { data: quoteRaw } = await supabase
     .from("quotes")
     .select(
-      "id, quote_number, currency, brand_id, invoice_number, invoiced_at, " +
+      "id, quote_number, currency, brand_id, tenant_id, invoice_number, invoiced_at, " +
         "customers(company_name, contact_name, email, phone, billing_address), " +
         "quote_versions!quotes_current_version_id_fkey(vehicle_description, selling_price, brand_snapshot, quote_line_items(description, amount)), " +
         "customer_payments(amount, method, paid_at)",
@@ -99,12 +110,14 @@ export async function generateInvoicePdf(
     | { legal_name: string; registered_address: string | null; vat_number: string | null }
     | null;
 
-  const { data: bankAccount } = await supabase
+  // Tenant-wide payment profiles — every profile is shown, not just ones
+  // matching the quote's currency.
+  const { data: bankAccountsRaw } = await supabase
     .from("bank_accounts")
-    .select("account_name, bank_name")
-    .eq("brand_id", quote.brand_id)
-    .eq("is_default", true)
-    .maybeSingle();
+    .select("profile_label, account_name, bank_name, account_number, iban, sort_code, swift_bic")
+    .eq("tenant_id", quote.tenant_id)
+    .order("sort_order");
+  const bankAccounts = (bankAccountsRaw ?? []) as unknown as BankAccountRow[];
 
   const brand = version.brand_snapshot;
   const brandName = brand?.name ?? "Invoice";
@@ -234,15 +247,23 @@ export async function generateInvoicePdf(
     );
   }
 
-  if (bankAccount) {
+  if (bankAccounts.length > 0) {
     doc.moveDown(0.8);
-    doc
-      .font(FONT_REGULAR)
-      .fontSize(9)
-      .fillColor(MUTED)
-      .text(`Paid via bank transfer to ${bankAccount.account_name} (${bankAccount.bank_name}).`, PAGE_MARGIN, doc.y, {
+    doc.font(FONT_REGULAR).fontSize(9).fillColor(MUTED);
+    for (const account of bankAccounts) {
+      const label = account.profile_label ? `${account.profile_label} — ` : "";
+      const details = [
+        account.iban ? `IBAN ${account.iban}` : null,
+        account.account_number ? `Account ${account.account_number}` : null,
+        account.sort_code ? `Sort code ${account.sort_code}` : null,
+        account.swift_bic ? `SWIFT/BIC ${account.swift_bic}` : null,
+      ]
+        .filter(Boolean)
+        .join(" · ");
+      doc.text(`Paid via bank transfer to ${label}${account.account_name} (${account.bank_name})${details ? ` — ${details}` : ""}.`, PAGE_MARGIN, doc.y, {
         width: contentWidth,
       });
+    }
   }
 
   // ---- Footer on every page ---------------------------------------------------

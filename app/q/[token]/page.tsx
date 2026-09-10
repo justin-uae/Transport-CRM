@@ -38,17 +38,6 @@ interface MilestoneRow {
   due_date: string | null;
 }
 
-// For now, hardcoded test values — swap for a real bank_accounts row (or
-// wire up a brand-level settings screen) once these are ready to go live.
-const TEST_BANK_DETAILS: BankAccountRow = {
-  account_name: "Global Transport CRM Ltd (TEST)",
-  bank_name: "Test Bank plc",
-  account_number: "00012345",
-  iban: "GB29 TEST 6016 1331 9268 19",
-  sort_code: "04-00-04",
-  swift_bic: "TESTGB2L",
-};
-
 const DECIDABLE = new Set(["sent", "viewed"]);
 const AWAITING_PAYMENT = new Set(["accepted", "partially_paid"]);
 
@@ -59,20 +48,23 @@ export default async function PublicQuotePage({ params }: { params: Promise<{ to
   const { data: quote } = await admin
     .from("quotes")
     .select(
-      "id, quote_number, status, currency, expiry_at, brand_id, invoice_number, invoiced_at, payment_method_chosen, customers(company_name, contact_name), enquiries(enquiry_legs(sequence, journey_type, pickup_address, destination_address, via_points, pickup_date, pickup_time, return_date, return_time, passenger_count, luggage_count, wheelchair_required, child_seats, special_requirements, vehicle_types(name))), quote_versions!quotes_current_version_id_fkey(vehicle_description, selling_price, deposit_percentage, deposit_fixed_amount, payment_methods, customer_notes, terms_snapshot, brand_snapshot, quote_line_items(description, amount, category)), customer_payments(amount), quote_payment_milestones(sequence, label, amount, due_date)",
+      "id, quote_number, status, currency, expiry_at, brand_id, tenant_id, invoice_number, invoiced_at, payment_method_chosen, customers(company_name, contact_name), enquiries(enquiry_legs(sequence, journey_type, pickup_address, destination_address, via_points, pickup_date, pickup_time, return_date, return_time, passenger_count, luggage_count, wheelchair_required, child_seats, special_requirements, vehicle_types(name))), quote_versions!quotes_current_version_id_fkey(vehicle_description, selling_price, deposit_percentage, deposit_fixed_amount, payment_methods, customer_notes, terms_snapshot, brand_snapshot, quote_line_items(description, amount, category)), customer_payments(amount), quote_payment_milestones(sequence, label, amount, due_date)",
     )
     .eq("public_token", token)
     .single();
 
   if (!quote) notFound();
 
-  const { data: bankAccountRow } = await admin
+  // Bank details are tenant-wide payment profiles (0055_bank_details_and_terms.sql) —
+  // every profile is shown on every quote, regardless of the quote's own currency.
+  const { data: bankAccountsRaw } = await admin
     .from("bank_accounts")
-    .select("account_name, bank_name, account_number, iban, sort_code, swift_bic, currency")
-    .eq("brand_id", quote.brand_id)
-    .eq("is_default", true)
-    .maybeSingle();
-  const bankAccount: BankAccountRow = bankAccountRow ?? TEST_BANK_DETAILS;
+    .select("profile_label, account_name, bank_name, account_number, iban, sort_code, swift_bic, bank_address, payment_notes, currency")
+    .eq("tenant_id", quote.tenant_id)
+    .order("sort_order");
+  const bankAccounts: BankAccountRow[] = bankAccountsRaw ?? [];
+
+  const { data: tenant } = await admin.from("tenants").select("terms_and_conditions").eq("id", quote.tenant_id).maybeSingle();
 
   let status = quote.status;
   if (status === "sent") {
@@ -168,7 +160,11 @@ export default async function PublicQuotePage({ params }: { params: Promise<{ to
           </div>
 
           {version?.customer_notes && <p className="mt-4 text-sm text-slate-600">{version.customer_notes}</p>}
-          {version?.terms_snapshot && <p className="mt-4 text-xs text-slate-400">{version.terms_snapshot}</p>}
+          {(version?.terms_snapshot?.trim() || tenant?.terms_and_conditions?.trim()) && (
+            <p className="mt-4 whitespace-pre-line text-xs text-slate-400">
+              {version?.terms_snapshot?.trim() || tenant?.terms_and_conditions}
+            </p>
+          )}
 
           <div className="mt-6">
             {DECIDABLE.has(status) ? (
@@ -188,7 +184,7 @@ export default async function PublicQuotePage({ params }: { params: Promise<{ to
                   amountDueLabel={money(amountDue)}
                   stripeAvailable={version.payment_methods.stripe}
                   bankTransferAvailable={version.payment_methods.bank_transfer}
-                  bankAccount={bankAccount}
+                  bankAccounts={bankAccounts}
                   reference={quote.quote_number}
                 />
               </>

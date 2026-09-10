@@ -4,12 +4,16 @@ import { useEffect, useState, useTransition } from "react";
 import { choosePaymentMethodAction, createStripeCheckoutAction } from "./actions";
 
 export interface BankAccountRow {
+  profile_label: string | null;
   account_name: string;
   bank_name: string;
   account_number: string | null;
   iban: string | null;
   sort_code: string | null;
   swift_bic: string | null;
+  bank_address: string | null;
+  payment_notes: string | null;
+  currency: string;
 }
 
 // Stripe and bank transfer are never both available on the same quote — the
@@ -21,14 +25,14 @@ export function PaymentChooser({
   amountDueLabel,
   stripeAvailable,
   bankTransferAvailable,
-  bankAccount,
+  bankAccounts,
   reference,
 }: {
   token: string;
   amountDueLabel: string;
   stripeAvailable: boolean;
   bankTransferAvailable: boolean;
-  bankAccount: BankAccountRow;
+  bankAccounts: BankAccountRow[];
   reference: string;
 }) {
   const [pending, startTransition] = useTransition();
@@ -59,15 +63,34 @@ export function PaymentChooser({
     return (
       <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5">
         <p className="text-center font-bold text-emerald-700">Please complete payment by bank transfer to confirm your booking.</p>
-        <div className="mt-4 space-y-2 rounded-xl bg-white p-4 text-sm">
-          <Row label="Account name" value={bankAccount.account_name} />
-          <Row label="Bank" value={bankAccount.bank_name} />
-          {bankAccount.iban && <Row label="IBAN" value={bankAccount.iban} />}
-          {bankAccount.account_number && <Row label="Account number" value={bankAccount.account_number} />}
-          {bankAccount.sort_code && <Row label="Sort code" value={bankAccount.sort_code} />}
-          {bankAccount.swift_bic && <Row label="SWIFT / BIC" value={bankAccount.swift_bic} />}
-          <Row label="Payment reference" value={reference} />
-          <div className="flex justify-between py-1.5">
+        <div className="mt-4 space-y-4">
+          {bankAccounts.length === 0 && (
+            <div className="rounded-xl bg-white p-4 text-center text-sm text-slate-500">
+              No payment details are currently configured — please contact us to arrange payment.
+            </div>
+          )}
+          {bankAccounts.map((account, i) => (
+            <div key={i} className="rounded-xl bg-white p-4 text-sm">
+              {account.profile_label && (
+                <div className="mb-2 text-xs font-black uppercase tracking-wide text-emerald-700">{account.profile_label}</div>
+              )}
+              <Row label="Account name" value={account.account_name} />
+              <Row label="Bank" value={account.bank_name} />
+              {account.iban && <Row label="IBAN" value={account.iban} />}
+              {account.account_number && <Row label="Account number" value={account.account_number} />}
+              {account.sort_code && <Row label="Sort code" value={account.sort_code} />}
+              {account.swift_bic && <Row label="SWIFT / BIC" value={account.swift_bic} />}
+              {account.bank_address && (
+                <div className="border-b py-1.5 text-xs text-slate-500 last:border-0">Bank address: {account.bank_address}</div>
+              )}
+              {account.payment_notes && <p className="mt-2 text-xs text-slate-500">{account.payment_notes}</p>}
+            </div>
+          ))}
+          <div className="flex justify-between rounded-xl bg-white p-4 text-sm">
+            <span className="text-slate-500">Payment reference</span>
+            <b>{reference}</b>
+          </div>
+          <div className="flex justify-between rounded-xl bg-white p-4 text-sm">
             <span className="text-slate-500">Amount due now</span>
             <b className="text-primary-600">{amountDueLabel}</b>
           </div>
@@ -104,9 +127,9 @@ export function PaymentChooser({
 
 function Row({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex flex-wrap justify-between gap-x-3 gap-y-0.5 border-b py-1.5">
-      <span className="text-slate-500">{label}</span>
-      <b className="whitespace-nowrap">{value}</b>
+    <div className="flex flex-wrap justify-between gap-x-3 gap-y-0.5 border-b py-1.5 last:border-0">
+      <span className="shrink-0 text-slate-500">{label}</span>
+      <b className="text-right break-all">{value}</b>
     </div>
   );
 }
