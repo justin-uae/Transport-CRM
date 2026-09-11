@@ -18,6 +18,7 @@ import {
   cancelAllocationAction,
   attachManualInvoiceNoteAction,
   transferSupplierInvoiceToAccountingAction,
+  updateAllocationTermsAction,
 } from "@/app/(staff)/dispatch/actions";
 import { JourneyLegDetail, type JourneyLeg } from "@/components/pages/JourneyLegDetail";
 import { formatDateTime, formatDateAndTime } from "@/lib/formatDate";
@@ -36,7 +37,7 @@ export interface JobDetailRow {
     currency: string;
     customers: { company_name: string | null; contact_name: string; phone: string | null; email: string | null } | null;
     enquiries: { enquiry_legs: DispatchLeg[] } | null;
-    quote_versions: { selling_price: number } | null;
+    quote_versions: { selling_price: number; supplier_estimated_cost: number | null } | null;
   } | null;
 }
 
@@ -144,6 +145,7 @@ function AllocationCard({
   const [note, setNote] = useState(allocation.manual_invoice_note ?? "");
   const [url, setUrl] = useState(allocation.manual_invoice_url ?? "");
   const [editingLegs, setEditingLegs] = useState(false);
+  const [costInput, setCostInput] = useState("");
 
   const canOffer = canDispatchJobs && (allocation.status === "unassigned" || allocation.status === "rejected_by_supplier");
   const canWithdraw = canDispatchJobs && allocation.status === "offered";
@@ -223,6 +225,23 @@ function AllocationCard({
     });
   }
 
+  function saveCost() {
+    const value = Number(costInput);
+    if (!costInput.trim() || Number.isNaN(value) || value < 0) {
+      notify("Enter a valid cost.");
+      return;
+    }
+    startTransition(async () => {
+      try {
+        await updateAllocationTermsAction(allocation.id, allocation.vehicle_notes ?? "", value, allocation.currency ?? "EUR");
+        notify("Agreed cost saved");
+        router.refresh();
+      } catch (err) {
+        notify(err instanceof Error ? err.message : "Could not save the agreed cost.");
+      }
+    });
+  }
+
   function removeLeg(legId: string) {
     const remaining = legs.filter((l) => l.id !== legId).map((l) => l.id);
     if (remaining.length === 0) {
@@ -286,10 +305,38 @@ function AllocationCard({
         </div>
       )}
 
-      {allocation.agreed_cost != null && (
+      {allocation.agreed_cost != null ? (
         <p className="mt-2 text-sm text-slate-600">
           Agreed cost: <b>{money(allocation.agreed_cost, allocation.currency ?? "EUR")}</b>
         </p>
+      ) : (
+        canDispatchJobs &&
+        !["completed", "cancelled"].includes(allocation.status) && (
+          <div className="mt-3 rounded-xl bg-amber-50 p-3">
+            <p className="text-xs font-semibold text-amber-700">
+              No agreed cost set — the supplier can&apos;t submit an invoice until one is added.
+            </p>
+            <div className="mt-2 flex gap-2">
+              <input
+                value={costInput}
+                onChange={(e) => setCostInput(e.target.value)}
+                type="number"
+                min={0}
+                step="0.01"
+                placeholder={`Agreed cost (${allocation.currency ?? "EUR"})`}
+                className="w-full rounded-lg border px-3 py-2 text-sm"
+              />
+              <button
+                type="button"
+                disabled={pending}
+                onClick={saveCost}
+                className="shrink-0 rounded-lg bg-primary-500 px-3 py-2 text-xs font-bold text-white disabled:opacity-60"
+              >
+                Save
+              </button>
+            </div>
+          </div>
+        )
       )}
 
       {allocation.suppliers && (
@@ -543,7 +590,16 @@ export function DispatchJobDetail({
   const [createError, setCreateError] = useState<string | null>(null);
   const [selectedLegIds, setSelectedLegIds] = useState<string[]>([]);
   const [vehicleNotes, setVehicleNotes] = useState("");
-  const [agreedCost, setAgreedCost] = useState("");
+  // Pre-filled from the quote's own supplier estimated cost so the figure
+  // already entered at quote stage doesn't have to be looked up and retyped
+  // here — only for the first allocation on a job, since once a booking is
+  // split across suppliers the original single-supplier estimate no longer
+  // applies to each slice and re-using it verbatim would just be wrong.
+  const [agreedCost, setAgreedCost] = useState(() =>
+    allocations.length === 0 && job.quotes?.quote_versions?.supplier_estimated_cost != null
+      ? String(job.quotes.quote_versions.supplier_estimated_cost)
+      : "",
+  );
 
   const legs = [...(job.quotes?.enquiries?.enquiry_legs ?? [])].sort((a, b) => a.sequence - b.sequence);
   const customer = job.quotes?.customers;
@@ -648,10 +704,16 @@ export function DispatchJobDetail({
                     type="number"
                     min={0}
                     step="0.01"
-                    placeholder={`Agreed cost (${currency}, optional)`}
+                    placeholder={`Agreed cost (${currency})`}
                     className="rounded-lg border px-3 py-2 text-sm"
                   />
                 </div>
+                {!agreedCost && (
+                  <p className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-700">
+                    No agreed cost entered — the supplier won&apos;t be able to submit an invoice until Dispatch adds one to this
+                    allocation.
+                  </p>
+                )}
                 {createError && <p className="mt-2 text-xs font-semibold text-red-600">{createError}</p>}
                 <button
                   disabled={pending}

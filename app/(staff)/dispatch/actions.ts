@@ -25,6 +25,7 @@ interface AllocationContext {
   tenantId: string;
   createdBy: string | null;
   allocationStatus: string;
+  agreedCost: number | null;
 }
 
 async function loadAllocationContext(
@@ -33,13 +34,19 @@ async function loadAllocationContext(
 ): Promise<AllocationContext | null> {
   const { data } = await supabase
     .from("job_allocations")
-    .select("job_id, status, jobs(tenant_id, created_by)")
+    .select("job_id, status, agreed_cost, jobs(tenant_id, created_by)")
     .eq("id", allocationId)
     .single();
   if (!data) return null;
   const job = data.jobs as unknown as { tenant_id: string; created_by: string | null } | null;
   if (!job) return null;
-  return { jobId: data.job_id, tenantId: job.tenant_id, createdBy: job.created_by, allocationStatus: data.status };
+  return {
+    jobId: data.job_id,
+    tenantId: job.tenant_id,
+    createdBy: job.created_by,
+    allocationStatus: data.status,
+    agreedCost: data.agreed_cost,
+  };
 }
 
 export async function createAllocationAction(
@@ -161,7 +168,15 @@ export async function updateAllocationTermsAction(
   const ctx = await loadAllocationContext(supabase, allocationId);
   if (!ctx || ctx.tenantId !== actor.tenant_id) throw new Error("Allocation not found.");
   if (!(await canDispatch(actor, { created_by: ctx.createdBy }))) throw new Error("You do not have permission to dispatch this job.");
-  if (!["unassigned", "offered"].includes(ctx.allocationStatus)) {
+  if (["completed", "cancelled"].includes(ctx.allocationStatus)) {
+    throw new Error("This allocation is already closed out.");
+  }
+  // Terms are otherwise locked once a supplier has accepted/confirmed, to
+  // avoid quietly renegotiating an agreed rate after the fact — except when
+  // no cost was ever entered at all, which is a data-entry gap, not a
+  // renegotiation, and the only way to unblock a supplier who's already
+  // accepted and is stuck unable to invoice.
+  if (!["unassigned", "offered"].includes(ctx.allocationStatus) && ctx.agreedCost != null) {
     throw new Error("Terms can only be edited before this allocation is confirmed.");
   }
 
