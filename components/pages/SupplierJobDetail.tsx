@@ -157,12 +157,12 @@ export function SupplierJobDetail({
             ))}
           </div>
         ) : (
-          <dl className="mt-4 grid grid-cols-1 gap-x-4 gap-y-3 rounded-2xl bg-slate-50 p-4 text-sm sm:grid-cols-2">
-            <div className="col-span-2">
+          <dl className="mt-4 flex flex-col gap-3 rounded-2xl bg-slate-50 p-4 text-sm sm:grid sm:grid-cols-2 sm:gap-x-4 sm:gap-y-3">
+            <div className="sm:col-span-2">
               <dt className="text-xs font-bold uppercase text-slate-400">Pickup</dt>
               <dd className="mt-0.5 font-semibold">{job.pickup_address ?? "—"}</dd>
             </div>
-            <div className="col-span-2">
+            <div className="sm:col-span-2">
               <dt className="text-xs font-bold uppercase text-slate-400">Destination</dt>
               <dd className="mt-0.5 font-semibold">{job.destination_address ?? "—"}</dd>
             </div>
@@ -177,7 +177,7 @@ export function SupplierJobDetail({
           </dl>
         )}
         {(rate || job.customer_name || job.customer_phone) && (
-          <dl className="mt-3 grid grid-cols-1 gap-x-4 gap-y-3 rounded-2xl bg-slate-50 p-4 text-sm sm:grid-cols-2">
+          <dl className="mt-3 flex flex-col gap-3 rounded-2xl bg-slate-50 p-4 text-sm sm:grid sm:grid-cols-2 sm:gap-x-4 sm:gap-y-3">
             {rate && (
               <div>
                 <dt className="text-xs font-bold uppercase text-slate-400">Your rate</dt>

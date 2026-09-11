@@ -44,7 +44,7 @@ interface CustomerInfo {
 
 function CustomerSummary({ customer }: { customer: CustomerInfo }) {
   return (
-    <dl className="grid grid-cols-1 gap-x-4 gap-y-3 rounded-2xl bg-slate-50 p-4 text-sm sm:grid-cols-2">
+    <dl className="flex flex-col gap-3 rounded-2xl bg-slate-50 p-4 text-sm sm:grid sm:grid-cols-2 sm:gap-x-4 sm:gap-y-3">
       <div>
         <dt className="text-xs font-bold uppercase text-slate-400">Name</dt>
         <dd className="mt-0.5 font-semibold">{customer.name}</dd>
@@ -62,7 +62,7 @@ function CustomerSummary({ customer }: { customer: CustomerInfo }) {
         <dd className="mt-0.5 font-semibold">{customer.phone ?? "—"}</dd>
       </div>
       {customer.country && (
-        <div className="col-span-2">
+        <div className="sm:col-span-2">
           <dt className="text-xs font-bold uppercase text-slate-400">Country</dt>
           <dd className="mt-0.5 font-semibold">{customer.country}</dd>
         </div>
@@ -211,7 +211,7 @@ export function NewQuoteForm({
 
       <div>
         <div className="mb-2 text-xs font-black uppercase tracking-wide text-primary-500">Pricing &amp; payment</div>
-        <dl className="grid grid-cols-1 gap-x-4 gap-y-3 rounded-2xl bg-slate-50 p-4 text-sm sm:grid-cols-2">
+        <dl className="flex flex-col gap-3 rounded-2xl bg-slate-50 p-4 text-sm sm:grid sm:grid-cols-2 sm:gap-x-4 sm:gap-y-3">
           <div>
             <dt className="text-xs font-bold uppercase text-slate-400">Currency</dt>
             <dd className="mt-0.5 font-semibold">{currency}</dd>
@@ -232,7 +232,7 @@ export function NewQuoteForm({
             </dd>
           </div>
           {validLineItems.length > 0 && (
-            <div className="col-span-2">
+            <div className="sm:col-span-2">
               <dt className="text-xs font-bold uppercase text-slate-400">Itemised extras</dt>
               <dd className="mt-1 space-y-1">
                 {validLineItems.map((li, i) => (

@@ -27,7 +27,7 @@ export function JourneyLegDetail({ leg, index, total }: { leg: JourneyLeg; index
           Leg {leg.sequence} of {total} · {leg.journey_type.replaceAll("_", " ")}
         </div>
       )}
-      <dl className="grid grid-cols-1 gap-x-4 gap-y-3 rounded-2xl bg-slate-50 p-4 text-sm sm:grid-cols-2">
+      <dl className="flex flex-col gap-3 rounded-2xl bg-slate-50 p-4 text-sm sm:grid sm:grid-cols-2 sm:gap-x-4 sm:gap-y-3">
         <div>
           <dt className="text-xs font-bold uppercase text-slate-400">Pickup</dt>
           <dd className="mt-0.5 font-semibold">{leg.pickup_address}</dd>
@@ -37,7 +37,7 @@ export function JourneyLegDetail({ leg, index, total }: { leg: JourneyLeg; index
           <dd className="mt-0.5 font-semibold">{leg.destination_address}</dd>
         </div>
         {leg.via_points.length > 0 && (
-          <div className="col-span-2">
+          <div className="sm:col-span-2">
             <dt className="text-xs font-bold uppercase text-slate-400">Via</dt>
             <dd className="mt-0.5 font-semibold">{leg.via_points.join(" → ")}</dd>
           </div>
@@ -57,7 +57,7 @@ export function JourneyLegDetail({ leg, index, total }: { leg: JourneyLeg; index
           <dd className="mt-0.5 font-semibold">{leg.passenger_count ?? "—"}</dd>
         </div>
         {leg.special_requirements && (
-          <div className="col-span-2">
+          <div className="sm:col-span-2">
             <dt className="text-xs font-bold uppercase text-slate-400">Special requirements</dt>
             <dd className="mt-0.5 font-semibold">{leg.special_requirements}</dd>
           </div>

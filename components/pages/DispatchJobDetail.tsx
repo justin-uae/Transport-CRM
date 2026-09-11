@@ -619,7 +619,7 @@ export function DispatchJobDetail({
               })}
               {legs.length === 0 && <p className="text-sm text-slate-500">No journey details recorded.</p>}
             </div>
-            <dl className="mt-4 grid grid-cols-1 gap-x-4 gap-y-3 rounded-2xl bg-slate-50 p-4 text-sm sm:grid-cols-2">
+            <dl className="mt-4 flex flex-col gap-3 rounded-2xl bg-slate-50 p-4 text-sm sm:grid sm:grid-cols-2 sm:gap-x-4 sm:gap-y-3">
               <div>
                 <dt className="text-xs font-bold uppercase text-slate-400">Value</dt>
                 <dd className="mt-0.5 font-semibold">{money(job.quotes?.quote_versions?.selling_price, currency)}</dd>
