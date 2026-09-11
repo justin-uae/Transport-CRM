@@ -95,12 +95,6 @@ function parsePassengerCount(text: string): number | null {
   return Number.isFinite(n) && n > 0 ? n : null;
 }
 
-// A completed conversation older than this starts a fresh intake for what's
-// treated as a new enquiry; a completed one still within the window just
-// gets this message appended to the lead it already produced (mirrors the
-// "same route within 24h" duplicate guard the website quote form uses).
-const REOPEN_WINDOW_HOURS = 24;
-
 async function resolveBrand(admin: AdminClient, brandSlug: string, secret: string): Promise<Brand | null> {
   if (!brandSlug || !secret) return null;
   const { data: brand } = await admin.from("brands").select("id, tenant_id, name, webhook_secret").eq("slug", brandSlug).single();
@@ -110,7 +104,30 @@ async function resolveBrand(admin: AdminClient, brandSlug: string, secret: strin
 
 function messageText(message: WhatsAppMessage): string {
   if (message.type === "text" && message.text?.body) return message.text.body;
+  if (message.type === "location") return "📍 Shared a location";
   return `Sent a ${message.type} message (not yet supported here)`;
+}
+
+/** Records one row in the WhatsApp conversation log (app/(staff)/whatsapp) —
+    every inbound message and every outbound send, automated or staff-typed. */
+async function logWhatsAppMessage(
+  admin: AdminClient,
+  brand: Brand,
+  waId: string,
+  customerId: string | null,
+  direction: "inbound" | "outbound",
+  body: string,
+  messageType = "text",
+) {
+  await admin.from("whatsapp_messages").insert({
+    tenant_id: brand.tenant_id,
+    brand_id: brand.id,
+    customer_id: customerId,
+    wa_id: waId,
+    direction,
+    message_type: messageType,
+    body,
+  });
 }
 
 /**
@@ -197,19 +214,18 @@ async function createLeadFromSession(admin: AdminClient, brand: Brand, waId: str
     newValue: { source: "whatsapp", waId },
   });
 
-  await sendWhatsAppText(
-    waId,
-    `Thanks ${name}! We've got your request — ${session.pickup} to ${session.destination}${
-      travelDate ? ` on ${travelDate}` : ` (${dateText})`
-    }. Our team will be in touch shortly.`,
-  );
+  const confirmation = `Thanks ${name}! We've got your request — ${session.pickup} to ${session.destination}${
+    travelDate ? ` on ${travelDate}` : ` (${dateText})`
+  }. Our team will be in touch shortly.`;
+  await sendWhatsAppText(waId, confirmation);
+  await logWhatsAppMessage(admin, brand, waId, customerId, "outbound", confirmation);
 }
 
 /** Runs one step of the guided intake for a single inbound message: either
-    starts a fresh conversation, advances an in-progress one (recording this
-    message as the answer to whatever was last asked), or — if this contact
-    already finished a conversation recently — folds the message into that
-    lead's notes instead of starting the Q&A over. */
+    starts a fresh conversation, or advances an in-progress one (recording
+    this message as the answer to whatever was last asked). Every completed
+    conversation always produces its own new lead (see the note further
+    down) — this never folds a message into a previous lead's notes. */
 async function handleInboundMessage(admin: AdminClient, brand: Brand, waId: string, contactName: string, message: WhatsAppMessage) {
   const text = messageText(message).trim();
 
@@ -231,6 +247,17 @@ async function handleInboundMessage(admin: AdminClient, brand: Brand, waId: stri
   }
   if (!customerId) return;
 
+  await logWhatsAppMessage(admin, brand, waId, customerId, "inbound", text, message.type);
+
+  async function send(body: string) {
+    await sendWhatsAppText(waId, body);
+    await logWhatsAppMessage(admin, brand, waId, customerId, "outbound", body);
+  }
+  async function sendLocationRequest(body: string) {
+    await sendWhatsAppLocationRequest(waId, body);
+    await logWhatsAppMessage(admin, brand, waId, customerId, "outbound", body, "location_request");
+  }
+
   const { data: lastSession } = await admin
     .from("whatsapp_intake_sessions")
     .select("id, step, name, email, pickup, destination, passenger_count, lead_id, created_at")
@@ -248,14 +275,14 @@ async function handleInboundMessage(admin: AdminClient, brand: Brand, waId: stri
           .from("whatsapp_intake_sessions")
           .update({ name: text, step: "awaiting_email", updated_at: new Date().toISOString() })
           .eq("id", session.id);
-        await sendWhatsAppText(waId, `Thanks ${text}! What's the best email to reach you at?`);
+        await send(`Thanks ${text}! What's the best email to reach you at?`);
         return;
       case "awaiting_email":
         await admin
           .from("whatsapp_intake_sessions")
           .update({ email: text, step: "awaiting_pickup", updated_at: new Date().toISOString() })
           .eq("id", session.id);
-        await sendWhatsAppLocationRequest(waId, "Where would you like to be picked up from? Tap below to share the location, or just type it.");
+        await sendLocationRequest("Where would you like to be picked up from? Tap below to share the location, or just type it.");
         return;
       case "awaiting_pickup": {
         const pickup = await resolveAddressAnswer(message, text);
@@ -263,7 +290,7 @@ async function handleInboundMessage(admin: AdminClient, brand: Brand, waId: stri
           .from("whatsapp_intake_sessions")
           .update({ pickup, step: "awaiting_destination", updated_at: new Date().toISOString() })
           .eq("id", session.id);
-        await sendWhatsAppLocationRequest(waId, "And where are you headed to? Tap below to share the location, or just type it.");
+        await sendLocationRequest("And where are you headed to? Tap below to share the location, or just type it.");
         return;
       }
       case "awaiting_destination": {
@@ -272,7 +299,7 @@ async function handleInboundMessage(admin: AdminClient, brand: Brand, waId: stri
           .from("whatsapp_intake_sessions")
           .update({ destination, step: "awaiting_passengers", updated_at: new Date().toISOString() })
           .eq("id", session.id);
-        await sendWhatsAppText(waId, "How many passengers will be travelling?");
+        await send("How many passengers will be travelling?");
         return;
       }
       case "awaiting_passengers":
@@ -280,7 +307,7 @@ async function handleInboundMessage(admin: AdminClient, brand: Brand, waId: stri
           .from("whatsapp_intake_sessions")
           .update({ passenger_count: parsePassengerCount(text), step: "awaiting_date", updated_at: new Date().toISOString() })
           .eq("id", session.id);
-        await sendWhatsAppText(waId, "What date do you need this trip?");
+        await send("What date do you need this trip?");
         return;
       case "awaiting_date":
         await createLeadFromSession(admin, brand, waId, customerId, session, text);
@@ -288,20 +315,12 @@ async function handleInboundMessage(admin: AdminClient, brand: Brand, waId: stri
     }
   }
 
-  // A finished conversation, still recent — treat this as more context on
-  // the same enquiry rather than restarting the Q&A.
-  if (session && session.step === "done") {
-    const since = new Date(Date.now() - REOPEN_WINDOW_HOURS * 60 * 60 * 1000).toISOString();
-    if (session.created_at >= since && session.lead_id) {
-      const { data: lead } = await admin.from("leads").select("notes").eq("id", session.lead_id).maybeSingle();
-      const updatedNotes = [lead?.notes, `[${new Date().toISOString()}] ${text}`].filter(Boolean).join("\n");
-      await admin.from("leads").update({ notes: updatedNotes }).eq("id", session.lead_id);
-      return;
-    }
-  }
-
-  // No active session, and nothing recent to fold into — start a new
-  // guided intake. This first message is the trigger, not an answer.
+  // Any prior conversation is already finished (or there wasn't one) — every
+  // new message the contact sends starts its own fresh guided intake, which
+  // always produces its own new lead. A contact who books once and messages
+  // again next week (or next hour) about a second, unrelated trip must get a
+  // second lead, not have it silently folded into notes on the first one.
+  // This first message is the trigger, not an answer.
   await admin.from("whatsapp_intake_sessions").insert({
     tenant_id: brand.tenant_id,
     brand_id: brand.id,
@@ -309,7 +328,7 @@ async function handleInboundMessage(admin: AdminClient, brand: Brand, waId: stri
     customer_id: customerId,
     step: "awaiting_name",
   });
-  await sendWhatsAppText(waId, "👋 Thanks for reaching out! Could you tell us your name?");
+  await send("👋 Thanks for reaching out! Could you tell us your name?");
 }
 
 export async function POST(request: NextRequest) {

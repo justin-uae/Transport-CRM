@@ -497,6 +497,21 @@ export interface EmailMessage {
   quote_id: string | null;
 }
 
+export type WhatsAppMessageDirection = "inbound" | "outbound";
+
+export interface WhatsAppMessage {
+  id: string;
+  tenant_id: string;
+  brand_id: string;
+  customer_id: string | null;
+  wa_id: string;
+  direction: WhatsAppMessageDirection;
+  message_type: string;
+  body: string;
+  sent_by: string | null;
+  created_at: string;
+}
+
 export interface QuoteDecision {
   id: string;
   quote_id: string;
@@ -1083,6 +1098,7 @@ export interface Database {
       email_templates: Table<EmailTemplate>;
       email_accounts: Table<EmailAccount>;
       email_messages: Table<EmailMessage>;
+      whatsapp_messages: Table<WhatsAppMessage>;
       commission_plans: Table<CommissionPlan>;
       commissions: Table<Commission>;
       attendance_events: Table<AttendanceEvent>;
