@@ -104,7 +104,12 @@ export function NewQuoteForm({
   const [customerNotes, setCustomerNotes] = useState("");
   const [terms, setTerms] = useState("");
   const [sendNow, setSendNow] = useState(true);
-  const [confirmedLowSupplierCost, setConfirmedLowSupplierCost] = useState(false);
+  // Holds the warning text (not just a boolean) so it can double as the
+  // "confirmed" flag and be shown inline — same warn-then-allow shape as
+  // PAY-01/PAY-02 in CustomerPaymentsPage.tsx: an amber banner appears in
+  // the modal body and the confirm button itself relabels to "anyway",
+  // rather than a generic red error asking to click the same button again.
+  const [lowSupplierCostWarning, setLowSupplierCostWarning] = useState<string | null>(null);
 
   // Fetched once on mount rather than per keystroke — the live "which
   // payment method will this get" preview below just does the arithmetic
@@ -161,8 +166,9 @@ export function NewQuoteForm({
     startTransition(async () => {
       const result = await createQuoteAction({ error: null, link: null }, formData);
       if (result?.warnLowSupplierCost) {
-        setConfirmedLowSupplierCost(true);
-        setError("No supplier cost entered — click Send/Save again to confirm, or go back and enter one.");
+        setLowSupplierCostWarning(
+          "No supplier cost has been entered. The supplier will still be invoiced for whatever's set here later — go back and enter one now if you can, or continue without it.",
+        );
         return;
       }
       if (result?.error) {
@@ -181,7 +187,7 @@ export function NewQuoteForm({
 
   function openConfirm() {
     setError(null);
-    setConfirmedLowSupplierCost(false);
+    setLowSupplierCostWarning(null);
     setConfirmOpen(true);
   }
 
@@ -303,7 +309,7 @@ export function NewQuoteForm({
   return (
     <form ref={formRef} onSubmit={(e) => e.preventDefault()}>
       <input type="hidden" name="enquiryId" value={enquiryId} />
-      <input type="hidden" name="confirmedLowSupplierCost" value={confirmedLowSupplierCost ? "true" : "false"} />
+      <input type="hidden" name="confirmedLowSupplierCost" value={lowSupplierCostWarning ? "true" : "false"} />
       <input type="hidden" name="depositPercentage" value={depositMode === "percentage" ? depositPercentage : ""} />
       <input type="hidden" name="depositFixedAmount" value={depositMode === "fixed" ? depositFixedAmount : ""} />
       <input
@@ -635,9 +641,14 @@ export function NewQuoteForm({
         }
         pending={pending}
         error={error}
-        confirmLabel={willSend ? "Send quote" : "Save draft"}
+        confirmLabel={
+          lowSupplierCostWarning ? (willSend ? "Send anyway" : "Save anyway") : willSend ? "Send quote" : "Save draft"
+        }
         onConfirm={confirmSubmit}
       >
+        {lowSupplierCostWarning && (
+          <div className="mb-3 rounded-xl bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-700">{lowSupplierCostWarning}</div>
+        )}
         {reviewContent}
       </ConfirmDetailModal>
     </form>
