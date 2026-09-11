@@ -10,6 +10,7 @@ import {
   ensureSpace,
   drawKeyValueBox,
   drawFooterOnEveryPage,
+  sanitizePdfText,
   FALLBACK_COLOR,
   INK,
   MUTED,
@@ -255,7 +256,6 @@ export async function generateQuotePdf(
   const detailRows: [string, string][] = [
     ["Issue date", formatDate(quote.created_at)],
     ["Valid until", formatDate(quote.expiry_at)],
-    ["Status", quote.status.replaceAll("_", " ")],
   ];
   let detailY = infoTop + 14;
   for (const [label, value] of detailRows) {
@@ -366,27 +366,47 @@ export async function generateQuotePdf(
   // ---- Payment details ---------------------------------------------------------
   if (bankAccounts.length > 0) {
     doc.moveDown(1.2);
+    // Forces the whole section onto a fresh page (rather than starting it
+    // wherever the previous section happened to end) whenever it wouldn't
+    // otherwise fit as one block — a per-account ensureSpace call further
+    // down only ever checks whether *that one* box fits, which is how 4
+    // profiles used to end up split across two pages.
+    ensureSpace(doc, bankAccounts.length * 130 + 40);
     sectionHeading(doc, "Payment Details", brandColor, contentWidth);
     for (const account of bankAccounts) {
-      const rows: [string, string][] = [];
-      if (account.iban) rows.push(["IBAN", account.iban]);
-      if (account.account_number) rows.push(["Account number", account.account_number]);
-      if (account.sort_code) rows.push(["Sort code", account.sort_code]);
-      if (account.swift_bic) rows.push(["SWIFT / BIC", account.swift_bic]);
+      // The 4 possible account-identifier fields collapse into one "Details"
+      // row (rather than one row each) so a profile with every field set
+      // still only takes 3 box rows, not up to 6 — the height saving is
+      // what actually keeps 4 profiles together on one page.
+      const details = [
+        account.iban ? `IBAN ${account.iban}` : null,
+        account.account_number ? `Account ${account.account_number}` : null,
+        account.sort_code ? `Sort code ${account.sort_code}` : null,
+        account.swift_bic ? `SWIFT/BIC ${account.swift_bic}` : null,
+      ]
+        .filter(Boolean)
+        .join("   ·   ");
       doc
         .font(FONT_BOLD)
         .fontSize(9)
         .fillColor(brandColor)
         .text((account.profile_label ?? "Bank transfer").toUpperCase(), PAGE_MARGIN, doc.y);
       doc.moveDown(0.2);
-      drawKeyValueBox(doc, [["Account holder", account.account_name], ["Bank", account.bank_name], ...rows], contentWidth);
+      const rows: [string, string][] = [["Account holder", account.account_name], ["Bank", account.bank_name]];
+      if (details) rows.push(["Details", details]);
+      drawKeyValueBox(doc, rows, contentWidth);
       if (account.bank_address || account.payment_notes) {
         doc.moveDown(0.2);
         doc
           .font(FONT_REGULAR)
           .fontSize(8)
           .fillColor(MUTED)
-          .text([account.bank_address, account.payment_notes].filter(Boolean).join(" — "), PAGE_MARGIN, doc.y, { width: contentWidth });
+          .text(
+            sanitizePdfText([account.bank_address, account.payment_notes].filter(Boolean).join(" — ")),
+            PAGE_MARGIN,
+            doc.y,
+            { width: contentWidth },
+          );
       }
       doc.moveDown(0.5);
     }
@@ -409,16 +429,12 @@ export async function generateQuotePdf(
       : defaultTermsAndConditions(brandName, version.deposit_percentage, paymentClauseOverride);
   doc.font(FONT_REGULAR).fontSize(9).fillColor(MUTED);
   for (const clause of terms) {
-    doc.text(clause, PAGE_MARGIN, doc.y, { width: contentWidth, align: "left" });
+    doc.text(sanitizePdfText(clause), PAGE_MARGIN, doc.y, { width: contentWidth, align: "left" });
     doc.moveDown(0.5);
   }
 
   // ---- Footer on every page ---------------------------------------------------
-  const footerLine =
-    [company?.legal_name, company?.registered_address, company?.vat_number ? `VAT ${company.vat_number}` : null]
-      .filter(Boolean)
-      .join(" · ") || brandName;
-  drawFooterOnEveryPage(doc, footerLine, contentWidth);
+  drawFooterOnEveryPage(doc, contentWidth);
 
   doc.end();
   return done;

@@ -211,11 +211,10 @@ export function drawKeyValueBox(doc: PDFKit.PDFDocument, rows: [string, string][
 }
 
 /**
- * Draws `footerLine` (left) and "Page X of Y" (right) inside the bottom
- * margin of every already-buffered page. Call this last, right before
- * doc.end().
+ * Draws "Page X of Y", centered, inside the bottom margin of every
+ * already-buffered page. Call this last, right before doc.end().
  */
-export function drawFooterOnEveryPage(doc: PDFKit.PDFDocument, footerLine: string, contentWidth: number) {
+export function drawFooterOnEveryPage(doc: PDFKit.PDFDocument, contentWidth: number) {
   const pageRange = doc.bufferedPageRange();
   for (let i = pageRange.start; i < pageRange.start + pageRange.count; i++) {
     doc.switchToPage(i);
@@ -224,19 +223,35 @@ export function drawFooterOnEveryPage(doc: PDFKit.PDFDocument, footerLine: strin
     // treats as an overflow — normally that's exactly what triggers the
     // *next* page, but here it would silently addPage() a blank page and
     // draw the footer there instead of on page i. Dropping the bottom
-    // margin to 0 for these two calls disables that check.
+    // margin to 0 for this call disables that check.
     const restoreBottomMargin = doc.page.margins.bottom;
     doc.page.margins.bottom = 0;
     doc
       .font(FONT_REGULAR)
       .fontSize(8)
       .fillColor(MUTED)
-      .text(footerLine, PAGE_MARGIN, footerY, { width: contentWidth - 100, align: "left", lineBreak: false });
-    doc.text(`Page ${i - pageRange.start + 1} of ${pageRange.count}`, PAGE_MARGIN, footerY, {
-      width: contentWidth,
-      align: "right",
-      lineBreak: false,
-    });
+      .text(`Page ${i - pageRange.start + 1} of ${pageRange.count}`, PAGE_MARGIN, footerY, {
+        width: contentWidth,
+        align: "center",
+        lineBreak: false,
+      });
     doc.page.margins.bottom = restoreBottomMargin;
   }
+}
+
+// Word/Google Docs bullet lists often paste their bullet glyph from a
+// symbol font (e.g. Wingdings' bullet sits at the Private Use Area
+// codepoint U+F0B7) — that codepoint has no glyph in a normal Unicode font,
+// so it renders as an empty/missing-glyph box wherever it lands. Swapping
+// any such leading marker for a plain hyphen keeps the text a bulleted
+// list without depending on a glyph our embedded font doesn't have.
+const LEADING_BULLET_RE = /^(\s*)[•●▪‣◦∙◆■\u{E000}-\u{F8FF}]\s*/u;
+
+/** Strips characters known to render as a missing-glyph box in the embedded PDF font. */
+export function sanitizePdfText(text: string): string {
+  return text
+    .split("\n")
+    .map((line) => (LEADING_BULLET_RE.test(line) ? line.replace(LEADING_BULLET_RE, "$1- ") : line))
+    .join("\n")
+    .replace(/[\u{E000}-\u{F8FF}]/gu, "");
 }

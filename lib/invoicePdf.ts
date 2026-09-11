@@ -10,6 +10,7 @@ import {
   ensureSpace,
   drawKeyValueBox,
   drawFooterOnEveryPage,
+  sanitizePdfText,
   FALLBACK_COLOR,
   INK,
   MUTED,
@@ -217,7 +218,6 @@ export async function generateInvoicePdf(
   const detailRows: [string, string][] = [
     ["Invoice date", formatDate(quote.invoiced_at)],
     ["Quote reference", quote.quote_number],
-    ["Status", "Paid"],
   ];
   let detailY = infoTop + 14;
   for (const [label, value] of detailRows) {
@@ -293,15 +293,11 @@ export async function generateInvoicePdf(
   if (terms) {
     doc.moveDown(1);
     sectionHeading(doc, "Terms & Conditions", brandColor, contentWidth);
-    doc.font(FONT_REGULAR).fontSize(9).fillColor(MUTED).text(terms, PAGE_MARGIN, doc.y, { width: contentWidth });
+    doc.font(FONT_REGULAR).fontSize(9).fillColor(MUTED).text(sanitizePdfText(terms), PAGE_MARGIN, doc.y, { width: contentWidth });
   }
 
   // ---- Footer on every page ---------------------------------------------------
-  const footerLine =
-    [company?.legal_name, company?.registered_address, company?.vat_number ? `VAT ${company.vat_number}` : null]
-      .filter(Boolean)
-      .join(" · ") || brandName;
-  drawFooterOnEveryPage(doc, footerLine, contentWidth);
+  drawFooterOnEveryPage(doc, contentWidth);
 
   doc.end();
   return done;
