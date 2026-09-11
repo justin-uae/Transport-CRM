@@ -66,6 +66,9 @@ export default async function PublicQuotePage({ params }: { params: Promise<{ to
 
   const { data: tenant } = await admin.from("tenants").select("terms_and_conditions").eq("id", quote.tenant_id).maybeSingle();
 
+  const { data: brandRow } = await admin.from("brands").select("companies(legal_name, registered_address)").eq("id", quote.brand_id).single();
+  const company = brandRow?.companies as unknown as { legal_name: string; registered_address: string | null } | null;
+
   let status = quote.status;
   if (status === "sent") {
     await admin
@@ -110,6 +113,12 @@ export default async function PublicQuotePage({ params }: { params: Promise<{ to
               <h1 className="mt-1 text-2xl font-black">{customer?.company_name || customer?.contact_name}</h1>
             </div>
             <span className="rounded-full bg-slate-100 px-3 py-1.5 text-xs font-bold capitalize">{status.replaceAll("_", " ")}</span>
+          </div>
+
+          <div className="mt-4 border-t border-dashed pt-4 text-sm">
+            <div className="text-xs font-bold uppercase text-slate-400">From</div>
+            <div className="mt-1 font-bold">{company?.legal_name || brand?.name}</div>
+            {company?.registered_address && <div className="whitespace-pre-line text-slate-500">{company.registered_address}</div>}
           </div>
 
           <div className="mt-6 space-y-3">

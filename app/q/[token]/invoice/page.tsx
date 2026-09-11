@@ -55,6 +55,9 @@ export default async function InvoiceDownloadPage({ params }: { params: Promise<
   // override if one was set, else the tenant-wide Terms & Conditions.
   const { data: tenant } = await admin.from("tenants").select("terms_and_conditions").eq("id", quote.tenant_id).maybeSingle();
 
+  const { data: brandRow } = await admin.from("brands").select("companies(legal_name, registered_address)").eq("id", quote.brand_id).single();
+  const company = brandRow?.companies as unknown as { legal_name: string; registered_address: string | null } | null;
+
   // Tenant-wide payment profiles — every profile is shown, not just ones
   // matching the quote's currency.
   const { data: bankAccounts } = await admin
@@ -110,12 +113,21 @@ export default async function InvoiceDownloadPage({ params }: { params: Promise<
           </div>
 
           <div className="mt-6 grid grid-cols-1 gap-6 text-sm sm:grid-cols-2">
-            <div>
-              <div className="text-xs font-bold uppercase text-slate-400">Billed to</div>
-              <div className="mt-1 font-bold">{customer?.company_name || customer?.contact_name}</div>
-              {customer?.billing_address && <div className="text-slate-500">{customer.billing_address}</div>}
-              {customer?.email && <div className="text-slate-500">{customer.email}</div>}
-              {customer?.phone && <div className="text-slate-500">{customer.phone}</div>}
+            <div className="space-y-4">
+              <div>
+                <div className="text-xs font-bold uppercase text-slate-400">From</div>
+                <div className="mt-1 font-bold">{company?.legal_name || brand?.name}</div>
+                {company?.registered_address && (
+                  <div className="whitespace-pre-line text-slate-500">{company.registered_address}</div>
+                )}
+              </div>
+              <div>
+                <div className="text-xs font-bold uppercase text-slate-400">Billed to</div>
+                <div className="mt-1 font-bold">{customer?.company_name || customer?.contact_name}</div>
+                {customer?.billing_address && <div className="text-slate-500">{customer.billing_address}</div>}
+                {customer?.email && <div className="text-slate-500">{customer.email}</div>}
+                {customer?.phone && <div className="text-slate-500">{customer.phone}</div>}
+              </div>
             </div>
             <div className="sm:text-right">
               <div className="text-xs font-bold uppercase text-slate-400">Quote reference</div>

@@ -166,15 +166,34 @@ export async function generateInvoicePdf(
   doc.y = 130;
   doc.fillColor(INK);
 
-  // ---- Bill to / invoice details --------------------------------------------
+  // ---- From / bill to / invoice details --------------------------------------
   const colWidth = contentWidth / 2 - 10;
   const infoTop = doc.y;
-  doc.font(FONT_BOLD).fontSize(10).fillColor(MUTED).text("BILL TO", PAGE_MARGIN, infoTop);
+
+  doc.font(FONT_BOLD).fontSize(10).fillColor(MUTED).text("FROM", PAGE_MARGIN, infoTop);
   doc
     .font(FONT_BOLD)
     .fontSize(12)
     .fillColor(INK)
-    .text(customer?.company_name || customer?.contact_name || "Customer", PAGE_MARGIN, infoTop + 14, { width: colWidth });
+    .text(company?.legal_name || brandName, PAGE_MARGIN, infoTop + 14, { width: colWidth });
+  doc.font(FONT_REGULAR).fontSize(10).fillColor(MUTED);
+  let fromY = doc.y + 2;
+  if (company?.registered_address) {
+    doc.text(company.registered_address, PAGE_MARGIN, fromY, { width: colWidth });
+    fromY = doc.y + 2;
+  }
+  if (company?.vat_number) {
+    doc.text(`VAT ${company.vat_number}`, PAGE_MARGIN, fromY, { width: colWidth });
+    fromY = doc.y + 2;
+  }
+
+  const billTop = fromY + 12;
+  doc.font(FONT_BOLD).fontSize(10).fillColor(MUTED).text("BILL TO", PAGE_MARGIN, billTop);
+  doc
+    .font(FONT_BOLD)
+    .fontSize(12)
+    .fillColor(INK)
+    .text(customer?.company_name || customer?.contact_name || "Customer", PAGE_MARGIN, billTop + 14, { width: colWidth });
   doc.font(FONT_REGULAR).fontSize(10).fillColor(MUTED);
   let billY = doc.y + 2;
   if (customer?.company_name && customer.contact_name) {
