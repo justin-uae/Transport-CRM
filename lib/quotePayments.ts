@@ -2,6 +2,8 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database, CustomerPaymentMethod, QuoteStatus } from "./supabase/database.types";
 import { sendTemplatedEmail } from "./emailTemplates";
+import { generateInvoicePdf } from "./invoicePdf";
+import { persistGeneratedPdf } from "./documentArchive";
 
 export { amountDueNow } from "./quoteMoney";
 
@@ -216,6 +218,26 @@ export async function finalizeQuoteFromVerifiedPayments(
 
   await supabase.from("quote_events").insert({ quote_id: quote.id, event: "paid" });
   await sendReceipt();
+
+  // Archive the invoice PDF as soon as it exists, so a quote paid via a
+  // customer-initiated Stripe confirmation (no staff action at all) still
+  // leaves a stored, downloadable invoice in Documents — not only ones a
+  // staff member later resends by hand.
+  const invoicePdf = await generateInvoicePdf(supabase, quote.id).catch((err) => {
+    console.error(`generateInvoicePdf failed for quote ${quote.id}:`, err);
+    return null;
+  });
+  if (invoicePdf) {
+    await persistGeneratedPdf(supabase, {
+      tenantId: quote.tenant_id,
+      uploadedBy: quote.recordedBy,
+      docType: "invoice",
+      label: `Invoice ${invoiceNumber}`,
+      fileName: `${invoiceNumber}.pdf`,
+      quoteId: quote.id,
+      pdf: invoicePdf,
+    });
+  }
 
   return { error: null, status: "paid" };
 }

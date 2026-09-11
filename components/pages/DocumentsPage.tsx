@@ -47,6 +47,7 @@ const DOC_TYPE_LABEL: Record<DocumentType, string> = {
   credit_note: "Credit Note",
   itinerary: "Itinerary",
   passenger_list: "Passenger List",
+  quote: "Quote",
   other: "Other",
 };
 

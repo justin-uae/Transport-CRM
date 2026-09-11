@@ -17,6 +17,7 @@ const DOC_TYPES: DocumentType[] = [
   "credit_note",
   "itinerary",
   "passenger_list",
+  "quote",
   "other",
 ];
 

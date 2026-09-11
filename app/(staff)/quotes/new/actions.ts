@@ -9,6 +9,7 @@ import { STRIPE_PRICE_THRESHOLD, paymentMethodsForGbpValue } from "@/lib/quoteMo
 import { convertToGbp } from "@/lib/fxRates";
 import { sendTemplatedEmail } from "@/lib/emailTemplates";
 import { generateQuotePdf } from "@/lib/quotePdf";
+import { persistGeneratedPdf } from "@/lib/documentArchive";
 
 interface MilestoneInput {
   label: string;
@@ -274,6 +275,18 @@ export async function createQuoteAction(
       },
       attachments: quotePdf ? [{ filename: `${quote.quote_number}.pdf`, content: quotePdf, contentType: "application/pdf" }] : undefined,
     });
+
+    if (quotePdf) {
+      await persistGeneratedPdf(supabase, {
+        tenantId: actor.tenant_id,
+        uploadedBy: actor.id,
+        docType: "quote",
+        label: `Quote ${quote.quote_number}`,
+        fileName: `${quote.quote_number}.pdf`,
+        quoteId: quote.id,
+        pdf: quotePdf,
+      });
+    }
   }
 
   await recordAudit({

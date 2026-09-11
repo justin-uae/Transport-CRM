@@ -10,6 +10,7 @@ import { renderAndSendTemplate } from "@/lib/emailTemplates";
 import { generateQuotePdf } from "@/lib/quotePdf";
 import { generateInvoicePdf } from "@/lib/invoicePdf";
 import { cancelAllocation } from "@/lib/dispatchAllocations";
+import { persistGeneratedPdf } from "@/lib/documentArchive";
 
 /**
  * Manual bank-transfer payment recording, for a deposit, the remaining
@@ -221,6 +222,17 @@ export async function resendQuoteEmailAction(quoteId: string) {
   });
 
   if (!result.error) {
+    if (quotePdf) {
+      await persistGeneratedPdf(supabase, {
+        tenantId: actor.tenant_id,
+        uploadedBy: actor.id,
+        docType: "quote",
+        label: `Quote ${quote.quote_number}`,
+        fileName: `${quote.quote_number}.pdf`,
+        quoteId,
+        pdf: quotePdf,
+      });
+    }
     await recordAudit({
       tenantId: actor.tenant_id,
       actorId: actor.id,
@@ -291,7 +303,17 @@ export async function resendInvoiceEmailAction(quoteId: string) {
   });
 
   if (!result.error) {
-    if (invoicePdf) await persistInvoicePdf(supabase, actor, quote.id, quote.invoice_number, invoicePdf);
+    if (invoicePdf) {
+      await persistGeneratedPdf(supabase, {
+        tenantId: actor.tenant_id,
+        uploadedBy: actor.id,
+        docType: "invoice",
+        label: `Invoice ${quote.invoice_number}`,
+        fileName: `${quote.invoice_number}.pdf`,
+        quoteId: quote.id,
+        pdf: invoicePdf,
+      });
+    }
     await recordAudit({
       tenantId: actor.tenant_id,
       actorId: actor.id,
@@ -421,30 +443,3 @@ export async function processRefundAction(refundId: string) {
   return { error: null };
 }
 
-async function persistInvoicePdf(
-  supabase: Awaited<ReturnType<typeof createClient>>,
-  actor: { id: string; tenant_id: string },
-  quoteId: string,
-  invoiceNumber: string,
-  pdf: Buffer,
-) {
-  const fileName = `${invoiceNumber}.pdf`;
-  const storagePath = `${actor.tenant_id}/${crypto.randomUUID()}-${fileName}`;
-  const { error: uploadError } = await supabase.storage.from("documents").upload(storagePath, pdf, {
-    contentType: "application/pdf",
-  });
-  if (uploadError) {
-    console.error(`persistInvoicePdf: storage upload failed for quote ${quoteId}:`, uploadError.message);
-    return;
-  }
-  await supabase.from("documents").insert({
-    tenant_id: actor.tenant_id,
-    doc_type: "invoice",
-    label: `Invoice ${invoiceNumber}`,
-    storage_path: storagePath,
-    file_name: fileName,
-    file_size: pdf.byteLength,
-    quote_id: quoteId,
-    uploaded_by: actor.id,
-  });
-}

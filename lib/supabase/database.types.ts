@@ -827,6 +827,7 @@ export type DocumentType =
   | "credit_note"
   | "itinerary"
   | "passenger_list"
+  | "quote"
   | "other";
 
 export interface CrmDocument {
