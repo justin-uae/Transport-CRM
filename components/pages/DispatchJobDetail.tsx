@@ -660,11 +660,13 @@ export function DispatchJobDetail({
                         {!claimed && canDispatchJobs && (
                           <input type="checkbox" checked={selectedLegIds.includes(leg.id)} onChange={() => toggleLeg(leg.id)} />
                         )}
-                        {claimed && (
-                          <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-bold text-slate-500">
-                            {owningAllocation?.suppliers?.name
-                              ? `Assigned to ${owningAllocation.suppliers.name}`
-                              : "In an allocation"}
+                        {claimed && owningAllocation && (
+                          <span
+                            className={`rounded-full px-2 py-0.5 text-xs font-bold capitalize ${STATUS_STYLE[owningAllocation.status]}`}
+                          >
+                            {owningAllocation.suppliers?.name
+                              ? `${owningAllocation.suppliers.name} · ${owningAllocation.status.replaceAll("_", " ")}`
+                              : owningAllocation.status.replaceAll("_", " ")}
                           </span>
                         )}
                       </label>
