@@ -10,6 +10,8 @@ import { Kpi } from "@/components/ui/Kpi";
 import { PageHead } from "@/components/ui/PageHead";
 import { SearchInput } from "@/components/ui/SearchInput";
 import { ConfirmDetailModal } from "@/components/ui/ConfirmDetailModal";
+import { PageGuide } from "@/components/ui/PageGuide";
+import { TasksDiagram } from "@/components/ui/guide-diagrams/TasksDiagram";
 import { useToast } from "@/components/ui/Toast";
 import { formatDate } from "@/lib/formatDate";
 import { createTaskAction, updateTaskAction, setTaskStatusAction, deleteTaskAction } from "@/app/(staff)/tasks/actions";
@@ -269,13 +271,55 @@ export function TasksPage({
         title="Tasks"
         text="Personal and team to-dos — track status on a board, keep a checklist, and optionally link a task to a customer, supplier or quote."
         action={
-          <button
-            onClick={openNew}
-            className="flex items-center gap-2 rounded-xl bg-primary-500 px-4 py-2.5 text-sm font-bold text-white shadow-lg shadow-orange-200"
-          >
-            <Plus size={17} />
-            New task
-          </button>
+          <div className="flex shrink-0 flex-wrap items-start gap-2">
+            <PageGuide
+              title="Tasks"
+              subtitle="Personal and team to-dos, tracked on a simple three-column board."
+              screenshot={<TasksDiagram />}
+              sections={[
+                {
+                  heading: "What this page is",
+                  body: [
+                    "A shared to-do board for anything that needs following up — quick personal reminders or team work, each optionally linked back to the customer, supplier or quote it's about.",
+                    "Some tasks appear automatically (tagged Auto) — created by the system rather than a person, e.g. a low customer-experience score escalating into a follow-up task.",
+                  ],
+                },
+                {
+                  heading: "The board",
+                  bullets: true,
+                  body: [
+                    "To Do / In Progress / Done are the three columns — change a task's status from the dropdown on its card, no dragging needed.",
+                    "My Tasks / Team Tasks / All switch whose tasks you're viewing.",
+                    "\"Show cancelled\" adds a fourth column for tasks that were called off.",
+                  ],
+                },
+                {
+                  heading: "Creating and editing",
+                  bullets: true,
+                  body: [
+                    "New task opens the form — title, priority, due date, assignee, an optional checklist, and an optional link to a customer, supplier or quote.",
+                    "Click any card to edit it the same way; Delete task is available there if you're allowed to remove it.",
+                  ],
+                },
+                {
+                  heading: "The KPI cards",
+                  bullets: true,
+                  body: [
+                    "My open tasks — everything assigned to you that isn't done or cancelled.",
+                    "Overdue — past their due date and still open.",
+                    "Due this week — open tasks due in the next 7 days.",
+                  ],
+                },
+              ]}
+            />
+            <button
+              onClick={openNew}
+              className="flex items-center gap-2 rounded-xl bg-primary-500 px-4 py-2.5 text-sm font-bold text-white shadow-lg shadow-orange-200"
+            >
+              <Plus size={17} />
+              New task
+            </button>
+          </div>
         }
       />
 

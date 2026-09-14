@@ -1,12 +1,54 @@
 "use client";
 
 import Link from "next/link";
+import { PageGuide } from "@/components/ui/PageGuide";
+import { BookingsDiagram } from "@/components/ui/guide-diagrams/BookingsDiagram";
 
 const TABS = [
   { key: "confirmed", href: "/bookings", label: "Confirmed" },
   { key: "lost", href: "/bookings/lost", label: "Lost" },
   { key: "completed", href: "/bookings/completed", label: "Completed" },
 ] as const;
+
+const BOOKINGS_GUIDE_SECTIONS = [
+  {
+    heading: "What this pipeline is",
+    body: [
+      "Confirmed, Lost and Completed Booking are one pipeline shown as three tabs, not three separate lists. A quote lands here the moment a customer's payment is confirmed on Customer Payments.",
+    ],
+  },
+  {
+    heading: "How a booking moves through the tabs",
+    bullets: true,
+    body: [
+      "Confirmed Booking — paid and waiting on the supplier, from unassigned through to the job being done.",
+      "Lost Booking — the quote was rejected, expired unanswered, or a booking was cancelled by staff before payment.",
+      "Completed Booking — the supplier has marked the job done. This is history only, nothing left to action.",
+    ],
+  },
+  {
+    heading: "Working from here",
+    bullets: true,
+    body: [
+      "View job / View quote opens the full detail — pricing, supplier allocation and activity.",
+      "Supplier assignment itself happens on Dispatch, not here — this list is for tracking status, not allocating.",
+    ],
+  },
+];
+
+const BOOKINGS_GUIDE_TITLE = { confirmed: "Confirmed Booking", lost: "Lost Booking", completed: "Completed Booking" } as const;
+
+/** Shared "How this works" guide for all three Bookings tabs — lives here since BookingTabs is the one file all three pages already import. */
+export function BookingsGuideButton({ active }: { active: "confirmed" | "lost" | "completed" }) {
+  return (
+    <PageGuide
+      title={BOOKINGS_GUIDE_TITLE[active]}
+      subtitle="One booking pipeline, shown as three tabs by where it currently stands."
+      screenshot={<BookingsDiagram active={active} />}
+      sections={BOOKINGS_GUIDE_SECTIONS}
+    />
+  );
+}
 
 export function BookingTabs({ active }: { active: "confirmed" | "lost" | "completed" }) {
   return (

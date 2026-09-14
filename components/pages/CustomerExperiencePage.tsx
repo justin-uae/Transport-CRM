@@ -8,6 +8,8 @@ import { Panel } from "@/components/ui/Panel";
 import { Kpi } from "@/components/ui/Kpi";
 import { PageHead } from "@/components/ui/PageHead";
 import { ConfirmDetailModal } from "@/components/ui/ConfirmDetailModal";
+import { PageGuide } from "@/components/ui/PageGuide";
+import { CustomerExperienceDiagram } from "@/components/ui/guide-diagrams/CustomerExperienceDiagram";
 import { formatDateTime } from "@/lib/formatDate";
 import type { FeedbackCategory } from "@/lib/supabase/database.types";
 
@@ -80,6 +82,48 @@ export function CustomerExperiencePage({
         eyebrow="Post-Trip"
         title="Customer Experience"
         text="One NPS question per completed job — automatically requested, automatically escalated when the score is low."
+        action={
+          <PageGuide
+            title="Customer Experience"
+            subtitle="Post-trip feedback, scored and automatically escalated when it's bad."
+            screenshot={<CustomerExperienceDiagram />}
+            sections={[
+              {
+                heading: "What this page is",
+                body: [
+                  "After every completed job, the customer is automatically asked one NPS-style question (0–10, plus an optional comment). Responses land here, already scored.",
+                ],
+              },
+              {
+                heading: "How scoring works",
+                bullets: true,
+                body: [
+                  "Happy (9–10) — a promoter.",
+                  "Neutral (7–8) — a passive score.",
+                  "Unhappy (0–6) — a detractor, and low enough to automatically create a follow-up task so someone reaches out.",
+                ],
+              },
+              {
+                heading: "Using the list",
+                bullets: true,
+                body: [
+                  "Tabs filter by sentiment; search matches on customer name or comment text.",
+                  "Click a card for the full detail — when it was requested, when it was submitted, and whether a follow-up task is open or resolved.",
+                ],
+              },
+              {
+                heading: "The KPI cards",
+                bullets: true,
+                body: [
+                  "NPS Score — the standard Net Promoter calculation across all responses.",
+                  "Response Rate — the share of requests that got any answer at all.",
+                  "Complaint Resolution — how many filed complaints ended up resolved.",
+                  "Repeat Booking — how many customers who gave feedback booked again.",
+                ],
+              },
+            ]}
+          />
+        }
       />
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">

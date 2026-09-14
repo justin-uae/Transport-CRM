@@ -3,6 +3,8 @@ import { PageHead } from "@/components/ui/PageHead";
 import { Panel } from "@/components/ui/Panel";
 import { SearchInput } from "@/components/ui/SearchInput";
 import { Pagination } from "@/components/ui/Pagination";
+import { PageGuide } from "@/components/ui/PageGuide";
+import { SuppliersDiagram } from "@/components/ui/guide-diagrams/SuppliersDiagram";
 import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { AddSupplierForm } from "./AddSupplierForm";
@@ -46,7 +48,44 @@ export default async function SuppliersPage({ searchParams }: { searchParams: Pr
         eyebrow="Operations"
         title="Suppliers"
         text="Transport companies and individual drivers — invite, verify and approve before they receive jobs."
-        action={<AddSupplierForm />}
+        action={
+          <div className="flex shrink-0 flex-wrap items-start gap-2">
+            <PageGuide
+              title="Suppliers"
+              subtitle="Transport companies and drivers you send paid jobs to."
+              screenshot={<SuppliersDiagram />}
+              sections={[
+                {
+                  heading: "What this page is",
+                  body: [
+                    "Every transport company or individual driver your team works with is a supplier record here — invited, verified and approved before they're eligible to receive job offers from Dispatch.",
+                  ],
+                },
+                {
+                  heading: "Status flow",
+                  bullets: true,
+                  body: [
+                    "Invited — added but hasn't completed onboarding yet.",
+                    "Submitted — their details/documents are in, waiting on your review.",
+                    "Approved — cleared to receive job offers on Dispatch.",
+                    "Rejected — didn't pass review.",
+                    "Suspended — was approved, temporarily taken off active rotation (e.g. a compliance issue).",
+                  ],
+                },
+                {
+                  heading: "Using the list",
+                  bullets: true,
+                  body: [
+                    "Search by name, region or email to find an existing supplier.",
+                    "Review opens the full profile — documents, performance and the approve/reject/suspend actions.",
+                    "Add supplier starts onboarding a new one.",
+                  ],
+                },
+              ]}
+            />
+            <AddSupplierForm />
+          </div>
+        }
       />
       <Panel>
         <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center">

@@ -9,6 +9,8 @@ import { PageHead } from "@/components/ui/PageHead";
 import { SearchInput } from "@/components/ui/SearchInput";
 import { Pagination } from "@/components/ui/Pagination";
 import { ConfirmDetailModal } from "@/components/ui/ConfirmDetailModal";
+import { PageGuide } from "@/components/ui/PageGuide";
+import { DocumentsDiagram } from "@/components/ui/guide-diagrams/DocumentsDiagram";
 import { useToast } from "@/components/ui/Toast";
 import { createClient } from "@/lib/supabase/client";
 import { formatDateTime } from "@/lib/formatDate";
@@ -194,13 +196,44 @@ export function DocumentsPage({
         title="Documents"
         text="Contracts, licences, invoices and other files — searchable, and optionally linked to a customer, supplier or quote."
         action={
-          <button
-            onClick={openUpload}
-            className="flex items-center gap-2 rounded-xl bg-primary-500 px-4 py-2.5 text-sm font-bold text-white shadow-lg shadow-orange-200"
-          >
-            <Upload size={17} />
-            Upload document
-          </button>
+          <div className="flex shrink-0 flex-wrap items-start gap-2">
+            <PageGuide
+              title="Documents"
+              subtitle="A searchable file library, optionally linked to a customer, supplier or quote."
+              screenshot={<DocumentsDiagram />}
+              sections={[
+                {
+                  heading: "What this page is",
+                  body: [
+                    "Contracts, licences, invoices, insurance certificates and any other file your team needs to keep — uploaded once, searchable, and optionally attached to a specific customer, supplier or quote so it's easy to find from that record too.",
+                  ],
+                },
+                {
+                  heading: "Uploading",
+                  bullets: true,
+                  body: [
+                    "Upload document opens the form — choose the file, give it a label, pick a type, and optionally link it to a customer, supplier or quote.",
+                    "Filter by type and search by label or notes to find something quickly once the list grows.",
+                  ],
+                },
+                {
+                  heading: "Downloading & deleting",
+                  bullets: true,
+                  body: [
+                    "Download opens the file in a new tab.",
+                    "Delete only appears for documents your role is allowed to remove — it's permanent, there's a confirmation step first.",
+                  ],
+                },
+              ]}
+            />
+            <button
+              onClick={openUpload}
+              className="flex items-center gap-2 rounded-xl bg-primary-500 px-4 py-2.5 text-sm font-bold text-white shadow-lg shadow-orange-200"
+            >
+              <Upload size={17} />
+              Upload document
+            </button>
+          </div>
         }
       />
 

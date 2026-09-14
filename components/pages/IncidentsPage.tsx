@@ -8,6 +8,8 @@ import { Plus } from "lucide-react";
 import { Panel } from "@/components/ui/Panel";
 import { PageHead } from "@/components/ui/PageHead";
 import { ConfirmDetailModal } from "@/components/ui/ConfirmDetailModal";
+import { PageGuide } from "@/components/ui/PageGuide";
+import { IncidentsDiagram } from "@/components/ui/guide-diagrams/IncidentsDiagram";
 import { useToast } from "@/components/ui/Toast";
 import { formatDateTime } from "@/lib/formatDate";
 import { logIncidentAction, updateIncidentStatusAction, assignIncidentAction } from "@/app/(staff)/incidents/actions";
@@ -154,13 +156,46 @@ export function IncidentsPage({
         title="Incidents"
         text="Accidents, breakdowns, delays and safety issues — logged and tracked to resolution."
         action={
-          <button
-            onClick={() => setNewOpen(true)}
-            className="flex items-center gap-2 self-start rounded-xl bg-primary-500 px-4 py-3 text-sm font-bold text-white"
-          >
-            <Plus size={17} />
-            Log Incident
-          </button>
+          <div className="flex shrink-0 flex-wrap items-start gap-2">
+            <PageGuide
+              title="Incidents"
+              subtitle="Operational incidents on a job, logged and tracked to resolution."
+              screenshot={<IncidentsDiagram />}
+              sections={[
+                {
+                  heading: "What this page is",
+                  body: [
+                    "Anything that goes wrong operationally on a booking — an accident, breakdown, delay or safety issue — gets logged here, optionally linked to the booking and supplier involved, and assigned to someone to handle.",
+                    "This is separate from Complaints: Incidents are about what happened on the road, Complaints are about what the customer said about it — the same event can end up as both.",
+                  ],
+                },
+                {
+                  heading: "Severity & status",
+                  bullets: true,
+                  body: [
+                    "Severity: Low / Medium / High / Critical — Incidents go one level higher than Complaints since a safety issue can be more serious than a service complaint.",
+                    "Status: Open → Investigating → Resolved, or Closed if no further action is needed.",
+                    "Filter the list by status using the pills above the table.",
+                  ],
+                },
+                {
+                  heading: "Working an incident",
+                  bullets: true,
+                  body: [
+                    "Log Incident records a new one — description, category, severity, linked booking/supplier, and who's handling it.",
+                    "Click a row to open it, reassign who owns it, add resolution notes, and move it through Investigating → Resolved/Closed.",
+                  ],
+                },
+              ]}
+            />
+            <button
+              onClick={() => setNewOpen(true)}
+              className="flex items-center gap-2 self-start rounded-xl bg-primary-500 px-4 py-3 text-sm font-bold text-white"
+            >
+              <Plus size={17} />
+              Log Incident
+            </button>
+          </div>
         }
       />
 

@@ -2,7 +2,7 @@ import Link from "next/link";
 import { PageHead } from "@/components/ui/PageHead";
 import { Panel } from "@/components/ui/Panel";
 import { Pagination } from "@/components/ui/Pagination";
-import { BookingTabs } from "@/components/pages/BookingTabs";
+import { BookingTabs, BookingsGuideButton } from "@/components/pages/BookingTabs";
 import { formatDateTime } from "@/lib/formatDate";
 
 export interface CompletedBookingJob {
@@ -46,7 +46,12 @@ export function BookingsCompletedPage({
 }) {
   return (
     <div>
-      <PageHead eyebrow="Bookings" title="Completed Booking" text="Jobs the supplier has marked done." />
+      <PageHead
+        eyebrow="Bookings"
+        title="Completed Booking"
+        text="Jobs the supplier has marked done."
+        action={<BookingsGuideButton active="completed" />}
+      />
       <BookingTabs active="completed" />
       <Panel>
         <div className="space-y-3">

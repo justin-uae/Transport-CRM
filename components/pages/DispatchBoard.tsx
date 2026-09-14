@@ -4,6 +4,8 @@ import Link from "next/link";
 import { Panel } from "@/components/ui/Panel";
 import { PageHead } from "@/components/ui/PageHead";
 import { Pagination } from "@/components/ui/Pagination";
+import { PageGuide } from "@/components/ui/PageGuide";
+import { DispatchDiagram } from "@/components/ui/guide-diagrams/DispatchDiagram";
 import type { JobStatus } from "@/lib/supabase/database.types";
 
 export interface JobRow {
@@ -86,6 +88,44 @@ export function DispatchBoard({
         eyebrow="Operations"
         title="Dispatch"
         text="Assign paid bookings to one or more approved suppliers — split multi-leg bookings across suppliers as needed. Open a job to allocate legs and offer them."
+        action={
+          <PageGuide
+            title="Dispatch"
+            subtitle="Turn a paid booking into a job offer your suppliers can accept."
+            screenshot={<DispatchDiagram />}
+            sections={[
+              {
+                heading: "What this page is",
+                body: [
+                  "A job appears here the moment a quote is marked as paid on Customer Payments. Dispatch is where you hand that job to one or more approved suppliers.",
+                ],
+              },
+              {
+                heading: "Splitting a job",
+                body: [
+                  "A booking with multiple legs (e.g. airport pickup plus a separate return) doesn't have to go to one supplier — open the job to allocate each leg and offer them to different suppliers if that gets a better price or availability.",
+                ],
+              },
+              {
+                heading: "Job status flow",
+                bullets: true,
+                body: [
+                  "Unassigned — no supplier offered yet.",
+                  "Offered — sent to one or more suppliers, awaiting their response.",
+                  "Accepted by supplier — a supplier has confirmed they'll run it.",
+                  "Confirmed — locked in; the job later moves to Completed once the supplier marks it done.",
+                  "Rejected by supplier — that offer was turned down; re-offer to another supplier from the job page.",
+                ],
+              },
+              {
+                heading: "Where it goes next",
+                body: [
+                  "Once the supplier marks a job done, it moves to Completed Booking. If it never gets past unassigned or gets rejected everywhere, it stays visible here until you act on it — nothing disappears on its own.",
+                ],
+              },
+            ]}
+          />
+        }
       />
       <Panel>
         <div className="space-y-3">

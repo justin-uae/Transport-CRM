@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { PageHead } from "@/components/ui/PageHead";
 import { Panel } from "@/components/ui/Panel";
-import { BookingTabs } from "@/components/pages/BookingTabs";
+import { BookingTabs, BookingsGuideButton } from "@/components/pages/BookingTabs";
 import { formatDate } from "@/lib/formatDate";
 import type { JobStatus } from "@/lib/supabase/database.types";
 
@@ -60,6 +60,7 @@ export function BookingsConfirmedPage({ jobs }: { jobs: ConfirmedBookingJob[] })
         eyebrow="Bookings"
         title="Confirmed Booking"
         text="Quotes marked as paid, through to job completion by the supplier."
+        action={<BookingsGuideButton active="confirmed" />}
       />
       <BookingTabs active="confirmed" />
       <Panel>

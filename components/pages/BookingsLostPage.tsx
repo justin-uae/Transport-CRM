@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { PageHead } from "@/components/ui/PageHead";
 import { Panel } from "@/components/ui/Panel";
-import { BookingTabs } from "@/components/pages/BookingTabs";
+import { BookingTabs, BookingsGuideButton } from "@/components/pages/BookingTabs";
 import { formatDate, formatDateTime } from "@/lib/formatDate";
 import type { QuoteStatus } from "@/lib/supabase/database.types";
 
@@ -30,6 +30,7 @@ export function BookingsLostPage({ quotes }: { quotes: LostBookingQuote[] }) {
         eyebrow="Bookings"
         title="Lost Booking"
         text="Quotes the customer rejected, that expired unanswered, or a booking staff cancelled."
+        action={<BookingsGuideButton active="lost" />}
       />
       <BookingTabs active="lost" />
       <Panel>

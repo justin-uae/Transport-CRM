@@ -8,6 +8,8 @@ import { Plus } from "lucide-react";
 import { Panel } from "@/components/ui/Panel";
 import { PageHead } from "@/components/ui/PageHead";
 import { ConfirmDetailModal } from "@/components/ui/ConfirmDetailModal";
+import { PageGuide } from "@/components/ui/PageGuide";
+import { ComplaintsDiagram } from "@/components/ui/guide-diagrams/ComplaintsDiagram";
 import { useToast } from "@/components/ui/Toast";
 import { formatDateTime } from "@/lib/formatDate";
 import { fileComplaintAction, updateComplaintStatusAction, assignComplaintAction } from "@/app/(staff)/complaints/actions";
@@ -155,13 +157,45 @@ export function ComplaintsPage({
         title="Complaints"
         text="Customer complaints — logged, tracked and resolved."
         action={
-          <button
-            onClick={() => setNewOpen(true)}
-            className="flex items-center gap-2 self-start rounded-xl bg-primary-500 px-4 py-3 text-sm font-bold text-white"
-          >
-            <Plus size={17} />
-            File Complaint
-          </button>
+          <div className="flex shrink-0 flex-wrap items-start gap-2">
+            <PageGuide
+              title="Complaints"
+              subtitle="Every customer complaint, logged, assigned and tracked to resolution."
+              screenshot={<ComplaintsDiagram />}
+              sections={[
+                {
+                  heading: "What this page is",
+                  body: [
+                    "Anything a customer complains about — service quality, driver behaviour, vehicle condition, billing or communication — gets logged here, optionally linked to the customer and quote it relates to, and assigned to someone to chase down.",
+                  ],
+                },
+                {
+                  heading: "Severity & status",
+                  bullets: true,
+                  body: [
+                    "Severity: Low / Medium / High — how serious the complaint is.",
+                    "Status: Open → Investigating → Resolved, or Closed if no further action is needed.",
+                    "Filter the list by status using the pills above the table.",
+                  ],
+                },
+                {
+                  heading: "Working a complaint",
+                  bullets: true,
+                  body: [
+                    "File Complaint logs a new one — description, category, severity, and who's handling it.",
+                    "Click a row to open it, reassign who owns it, add resolution notes, and move it through Investigating → Resolved/Closed.",
+                  ],
+                },
+              ]}
+            />
+            <button
+              onClick={() => setNewOpen(true)}
+              className="flex items-center gap-2 self-start rounded-xl bg-primary-500 px-4 py-3 text-sm font-bold text-white"
+            >
+              <Plus size={17} />
+              File Complaint
+            </button>
+          </div>
         }
       />
 

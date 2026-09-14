@@ -159,6 +159,37 @@ export function Tag({ x, y, label, align = "start" }: { x: number; y: number; la
   );
 }
 
+/**
+ * A rounded card block (the "list of cards" pattern used by Bookings,
+ * Dispatch, Customer Experience, etc. instead of a table). Children are
+ * drawn in a coordinate system local to the card's padded top-left corner,
+ * so callers don't have to re-add x/y offsets for every element.
+ */
+export function Card({
+  x = 20,
+  y,
+  w = 640,
+  h = 88,
+  pad = 16,
+  fill = "#ffffff",
+  children,
+}: {
+  x?: number;
+  y: number;
+  w?: number;
+  h?: number;
+  pad?: number;
+  fill?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <g>
+      <rect x={x} y={y} width={w} height={h} rx={14} fill={fill} stroke={LINE} />
+      <g transform={`translate(${x + pad}, ${y + pad})`}>{children}</g>
+    </g>
+  );
+}
+
 export function Kpi({ x, y, w, label, value }: { x: number; y: number; w: number; label: string; value: string }) {
   return (
     <g>
