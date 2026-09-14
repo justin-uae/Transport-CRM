@@ -36,6 +36,19 @@ export default async function Page() {
       canManageTemplates={canManageTemplates}
       account={(account as EmailAccount) ?? null}
       messages={messages}
+      signatureProfile={{
+        id: profile.id,
+        tenant_id: profile.tenant_id,
+        full_name: profile.full_name,
+        email: profile.email,
+        job_title: profile.job_title,
+        phone: profile.phone,
+        whatsapp_number: profile.whatsapp_number,
+        signature_switchboard: profile.signature_switchboard,
+        signature_emergency_email: profile.signature_emergency_email,
+        signature_website: profile.signature_website,
+        signature_logo_url: profile.signature_logo_url,
+      }}
     />
   );
 }

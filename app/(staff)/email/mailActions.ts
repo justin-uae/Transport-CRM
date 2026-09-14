@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { requireProfile } from "@/lib/auth";
 import { sendUserEmail } from "@/lib/userEmail";
+import { buildSignatureHtml } from "@/lib/emailSignature";
 import type { EmailAccount, EmailAttachmentMeta } from "@/lib/supabase/database.types";
 
 async function requireOwnAccount() {
@@ -71,13 +72,16 @@ export async function sendEmailAction(data: {
   }
 
   try {
+    const profile = await requireProfile();
     const { supabase, account } = await requireOwnAccount();
+
+    const signatureHtml = buildSignatureHtml(profile);
 
     await sendUserEmail(supabase, account, {
       to,
       cc,
       subject: data.subject.trim(),
-      html: textToSafeHtml(data.bodyText),
+      html: `${textToSafeHtml(data.bodyText)}<div style="margin-top:20px;padding-top:16px;border-top:1px solid #e2e8f0;">${signatureHtml}</div>`,
       inReplyTo: data.inReplyTo,
       attachments: data.attachments,
     });

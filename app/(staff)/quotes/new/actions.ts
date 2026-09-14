@@ -287,6 +287,7 @@ export async function createQuoteAction(
         link: publicLink,
       },
       attachments: quotePdf ? [{ filename: `${quote.quote_number}.pdf`, content: quotePdf, contentType: "application/pdf" }] : undefined,
+      senderId: actor.id,
     });
 
     if (quotePdf) {

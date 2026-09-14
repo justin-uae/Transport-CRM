@@ -31,7 +31,7 @@ const EMAIL_HEADLINES: Record<EmailTemplateKey, string> = {
  * so the look lives in exactly one place — editing a template in Email
  * Centre only ever touches the content in between.
  */
-export function wrapEmailHtml(brandName: string, key: EmailTemplateKey, contentHtml: string): string {
+export function wrapEmailHtml(brandName: string, key: EmailTemplateKey, contentHtml: string, signatureHtml?: string): string {
   const name = brandName || "Global Transport CRM";
   const year = new Date().getFullYear();
   const headline = EMAIL_HEADLINES[key] ?? "";
@@ -57,6 +57,7 @@ export function wrapEmailHtml(brandName: string, key: EmailTemplateKey, contentH
         <tr>
           <td style="padding:16px 32px 32px 32px;color:#1e293b;font-size:14px;line-height:1.6;">
             ${contentHtml}
+            ${signatureHtml ? `<div style="margin-top:24px;padding-top:20px;border-top:1px solid #e2e8f0;">${signatureHtml}</div>` : ""}
           </td>
         </tr>
         <tr>

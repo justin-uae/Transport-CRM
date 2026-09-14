@@ -36,3 +36,40 @@ export async function updateEmailTemplateAction(
   revalidatePath("/email");
   return { error: null };
 }
+
+/**
+ * Self-service — every field in a staff member's own email signature
+ * (lib/emailSignature.ts) lives on their own profile row and is editable
+ * here, including the logo (uploaded client-side to the public
+ * signature-assets bucket first — see EmailSignatureSettings.tsx — this
+ * action just saves the resulting URL alongside everything else). No
+ * special permission required: these are personal contact details on the
+ * caller's own row, same as any other self-editable field.
+ */
+export async function updateSignatureDetailsAction(data: {
+  directDial: string;
+  whatsapp: string;
+  switchboard: string;
+  emergencyEmail: string;
+  website: string;
+  logoUrl: string | null;
+}) {
+  const actor = await requireProfile();
+  const supabase = await createClient();
+
+  const { error } = await supabase
+    .from("profiles")
+    .update({
+      phone: data.directDial.trim() || null,
+      whatsapp_number: data.whatsapp.trim() || null,
+      signature_switchboard: data.switchboard.trim() || null,
+      signature_emergency_email: data.emergencyEmail.trim() || null,
+      signature_website: data.website.trim() || null,
+      signature_logo_url: data.logoUrl,
+    })
+    .eq("id", actor.id);
+  if (error) return { error: error.message };
+
+  revalidatePath("/email");
+  return { error: null };
+}

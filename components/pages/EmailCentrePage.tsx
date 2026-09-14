@@ -9,6 +9,7 @@ import { useToast } from "@/components/ui/Toast";
 import { sendEmailAction, getEmailAttachmentUrlAction } from "@/app/(staff)/email/mailActions";
 import { createClient } from "@/lib/supabase/client";
 import { EmailTemplatesPage } from "./EmailTemplatesPage";
+import { EmailSignatureSettings, type SignatureProfileInfo } from "./EmailSignatureSettings";
 import type { EmailAccount, EmailAttachmentMeta, EmailFolder, EmailMessage, EmailTemplate } from "@/lib/supabase/database.types";
 
 type PendingAttachment = EmailAttachmentMeta & { storagePath: string };
@@ -41,20 +42,23 @@ export function EmailCentrePage({
   canManageTemplates,
   account,
   messages,
+  signatureProfile,
 }: {
   templates: EmailTemplate[];
   canManageTemplates: boolean;
   account: EmailAccount | null;
   messages: EmailMessage[];
+  signatureProfile: SignatureProfileInfo;
 }) {
   const router = useRouter();
   const notify = useToast();
-  const [tab, setTab] = useState<"inbox" | "templates">("inbox");
+  const [tab, setTab] = useState<"inbox" | "templates" | "signature">("inbox");
   const [folder, setFolder] = useState<EmailFolder>("inbox");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [composeOpen, setComposeOpen] = useState(false);
   const [pending, startTransition] = useTransition();
   const showTemplates = canManageTemplates && tab === "templates";
+  const showSignature = tab === "signature";
 
   const inFolder = useMemo(() => messages.filter((m) => m.folder === folder), [messages, folder]);
   const selected = useMemo(
@@ -146,14 +150,49 @@ export function EmailCentrePage({
     });
   }
 
-  if (!account) {
-    return (
-      <div>
-        <PageHead
-          eyebrow="Integrated Communications"
-          title="Email Centre"
-          text="Shared inboxes, CRM-linked conversations, templates and AI-assisted replies."
-        />
+  const tabs = [
+    { key: "inbox" as const, label: "Inbox" },
+    ...(canManageTemplates ? [{ key: "templates" as const, label: "Templates" }] : []),
+    { key: "signature" as const, label: "My Signature" },
+  ];
+
+  return (
+    <div>
+      <PageHead
+        eyebrow="Integrated Communications"
+        title="Email Centre"
+        text={account ? `Connected as ${account.email_address}` : "Shared inboxes, CRM-linked conversations, templates and AI-assisted replies."}
+        action={
+          tab === "inbox" && account ? (
+            <button
+              onClick={() => setComposeOpen(true)}
+              className="flex items-center gap-2 self-start rounded-xl bg-primary-500 px-4 py-3 text-sm font-bold text-white"
+            >
+              <Plus size={17} />
+              Compose
+            </button>
+          ) : undefined
+        }
+      />
+
+      <div className="mb-4 flex gap-2">
+        {tabs.map((t) => (
+          <button
+            key={t.key}
+            onClick={() => setTab(t.key)}
+            className={
+              "rounded-xl px-3 py-2 text-sm font-bold " +
+              (tab === t.key ? "bg-primary-500 text-white" : "bg-slate-100 text-slate-600")
+            }
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {showSignature && <EmailSignatureSettings profile={signatureProfile} />}
+
+      {tab === "inbox" && !account && (
         <div className="grid min-h-[400px] place-items-center rounded-3xl border bg-white p-10 text-center shadow-sm">
           <div>
             <div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-primary-50 text-primary-600">
@@ -166,49 +205,11 @@ export function EmailCentrePage({
             </p>
           </div>
         </div>
-      </div>
-    );
-  }
-
-  return (
-    <div>
-      <PageHead
-        eyebrow="Integrated Communications"
-        title="Email Centre"
-        text={`Connected as ${account.email_address}`}
-        action={
-          !showTemplates ? (
-            <button
-              onClick={() => setComposeOpen(true)}
-              className="flex items-center gap-2 self-start rounded-xl bg-primary-500 px-4 py-3 text-sm font-bold text-white"
-            >
-              <Plus size={17} />
-              Compose
-            </button>
-          ) : undefined
-        }
-      />
-
-      {canManageTemplates && (
-        <div className="mb-4 flex gap-2">
-          {(["inbox", "templates"] as const).map((t) => (
-            <button
-              key={t}
-              onClick={() => setTab(t)}
-              className={
-                "rounded-xl px-3 py-2 text-sm font-bold " +
-                (tab === t ? "bg-primary-500 text-white" : "bg-slate-100 text-slate-600")
-              }
-            >
-              {t === "inbox" ? "Inbox" : "Templates"}
-            </button>
-          ))}
-        </div>
       )}
 
-      {showTemplates ? (
-        <EmailTemplatesPage templates={templates} />
-      ) : (
+      {showTemplates && <EmailTemplatesPage templates={templates} />}
+
+      {tab === "inbox" && account && (
         <div className="grid min-h-[650px] overflow-hidden rounded-3xl border bg-white shadow-sm lg:grid-cols-[220px_340px_1fr]">
           <div className="border-r p-4">
             <button

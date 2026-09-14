@@ -117,6 +117,11 @@ export interface Profile {
   full_name: string;
   email: string;
   phone: string | null;
+  whatsapp_number: string | null;
+  signature_switchboard: string | null;
+  signature_emergency_email: string | null;
+  signature_website: string | null;
+  signature_logo_url: string | null;
   job_title: string | null;
   department_id: string | null;
   team_id: string | null;

@@ -219,6 +219,7 @@ export async function resendQuoteEmailAction(quoteId: string) {
       link: `${process.env.NEXT_PUBLIC_APP_URL ?? ""}/q/${quote.public_token}`,
     },
     attachments: quotePdf ? [{ filename: `${quote.quote_number}.pdf`, content: quotePdf, contentType: "application/pdf" }] : undefined,
+    senderId: actor.id,
   });
 
   if (!result.error) {
@@ -300,6 +301,7 @@ export async function resendInvoiceEmailAction(quoteId: string) {
     attachments: invoicePdf
       ? [{ filename: `${quote.invoice_number}.pdf`, content: invoicePdf, contentType: "application/pdf" }]
       : undefined,
+    senderId: actor.id,
   });
 
   if (!result.error) {

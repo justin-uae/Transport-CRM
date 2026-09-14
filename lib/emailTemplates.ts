@@ -2,7 +2,9 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "./supabase/database.types";
 import { sendEmail, type EmailAttachment } from "./email";
+import { sendTransactionalEmailFromAccount } from "./userEmail";
 import { wrapEmailHtml } from "./emailBranding";
+import { buildSignatureHtml } from "./emailSignature";
 import type { EmailTemplateKey } from "./emailTemplateInfo";
 
 export type { EmailTemplateKey } from "./emailTemplateInfo";
@@ -18,6 +20,16 @@ interface SendTemplatedEmailInput {
   to: string | null | undefined;
   variables: Record<string, string>;
   attachments?: EmailAttachment[];
+  /**
+   * The logged-in staff member sending this (quote sent, invoice resent —
+   * anything with a real actor, as opposed to a webhook/customer-triggered
+   * template like payment confirmations or feedback requests). When set:
+   * the email is signed with that person's own signature, and if they have
+   * a mailbox connected (Settings -> Users), it's actually sent from their
+   * own address instead of the shared SMTP_* sender — falling back to the
+   * shared sender (still signed) when they don't have one connected.
+   */
+  senderId?: string;
 }
 
 /**
@@ -45,17 +57,41 @@ export async function renderAndSendTemplate(
     return { error: error?.message ?? `No "${input.key}" email template found.` };
   }
 
+  const subject = renderTemplate(template.subject, input.variables);
+  const bodyHtml = renderTemplate(template.body_html, input.variables);
+
+  let signatureHtml: string | undefined;
+  let senderAccount: Awaited<ReturnType<typeof loadSenderAccount>> = null;
+  if (input.senderId) {
+    const [{ data: sender }, account] = await Promise.all([
+      supabase
+        .from("profiles")
+        .select("full_name, email, job_title, phone, whatsapp_number, signature_switchboard, signature_emergency_email, signature_website, signature_logo_url")
+        .eq("id", input.senderId)
+        .maybeSingle(),
+      loadSenderAccount(supabase, input.senderId),
+    ]);
+    senderAccount = account;
+    if (sender) signatureHtml = buildSignatureHtml(sender);
+  }
+
+  const html = wrapEmailHtml(input.variables.brand_name ?? "", input.key, bodyHtml, signatureHtml);
+
   try {
-    await sendEmail({
-      to: input.to,
-      subject: renderTemplate(template.subject, input.variables),
-      html: wrapEmailHtml(input.variables.brand_name ?? "", input.key, renderTemplate(template.body_html, input.variables)),
-      attachments: input.attachments,
-    });
+    if (senderAccount) {
+      await sendTransactionalEmailFromAccount(supabase, senderAccount, { to: input.to, subject, html, attachments: input.attachments });
+    } else {
+      await sendEmail({ to: input.to, subject, html, attachments: input.attachments });
+    }
     return { error: null };
   } catch (err) {
     return { error: err instanceof Error ? err.message : "Could not send the email." };
   }
+}
+
+async function loadSenderAccount(supabase: SupabaseClient<Database>, senderId: string) {
+  const { data } = await supabase.from("email_accounts").select("*").eq("user_id", senderId).eq("is_active", true).maybeSingle();
+  return data;
 }
 
 /**
