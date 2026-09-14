@@ -4,6 +4,8 @@ import { PageHead } from "@/components/ui/PageHead";
 import { Panel } from "@/components/ui/Panel";
 import { SearchInput } from "@/components/ui/SearchInput";
 import { Pagination } from "@/components/ui/Pagination";
+import { PageGuide } from "@/components/ui/PageGuide";
+import { CustomersDiagram } from "@/components/ui/guide-diagrams/CustomersDiagram";
 import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { NewCustomerForm } from "./NewCustomerForm";
@@ -43,7 +45,34 @@ export default async function CustomersPage({
         eyebrow="Sales Workspace"
         title="Customers"
         text="Every company and contact your team has quoted or booked for."
-        action={<NewCustomerForm />}
+        action={
+          <div className="flex shrink-0 flex-wrap items-start gap-2">
+            <PageGuide
+              title="Customers"
+              subtitle="The company and contact record behind every lead, quote and booking."
+              screenshot={<CustomersDiagram />}
+              sections={[
+                {
+                  heading: "What this page is",
+                  body: [
+                    "Every company or individual your team has quoted or booked for gets a customer record here — name, contact details, country and which account manager owns the relationship.",
+                    "Customer records are usually created automatically the first time someone submits a lead, but you can also add one manually with New Customer (e.g. for a client you're onboarding before their first enquiry).",
+                  ],
+                },
+                {
+                  heading: "Using the list",
+                  bullets: true,
+                  body: [
+                    "Search by name, company, email or phone to find an existing customer before creating a duplicate.",
+                    "Click a row (or View) to open the customer's full history — past leads, quotes, bookings and payments.",
+                    "Account manager shows who owns that customer relationship on your team.",
+                  ],
+                },
+              ]}
+            />
+            <NewCustomerForm />
+          </div>
+        }
       />
       <div className="mb-4 flex gap-2">
         <SearchInput placeholder="Search by name, company, email or phone…" />

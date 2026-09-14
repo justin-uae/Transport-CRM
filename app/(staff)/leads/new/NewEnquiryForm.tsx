@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { SectionTitle } from "@/components/ui/SectionTitle";
 import { PhoneNumberField } from "@/components/ui/PhoneNumberField";
 import { AddressAutocompleteField } from "@/components/ui/AddressAutocompleteField";
+import { CustomerCombobox } from "@/components/ui/CustomerCombobox";
 import { DatePicker } from "@/components/ui/DatePicker";
 import { TimePicker } from "@/components/ui/TimePicker";
 import { createEnquiryAction } from "./actions";
@@ -160,19 +161,7 @@ export function NewEnquiryForm({
             </div>
             {customerMode === "existing" ? (
               <div className="mt-4">
-                <select
-                  value={existingCustomerId}
-                  onChange={(e) => setExistingCustomerId(e.target.value)}
-                  className="w-full rounded-xl border px-3 py-3"
-                >
-                  <option value="">{customers.length === 0 ? "No customers yet" : "Select a customer…"}</option>
-                  {customers.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.company_name || c.contact_name} {c.email ? `(${c.email})` : ""} {c.phone ? `· ${c.phone}` : ""}
-                    </option>
-                  ))}
-                </select>
-                {selectedCustomer && <p className="mt-2 text-sm text-slate-500">{selectedCustomer.contact_name}</p>}
+                <CustomerCombobox customers={customers} value={existingCustomerId} onChange={setExistingCustomerId} />
               </div>
             ) : (
               <div className="mt-4 grid gap-4 sm:grid-cols-2">

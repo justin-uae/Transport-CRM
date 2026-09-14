@@ -13,6 +13,8 @@ import { Pagination } from "@/components/ui/Pagination";
 import { useToast } from "@/components/ui/Toast";
 import { ConfirmDetailModal } from "@/components/ui/ConfirmDetailModal";
 import { NewLeadMenu } from "@/components/ui/NewLeadMenu";
+import { PageGuide } from "@/components/ui/PageGuide";
+import { LeadsDiagram } from "@/components/ui/guide-diagrams/LeadsDiagram";
 import { claimLeadAction, createEnquiryFromLeadAction, releaseLeadAction } from "@/app/(staff)/leads/actions";
 import { formatDate, formatTimeOnly } from "@/lib/formatDate";
 import { SOURCE_LABEL } from "@/lib/leadSource";
@@ -210,12 +212,56 @@ export function LeadsPage({
         title="Leads & geographic routing"
         text="Website, email, WhatsApp, telephone and live-chat leads in one workspace."
         action={
-          canAddEnquiry ? (
-            <NewLeadMenu
-              label="Add Enquiry"
-              buttonClassName="flex items-center gap-2 self-start rounded-xl bg-primary-500 px-4 py-3 text-sm font-bold text-white"
+          <div className="flex shrink-0 flex-wrap items-start gap-2">
+            <PageGuide
+              title="Customer Leads"
+              subtitle="Every enquiry that comes in before it becomes a quote."
+              screenshot={<LeadsDiagram />}
+              sections={[
+                {
+                  heading: "What a lead is",
+                  body: [
+                    "A lead is a raw enquiry — someone asking about a journey before it's been priced. Leads arrive from the website, email, WhatsApp, phone calls or live chat, and are tagged with that source so you know where to follow up.",
+                    "A lead with no pickup/destination is a general enquiry (e.g. a Contact Us message) rather than a specific trip request — those show the message text instead of a journey.",
+                  ],
+                },
+                {
+                  heading: "The three tabs",
+                  bullets: true,
+                  body: [
+                    "My Leads — enquiries currently assigned to you.",
+                    "Open Pool — unclaimed leads anyone with permission can accept. Claiming one moves it onto your own list.",
+                    "All — every lead across the team (only visible if your role allows it).",
+                  ],
+                },
+                {
+                  heading: "Working a lead",
+                  bullets: true,
+                  body: [
+                    "Click a row to open its detail — open-pool leads open a quick Accept popup; assigned leads go to the full detail page.",
+                    "Accept claims an open-pool lead and moves it to your dashboard.",
+                    "Create Quote turns an assigned lead into a priced enquiry in Quotes.",
+                    "Release sends a lead you no longer want back to the open pool for someone else.",
+                  ],
+                },
+                {
+                  heading: "Statuses & the KPI cards",
+                  bullets: true,
+                  body: [
+                    "New / Assigned / Open pool / Contacted / Converted / Closed / Spam / Duplicate track where a lead is in its lifecycle.",
+                    "\"My new leads\" and \"Open pool\" count leads waiting for action; \"My open enquiries\" counts quotes you've started but not closed; \"Quotes awaiting response\" flags ones sitting with the customer.",
+                    "A red HIGH badge marks a priority enquiry — follow those up first.",
+                  ],
+                },
+              ]}
             />
-          ) : undefined
+            {canAddEnquiry ? (
+              <NewLeadMenu
+                label="Add Enquiry"
+                buttonClassName="flex items-center gap-2 self-start rounded-xl bg-primary-500 px-4 py-3 text-sm font-bold text-white"
+              />
+            ) : undefined}
+          </div>
         }
       />
       <div className="mb-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">

@@ -9,6 +9,8 @@ import { SearchInput } from "@/components/ui/SearchInput";
 import { Pagination } from "@/components/ui/Pagination";
 import { JourneyCell } from "@/components/ui/JourneyCell";
 import { useToast } from "@/components/ui/Toast";
+import { PageGuide } from "@/components/ui/PageGuide";
+import { QuotesDiagram } from "@/components/ui/guide-diagrams/QuotesDiagram";
 import type { QuoteStatus } from "@/lib/supabase/database.types";
 import { QUOTE_STATUS_LABEL, QUOTE_STATUS_STYLE } from "@/lib/quoteStatus";
 
@@ -75,15 +77,61 @@ export function QuotesPage({
         title="Pending Quotes"
         text="Everything up to customer payment — once marked as paid on Customer Payments a quote moves to Confirmed Booking; rejected or expired quotes move to Lost Booking."
         action={
-          canCreateQuote ? (
-            <Link
-              href="/quotes/new"
-              className="flex items-center gap-2 self-start rounded-xl bg-primary-500 px-4 py-3 text-sm font-bold text-white"
-            >
-              <FileText size={17} />
-              Add New Quote
-            </Link>
-          ) : undefined
+          <div className="flex shrink-0 flex-wrap items-start gap-2">
+            <PageGuide
+              title="Pending Quotes"
+              subtitle="Every priced enquiry, from draft through to customer payment."
+              screenshot={<QuotesDiagram />}
+              sections={[
+                {
+                  heading: "What a quote is",
+                  body: [
+                    "A quote is a priced version of an enquiry — created from a lead once you know the route, vehicle and price. It has its own quote number and a shareable link the customer can view and accept online.",
+                  ],
+                },
+                {
+                  heading: "The lifecycle",
+                  bullets: true,
+                  body: [
+                    "Draft — being built, not yet sent to the customer.",
+                    "Sent — the customer has been emailed/given the quote link.",
+                    "Viewed — the customer has opened the link.",
+                    "Accepted — the customer approved it and it's awaiting payment.",
+                    "Once payment is confirmed on Customer Payments, it moves to Confirmed Booking.",
+                    "If the customer rejects it or it expires unactioned, it moves to Lost Booking instead.",
+                  ],
+                },
+                {
+                  heading: "Working a quote",
+                  bullets: true,
+                  body: [
+                    "Add New Quote starts a fresh quote (normally reached from a lead via Create Quote).",
+                    "View opens the full quote detail — pricing, versions and customer activity.",
+                    "Copy Link grabs the customer-facing link for a Sent/Viewed quote so you can share it directly (e.g. over WhatsApp or email).",
+                  ],
+                },
+                {
+                  heading: "The KPI cards",
+                  bullets: true,
+                  body: [
+                    "Draft — quotes not yet sent.",
+                    "Awaiting response — sent/viewed quotes, with the total pipeline value still open.",
+                    "Accepted — awaiting payment — won quotes waiting on the customer to pay.",
+                    "Total quotes (all time) — every quote ever created, regardless of status.",
+                  ],
+                },
+              ]}
+            />
+            {canCreateQuote ? (
+              <Link
+                href="/quotes/new"
+                className="flex items-center gap-2 self-start rounded-xl bg-primary-500 px-4 py-3 text-sm font-bold text-white"
+              >
+                <FileText size={17} />
+                Add New Quote
+              </Link>
+            ) : undefined}
+          </div>
         }
       />
       <div className="grid gap-4 md:grid-cols-4">
