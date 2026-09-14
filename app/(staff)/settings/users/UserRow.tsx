@@ -33,17 +33,12 @@ export interface UserListRow {
   user_regions: { id: string; region: string }[];
 }
 
-export function UserRow({
-  user,
-  roles,
-  canManage,
-  mailbox,
-}: {
-  user: UserListRow;
-  roles: { id: string; name: string }[];
-  canManage: boolean;
-  mailbox: EmailAccountStatus | null;
-}) {
+/**
+ * All the state + server-action calls a user row needs, shared between the
+ * desktop `<tr>` (UserRow) and the mobile card (UserCard) — each renders its
+ * own markup, but neither duplicates the mutation logic.
+ */
+function useUserRowActions(user: UserListRow) {
   const notify = useToast();
   const [pending, startTransition] = useTransition();
   const [regionInput, setRegionInput] = useState("");
@@ -111,70 +106,122 @@ export function UserRow({
     });
   }
 
+  return { pending, regionInput, setRegionInput, addingRegion, setAddingRegion, addRegion, removeRegion, changeStatus, changeRole, resendInvite };
+}
+
+/**
+ * Region pills + inline add/remove — pulled out so the desktop table cell
+ * and the mobile card render the exact same (fixed) markup instead of two
+ * copies that could drift out of sync. `min-w-0` on both the cell wrapper
+ * and the flex row is what actually makes the pills wrap instead of
+ * overflowing past the column and overlapping the next one — flex items
+ * (and table cells) default to `min-width: auto`, which refuses to shrink
+ * below the content's natural width unless told otherwise.
+ */
+function RegionEditor({
+  user,
+  canManage,
+  pending,
+  regionInput,
+  setRegionInput,
+  addingRegion,
+  setAddingRegion,
+  addRegion,
+  removeRegion,
+}: {
+  user: UserListRow;
+  canManage: boolean;
+  pending: boolean;
+  regionInput: string;
+  setRegionInput: (v: string) => void;
+  addingRegion: boolean;
+  setAddingRegion: (v: boolean) => void;
+  addRegion: () => void;
+  removeRegion: (regionId: string) => void;
+}) {
+  return (
+    <div className="flex min-w-0 flex-wrap items-center gap-1">
+      {user.user_regions.map((r) => (
+        <span
+          key={r.id}
+          className="flex max-w-full items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-bold text-slate-600"
+        >
+          <span className="truncate">{r.region}</span>
+          {canManage && (
+            <button
+              type="button"
+              disabled={pending}
+              onClick={() => removeRegion(r.id)}
+              className="shrink-0 rounded-full hover:bg-slate-200 disabled:opacity-60"
+              aria-label={`Remove ${r.region}`}
+            >
+              <X size={10} />
+            </button>
+          )}
+        </span>
+      ))}
+      {user.user_regions.length === 0 && !addingRegion && <span className="text-slate-400">—</span>}
+      {canManage &&
+        (addingRegion ? (
+          <input
+            autoFocus
+            value={regionInput}
+            onChange={(e) => setRegionInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                addRegion();
+              }
+              if (e.key === "Escape") {
+                setAddingRegion(false);
+                setRegionInput("");
+              }
+            }}
+            onBlur={addRegion}
+            placeholder="Region name"
+            className="w-24 shrink-0 rounded-lg border px-1.5 py-0.5 text-xs outline-none"
+          />
+        ) : (
+          <button
+            type="button"
+            disabled={pending}
+            onClick={() => setAddingRegion(true)}
+            className="shrink-0 rounded-full border border-dashed border-slate-300 p-0.5 text-slate-400 hover:text-slate-600 disabled:opacity-60"
+            aria-label="Add region"
+          >
+            <Plus size={10} />
+          </button>
+        ))}
+    </div>
+  );
+}
+
+/** Desktop table row — shown at `sm:` and above (see UsersPage). */
+export function UserRow({
+  user,
+  roles,
+  canManage,
+  mailbox,
+}: {
+  user: UserListRow;
+  roles: { id: string; name: string }[];
+  canManage: boolean;
+  mailbox: EmailAccountStatus | null;
+}) {
+  const a = useUserRowActions(user);
+
   return (
     <tr className="border-t">
       <td className="whitespace-nowrap py-4">
         <b>{user.full_name}</b>
         <div className="text-xs text-slate-400">{user.email}</div>
       </td>
-      <td className="whitespace-nowrap text-sm text-slate-600">{user.job_title ?? "—"}</td>
+      <td className="hidden whitespace-nowrap text-sm text-slate-600 md:table-cell">{user.job_title ?? "—"}</td>
       <td className="whitespace-nowrap text-sm">
         {user.brands?.name ?? <span className="text-red-500">No brand</span>}
       </td>
-      <td className="max-w-[220px] text-sm text-slate-600">
-        <div className="flex flex-wrap items-center gap-1">
-          {user.user_regions.map((r) => (
-            <span
-              key={r.id}
-              className="flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-bold text-slate-600"
-            >
-              {r.region}
-              {canManage && (
-                <button
-                  type="button"
-                  disabled={pending}
-                  onClick={() => removeRegion(r.id)}
-                  className="rounded-full hover:bg-slate-200 disabled:opacity-60"
-                  aria-label={`Remove ${r.region}`}
-                >
-                  <X size={10} />
-                </button>
-              )}
-            </span>
-          ))}
-          {user.user_regions.length === 0 && !addingRegion && <span>—</span>}
-          {canManage &&
-            (addingRegion ? (
-              <input
-                autoFocus
-                value={regionInput}
-                onChange={(e) => setRegionInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.preventDefault();
-                    addRegion();
-                  }
-                  if (e.key === "Escape") {
-                    setAddingRegion(false);
-                    setRegionInput("");
-                  }
-                }}
-                onBlur={addRegion}
-                placeholder="Region name"
-                className="w-24 rounded-lg border px-1.5 py-0.5 text-xs outline-none"
-              />
-            ) : (
-              <button
-                type="button"
-                disabled={pending}
-                onClick={() => setAddingRegion(true)}
-                className="rounded-full border border-dashed border-slate-300 p-0.5 text-slate-400 hover:text-slate-600 disabled:opacity-60"
-                aria-label="Add region"
-              >
-                <Plus size={10} />
-              </button>
-            ))}
-        </div>
+      <td className="w-[200px] max-w-[200px] min-w-0 text-sm text-slate-600">
+        <RegionEditor user={user} canManage={canManage} {...a} />
       </td>
       <td className="whitespace-nowrap">
         {user.is_master_admin ? (
@@ -182,8 +229,8 @@ export function UserRow({
         ) : (
           <select
             value={user.role_id ?? ""}
-            disabled={!canManage || pending}
-            onChange={(e) => changeRole(e.target.value)}
+            disabled={!canManage || a.pending}
+            onChange={(e) => a.changeRole(e.target.value)}
             className="rounded-lg border px-2 py-1.5 text-sm"
           >
             {roles.map((r) => (
@@ -199,7 +246,7 @@ export function UserRow({
           {user.status}
         </span>
       </td>
-      <td className="whitespace-nowrap">
+      <td className="hidden whitespace-nowrap md:table-cell">
         <MailboxBadge userId={user.id} userName={user.full_name} account={mailbox} canManage={canManage} />
       </td>
       <td className="whitespace-nowrap text-right">
@@ -207,8 +254,8 @@ export function UserRow({
           {canManage && user.status === "invited" && (
             <button
               type="button"
-              disabled={pending}
-              onClick={resendInvite}
+              disabled={a.pending}
+              onClick={a.resendInvite}
               className="rounded-lg border px-2 py-1.5 text-xs font-bold disabled:opacity-60"
             >
               Resend invite
@@ -216,9 +263,9 @@ export function UserRow({
           )}
           {canManage && !user.is_master_admin && (
             <select
-              disabled={pending}
+              disabled={a.pending}
               value=""
-              onChange={(e) => e.target.value && changeStatus(e.target.value as ProfileStatus)}
+              onChange={(e) => e.target.value && a.changeStatus(e.target.value as ProfileStatus)}
               className="rounded-lg border px-2 py-1.5 text-xs font-bold"
             >
               <option value="">Change status…</option>
@@ -231,5 +278,101 @@ export function UserRow({
         </div>
       </td>
     </tr>
+  );
+}
+
+/** Mobile card — shown below `sm:` instead of the table (see UsersPage). */
+export function UserCard({
+  user,
+  roles,
+  canManage,
+  mailbox,
+}: {
+  user: UserListRow;
+  roles: { id: string; name: string }[];
+  canManage: boolean;
+  mailbox: EmailAccountStatus | null;
+}) {
+  const a = useUserRowActions(user);
+
+  return (
+    <div className="rounded-2xl border p-4">
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <div className="truncate font-bold">{user.full_name}</div>
+          <div className="truncate text-xs text-slate-400">{user.email}</div>
+        </div>
+        <span className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-bold ${STATUS_STYLES[user.status]}`}>
+          {user.status}
+        </span>
+      </div>
+
+      <div className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 text-xs text-slate-500">
+        <div>
+          <div className="font-bold uppercase tracking-wide text-slate-400">Job title</div>
+          <div className="mt-0.5 text-slate-700">{user.job_title ?? "—"}</div>
+        </div>
+        <div>
+          <div className="font-bold uppercase tracking-wide text-slate-400">Brand</div>
+          <div className="mt-0.5 text-slate-700">{user.brands?.name ?? <span className="text-red-500">No brand</span>}</div>
+        </div>
+      </div>
+
+      <div className="mt-3">
+        <div className="text-xs font-bold uppercase tracking-wide text-slate-400">Region</div>
+        <div className="mt-1">
+          <RegionEditor user={user} canManage={canManage} {...a} />
+        </div>
+      </div>
+
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        {user.is_master_admin ? (
+          <span className="text-sm font-bold">Master Admin</span>
+        ) : (
+          <select
+            value={user.role_id ?? ""}
+            disabled={!canManage || a.pending}
+            onChange={(e) => a.changeRole(e.target.value)}
+            className="rounded-lg border px-2 py-1.5 text-xs"
+          >
+            {roles.map((r) => (
+              <option key={r.id} value={r.id}>
+                {r.name}
+              </option>
+            ))}
+          </select>
+        )}
+        <MailboxBadge userId={user.id} userName={user.full_name} account={mailbox} canManage={canManage} />
+      </div>
+
+      {canManage && (user.status === "invited" || !user.is_master_admin) && (
+        <div className="mt-3 flex flex-wrap items-center gap-2 border-t pt-3">
+          {user.status === "invited" && (
+            <button
+              type="button"
+              disabled={a.pending}
+              onClick={a.resendInvite}
+              className="rounded-lg border px-2 py-1.5 text-xs font-bold disabled:opacity-60"
+            >
+              Resend invite
+            </button>
+          )}
+          {!user.is_master_admin && (
+            <select
+              disabled={a.pending}
+              value=""
+              onChange={(e) => e.target.value && a.changeStatus(e.target.value as ProfileStatus)}
+              className="rounded-lg border px-2 py-1.5 text-xs font-bold"
+            >
+              <option value="">Change status…</option>
+              <option value="active">Activate</option>
+              <option value="suspended">Suspend</option>
+              <option value="disabled">Disable</option>
+              <option value="archived">Archive</option>
+            </select>
+          )}
+        </div>
+      )}
+    </div>
   );
 }

@@ -6,7 +6,7 @@ import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { hasPermission, PERMISSIONS } from "@/lib/permissions";
 import { InviteUserForm } from "./InviteUserForm";
-import { UserRow, type UserListRow } from "./UserRow";
+import { UserRow, UserCard, type UserListRow } from "./UserRow";
 import type { EmailAccountStatus } from "./EmailAccountForm";
 
 const PAGE_SIZE = 25;
@@ -59,17 +59,29 @@ export default async function UsersPage({ searchParams }: { searchParams: Promis
         <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center">
           <SearchInput placeholder="Search users by name or email…" />
         </div>
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[820px] text-left text-sm">
+        <div className="space-y-3 sm:hidden">
+          {users.map((user) => (
+            <UserCard
+              key={user.id}
+              user={user}
+              roles={roles ?? []}
+              canManage={canManage}
+              mailbox={mailboxByUserId.get(user.id) ?? null}
+            />
+          ))}
+          {users.length === 0 && <p className="py-8 text-center text-sm text-slate-500">No users yet.</p>}
+        </div>
+        <div className="hidden overflow-x-auto sm:block">
+          <table className="w-full min-w-[720px] text-left text-sm">
             <thead className="text-xs uppercase text-slate-400">
               <tr>
                 <th className="pb-3">User</th>
-                <th>Job title</th>
+                <th className="hidden md:table-cell">Job title</th>
                 <th>Brand</th>
                 <th>Region</th>
                 <th>Role</th>
                 <th>Status</th>
-                <th>Mailbox</th>
+                <th className="hidden md:table-cell">Mailbox</th>
                 <th></th>
               </tr>
             </thead>
