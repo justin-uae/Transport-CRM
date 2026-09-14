@@ -21,6 +21,19 @@ const STATUS_STYLES: Record<ProfileStatus, string> = {
   archived: "bg-slate-100 text-slate-600",
 };
 
+function initials(name: string) {
+  const parts = name.trim().split(/\s+/);
+  return ((parts[0]?.[0] ?? "") + (parts[1]?.[0] ?? "")).toUpperCase() || "?";
+}
+
+function Avatar({ name }: { name: string }) {
+  return (
+    <div className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-primary-50 text-xs font-bold text-primary-700">
+      {initials(name)}
+    </div>
+  );
+}
+
 export interface UserListRow {
   id: string;
   full_name: string;
@@ -160,7 +173,8 @@ function RegionEditor({
           )}
         </span>
       ))}
-      {user.user_regions.length === 0 && !addingRegion && <span className="text-slate-400">—</span>}
+      {/* Empty-state dash only shown read-only — when canManage, the Add button below already signals "none yet". */}
+      {user.user_regions.length === 0 && !addingRegion && !canManage && <span className="text-slate-300">—</span>}
       {canManage &&
         (addingRegion ? (
           <input
@@ -179,17 +193,18 @@ function RegionEditor({
             }}
             onBlur={addRegion}
             placeholder="Region name"
-            className="w-24 shrink-0 rounded-lg border px-1.5 py-0.5 text-xs outline-none"
+            className="w-24 shrink-0 rounded-lg border px-1.5 py-1 text-xs outline-none focus:border-primary-400"
           />
         ) : (
           <button
             type="button"
             disabled={pending}
             onClick={() => setAddingRegion(true)}
-            className="shrink-0 rounded-full border border-dashed border-slate-300 p-0.5 text-slate-400 hover:text-slate-600 disabled:opacity-60"
+            className="flex shrink-0 items-center gap-0.5 rounded-full border border-dashed border-slate-300 px-1.5 py-0.5 text-[10px] font-bold text-slate-400 hover:border-slate-400 hover:text-slate-600 disabled:opacity-60"
             aria-label="Add region"
           >
             <Plus size={10} />
+            {user.user_regions.length === 0 && "Add"}
           </button>
         ))}
     </div>
@@ -211,19 +226,26 @@ export function UserRow({
   const a = useUserRowActions(user);
 
   return (
-    <tr className="border-t">
-      <td className="px-3 py-4 align-top">
-        <b className="block break-words">{user.full_name}</b>
-        <div className="break-words text-xs text-slate-400">{user.email}</div>
+    <tr className="border-t border-slate-100 hover:bg-slate-50/70">
+      <td className="px-3 py-3">
+        <div className="flex items-center gap-3">
+          <Avatar name={user.full_name} />
+          <div className="min-w-0">
+            <div className="truncate font-bold">{user.full_name}</div>
+            <div className="truncate text-xs text-slate-400">{user.email}</div>
+          </div>
+        </div>
       </td>
-      <td className="hidden break-words px-3 py-4 align-top text-sm text-slate-600 md:table-cell">{user.job_title ?? "—"}</td>
-      <td className="break-words px-3 py-4 align-top text-sm">
-        {user.brands?.name ?? <span className="text-red-500">No brand</span>}
+      <td className="hidden truncate px-3 py-3 text-sm text-slate-600 md:table-cell" title={user.job_title ?? undefined}>
+        {user.job_title ?? <span className="text-slate-300">—</span>}
       </td>
-      <td className="min-w-0 px-3 py-4 align-top text-sm text-slate-600">
+      <td className="truncate px-3 py-3 text-sm" title={user.brands?.name ?? undefined}>
+        {user.brands?.name ?? <span className="font-semibold text-red-500">No brand</span>}
+      </td>
+      <td className="min-w-0 px-3 py-3 text-sm text-slate-600">
         <RegionEditor user={user} canManage={canManage} {...a} />
       </td>
-      <td className="px-3 py-4 align-top">
+      <td className="px-3 py-3">
         {user.is_master_admin ? (
           <span className="text-sm font-bold">Master Admin</span>
         ) : (
@@ -231,7 +253,7 @@ export function UserRow({
             value={user.role_id ?? ""}
             disabled={!canManage || a.pending}
             onChange={(e) => a.changeRole(e.target.value)}
-            className="w-full rounded-lg border px-2 py-1.5 text-sm"
+            className="h-9 w-full rounded-lg border border-slate-200 px-2 text-sm disabled:bg-slate-50 disabled:text-slate-400"
           >
             {roles.map((r) => (
               <option key={r.id} value={r.id}>
@@ -241,22 +263,22 @@ export function UserRow({
           </select>
         )}
       </td>
-      <td className="px-3 py-4 align-top">
-        <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${STATUS_STYLES[user.status]}`}>
+      <td className="px-3 py-3">
+        <span className={`inline-block rounded-full px-2.5 py-1 text-xs font-bold ${STATUS_STYLES[user.status]}`}>
           {user.status}
         </span>
       </td>
-      <td className="hidden px-3 py-4 align-top md:table-cell">
+      <td className="hidden px-3 py-3 md:table-cell">
         <MailboxBadge userId={user.id} userName={user.full_name} account={mailbox} canManage={canManage} />
       </td>
-      <td className="px-3 py-4 align-top text-right">
-        <div className="flex flex-col items-end gap-2">
+      <td className="px-3 py-3 text-right">
+        <div className="flex flex-col items-end gap-1.5">
           {canManage && user.status === "invited" && (
             <button
               type="button"
               disabled={a.pending}
               onClick={a.resendInvite}
-              className="w-full rounded-lg border px-2 py-1.5 text-xs font-bold disabled:opacity-60"
+              className="h-9 w-full rounded-lg border border-slate-200 px-2 text-xs font-bold hover:bg-slate-50 disabled:opacity-60"
             >
               Resend invite
             </button>
@@ -266,7 +288,7 @@ export function UserRow({
               disabled={a.pending}
               value=""
               onChange={(e) => e.target.value && a.changeStatus(e.target.value as ProfileStatus)}
-              className="w-full rounded-lg border px-2 py-1.5 text-xs font-bold"
+              className="h-9 w-full rounded-lg border border-slate-200 px-2 text-xs font-bold"
             >
               <option value="">Change status…</option>
               <option value="active">Activate</option>
@@ -298,9 +320,12 @@ export function UserCard({
   return (
     <div className="rounded-2xl border p-4">
       <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0">
-          <div className="truncate font-bold">{user.full_name}</div>
-          <div className="truncate text-xs text-slate-400">{user.email}</div>
+        <div className="flex min-w-0 items-center gap-3">
+          <Avatar name={user.full_name} />
+          <div className="min-w-0">
+            <div className="truncate font-bold">{user.full_name}</div>
+            <div className="truncate text-xs text-slate-400">{user.email}</div>
+          </div>
         </div>
         <span className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-bold ${STATUS_STYLES[user.status]}`}>
           {user.status}

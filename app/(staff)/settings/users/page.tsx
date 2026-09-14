@@ -72,18 +72,18 @@ export default async function UsersPage({ searchParams }: { searchParams: Promis
           {users.length === 0 && <p className="py-8 text-center text-sm text-slate-500">No users yet.</p>}
         </div>
         <div className="hidden overflow-x-auto sm:block">
-          <table className="w-full min-w-[820px] table-fixed text-left text-sm">
+          <table className="w-full min-w-[1180px] table-fixed text-left text-sm">
             <colgroup>
-              <col className="w-[200px]" />
-              <col className="hidden w-[110px] md:table-column" />
-              <col className="w-[150px]" />
+              <col className="w-[230px]" />
+              <col className="hidden w-[130px] md:table-column" />
               <col className="w-[190px]" />
-              <col className="w-[140px]" />
-              <col className="w-[90px]" />
-              <col className="hidden w-[110px] md:table-column" />
-              <col className="w-[150px]" />
+              <col className="w-[160px]" />
+              <col className="w-[170px]" />
+              <col className="w-[100px]" />
+              <col className="hidden w-[140px] md:table-column" />
+              <col className="w-[190px]" />
             </colgroup>
-            <thead className="text-xs uppercase text-slate-400">
+            <thead className="border-b text-xs font-bold uppercase tracking-wide text-slate-400">
               <tr>
                 <th className="px-3 pb-3">User</th>
                 <th className="hidden px-3 pb-3 md:table-cell">Job title</th>
@@ -92,7 +92,7 @@ export default async function UsersPage({ searchParams }: { searchParams: Promis
                 <th className="px-3 pb-3">Role</th>
                 <th className="px-3 pb-3">Status</th>
                 <th className="hidden px-3 pb-3 md:table-cell">Mailbox</th>
-                <th className="px-3 pb-3"></th>
+                <th className="px-3 pb-3 text-right">Actions</th>
               </tr>
             </thead>
             <tbody>
