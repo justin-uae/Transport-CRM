@@ -91,9 +91,21 @@ export async function proxy(request: NextRequest) {
     },
   );
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  // getUser() can throw (not just resolve with an `error` field) when the
+  // refresh token in the cookie is invalid — already rotated, revoked, or
+  // just stale. Treat that the same as "no user" instead of letting it
+  // crash the request; the signOut() clears the dead cookie so the
+  // redirect below doesn't just bounce the visitor right back into the
+  // same broken session.
+  let user = null;
+  try {
+    const {
+      data: { user: authUser },
+    } = await supabase.auth.getUser();
+    user = authUser;
+  } catch {
+    await supabase.auth.signOut().catch(() => {});
+  }
 
   if (!user && !isPublic) {
     const redirectUrl = new URL("/login", request.url);
