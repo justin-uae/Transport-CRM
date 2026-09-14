@@ -46,7 +46,16 @@ export async function sendWhatsAppReplyAction(customerId: string, body: string):
   }
   if (!brandId) return { error: "No active brand is configured to send from." };
 
-  await sendWhatsAppText(waId, trimmed);
+  const sendResult = await sendWhatsAppText(waId, trimmed);
+  if (!sendResult.ok) {
+    // Don't log this as a sent message — it wasn't. Most common cause: it's
+    // been over 24h since the contact's last message, and WhatsApp only
+    // allows re-opening that window with an approved template, not
+    // freeform text.
+    return {
+      error: `WhatsApp didn't deliver this message (${sendResult.error ?? "unknown error"}). If it's been more than 24 hours since their last message, WhatsApp requires an approved template to start the conversation again — a plain reply won't go through.`,
+    };
+  }
 
   const { error } = await supabase.from("whatsapp_messages").insert({
     tenant_id: actor.tenant_id,
