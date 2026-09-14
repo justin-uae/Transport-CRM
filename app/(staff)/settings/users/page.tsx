@@ -72,17 +72,27 @@ export default async function UsersPage({ searchParams }: { searchParams: Promis
           {users.length === 0 && <p className="py-8 text-center text-sm text-slate-500">No users yet.</p>}
         </div>
         <div className="hidden overflow-x-auto sm:block">
-          <table className="w-full min-w-[720px] text-left text-sm">
+          <table className="w-full min-w-[820px] table-fixed text-left text-sm">
+            <colgroup>
+              <col className="w-[200px]" />
+              <col className="hidden w-[110px] md:table-column" />
+              <col className="w-[150px]" />
+              <col className="w-[190px]" />
+              <col className="w-[140px]" />
+              <col className="w-[90px]" />
+              <col className="hidden w-[110px] md:table-column" />
+              <col className="w-[150px]" />
+            </colgroup>
             <thead className="text-xs uppercase text-slate-400">
               <tr>
-                <th className="pb-3">User</th>
-                <th className="hidden md:table-cell">Job title</th>
-                <th>Brand</th>
-                <th>Region</th>
-                <th>Role</th>
-                <th>Status</th>
-                <th className="hidden md:table-cell">Mailbox</th>
-                <th></th>
+                <th className="px-3 pb-3">User</th>
+                <th className="hidden px-3 pb-3 md:table-cell">Job title</th>
+                <th className="px-3 pb-3">Brand</th>
+                <th className="px-3 pb-3">Region</th>
+                <th className="px-3 pb-3">Role</th>
+                <th className="px-3 pb-3">Status</th>
+                <th className="hidden px-3 pb-3 md:table-cell">Mailbox</th>
+                <th className="px-3 pb-3"></th>
               </tr>
             </thead>
             <tbody>

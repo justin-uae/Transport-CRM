@@ -212,18 +212,18 @@ export function UserRow({
 
   return (
     <tr className="border-t">
-      <td className="whitespace-nowrap py-4">
-        <b>{user.full_name}</b>
-        <div className="text-xs text-slate-400">{user.email}</div>
+      <td className="px-3 py-4 align-top">
+        <b className="block break-words">{user.full_name}</b>
+        <div className="break-words text-xs text-slate-400">{user.email}</div>
       </td>
-      <td className="hidden whitespace-nowrap text-sm text-slate-600 md:table-cell">{user.job_title ?? "—"}</td>
-      <td className="whitespace-nowrap text-sm">
+      <td className="hidden break-words px-3 py-4 align-top text-sm text-slate-600 md:table-cell">{user.job_title ?? "—"}</td>
+      <td className="break-words px-3 py-4 align-top text-sm">
         {user.brands?.name ?? <span className="text-red-500">No brand</span>}
       </td>
-      <td className="w-[200px] max-w-[200px] min-w-0 text-sm text-slate-600">
+      <td className="min-w-0 px-3 py-4 align-top text-sm text-slate-600">
         <RegionEditor user={user} canManage={canManage} {...a} />
       </td>
-      <td className="whitespace-nowrap">
+      <td className="px-3 py-4 align-top">
         {user.is_master_admin ? (
           <span className="text-sm font-bold">Master Admin</span>
         ) : (
@@ -231,7 +231,7 @@ export function UserRow({
             value={user.role_id ?? ""}
             disabled={!canManage || a.pending}
             onChange={(e) => a.changeRole(e.target.value)}
-            className="rounded-lg border px-2 py-1.5 text-sm"
+            className="w-full rounded-lg border px-2 py-1.5 text-sm"
           >
             {roles.map((r) => (
               <option key={r.id} value={r.id}>
@@ -241,22 +241,22 @@ export function UserRow({
           </select>
         )}
       </td>
-      <td className="whitespace-nowrap">
+      <td className="px-3 py-4 align-top">
         <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${STATUS_STYLES[user.status]}`}>
           {user.status}
         </span>
       </td>
-      <td className="hidden whitespace-nowrap md:table-cell">
+      <td className="hidden px-3 py-4 align-top md:table-cell">
         <MailboxBadge userId={user.id} userName={user.full_name} account={mailbox} canManage={canManage} />
       </td>
-      <td className="whitespace-nowrap text-right">
-        <div className="flex items-center justify-end gap-2">
+      <td className="px-3 py-4 align-top text-right">
+        <div className="flex flex-col items-end gap-2">
           {canManage && user.status === "invited" && (
             <button
               type="button"
               disabled={a.pending}
               onClick={a.resendInvite}
-              className="rounded-lg border px-2 py-1.5 text-xs font-bold disabled:opacity-60"
+              className="w-full rounded-lg border px-2 py-1.5 text-xs font-bold disabled:opacity-60"
             >
               Resend invite
             </button>
@@ -266,7 +266,7 @@ export function UserRow({
               disabled={a.pending}
               value=""
               onChange={(e) => e.target.value && a.changeStatus(e.target.value as ProfileStatus)}
-              className="rounded-lg border px-2 py-1.5 text-xs font-bold"
+              className="w-full rounded-lg border px-2 py-1.5 text-xs font-bold"
             >
               <option value="">Change status…</option>
               <option value="active">Activate</option>
