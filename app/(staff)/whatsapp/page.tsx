@@ -15,6 +15,8 @@ interface MessageRow {
   message_type: string;
   body: string;
   created_at: string;
+  delivery_status: "sent" | "failed";
+  delivery_error: string | null;
   customers: { contact_name: string; company_name: string | null; phone: string | null } | null;
 }
 
@@ -27,7 +29,9 @@ export default async function WhatsAppPage() {
 
   const { data } = await supabase
     .from("whatsapp_messages")
-    .select("id, wa_id, customer_id, direction, message_type, body, created_at, customers(contact_name, company_name, phone)")
+    .select(
+      "id, wa_id, customer_id, direction, message_type, body, created_at, delivery_status, delivery_error, customers(contact_name, company_name, phone)",
+    )
     .order("created_at", { ascending: false })
     .limit(MESSAGE_SCAN_LIMIT);
   const rows = (data ?? []) as unknown as MessageRow[];
@@ -52,7 +56,15 @@ export default async function WhatsAppPage() {
   const initialThread: WhatsAppMessageRow[] = firstWaId
     ? rows
         .filter((r) => r.wa_id === firstWaId)
-        .map((r) => ({ id: r.id, direction: r.direction, messageType: r.message_type, body: r.body, createdAt: r.created_at }))
+        .map((r) => ({
+          id: r.id,
+          direction: r.direction,
+          messageType: r.message_type,
+          body: r.body,
+          createdAt: r.created_at,
+          deliveryStatus: r.delivery_status,
+          deliveryError: r.delivery_error,
+        }))
         .reverse()
     : [];
 

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useTransition } from "react";
-import { Send } from "lucide-react";
+import { Send, TriangleAlert } from "lucide-react";
 import clsx from "clsx";
 import { createClient } from "@/lib/supabase/client";
 import { PageHead } from "@/components/ui/PageHead";
@@ -26,6 +26,8 @@ export interface WhatsAppMessageRow {
   messageType: string;
   body: string;
   createdAt: string;
+  deliveryStatus: "sent" | "failed";
+  deliveryError: string | null;
 }
 
 interface RealtimeRow {
@@ -36,6 +38,8 @@ interface RealtimeRow {
   message_type: string;
   body: string;
   created_at: string;
+  delivery_status: "sent" | "failed";
+  delivery_error: string | null;
 }
 
 /**
@@ -76,7 +80,7 @@ export function WhatsAppInboxPage({
     const supabase = createClient();
     const { data } = await supabase
       .from("whatsapp_messages")
-      .select("id, direction, message_type, body, created_at")
+      .select("id, direction, message_type, body, created_at, delivery_status, delivery_error")
       .eq("wa_id", waId)
       .order("created_at", { ascending: true })
       .limit(300);
@@ -87,6 +91,8 @@ export function WhatsAppInboxPage({
         messageType: r.message_type,
         body: r.body,
         createdAt: r.created_at,
+        deliveryStatus: r.delivery_status,
+        deliveryError: r.delivery_error,
       })),
     );
     setThreadLoading(false);
@@ -127,7 +133,18 @@ export function WhatsAppInboxPage({
               setThread((prev) =>
                 prev.some((m) => m.id === row.id)
                   ? prev
-                  : [...prev, { id: row.id, direction: row.direction, messageType: row.message_type, body: row.body, createdAt: row.created_at }],
+                  : [
+                      ...prev,
+                      {
+                        id: row.id,
+                        direction: row.direction,
+                        messageType: row.message_type,
+                        body: row.body,
+                        createdAt: row.created_at,
+                        deliveryStatus: row.delivery_status,
+                        deliveryError: row.delivery_error,
+                      },
+                    ],
               );
             }
             return current;
@@ -194,21 +211,38 @@ export function WhatsAppInboxPage({
               </div>
               <div className="flex-1 space-y-2 overflow-y-auto bg-slate-50 p-4">
                 {threadLoading && <p className="text-xs text-slate-400">Loading…</p>}
-                {thread.map((m) => (
-                  <div key={m.id} className={clsx("flex", m.direction === "outbound" ? "justify-end" : "justify-start")}>
-                    <div
-                      className={clsx(
-                        "max-w-[75%] rounded-2xl px-3.5 py-2 text-sm",
-                        m.direction === "outbound" ? "bg-primary-500 text-white" : "bg-white text-slate-800 shadow-sm",
-                      )}
-                    >
-                      <div className="whitespace-pre-line">{m.body}</div>
-                      <div className={clsx("mt-1 text-[10px]", m.direction === "outbound" ? "text-white/70" : "text-slate-400")}>
-                        {formatDateTime(m.createdAt)}
+                {thread.map((m) => {
+                  const failed = m.direction === "outbound" && m.deliveryStatus === "failed";
+                  return (
+                    <div key={m.id} className={clsx("flex", m.direction === "outbound" ? "justify-end" : "justify-start")}>
+                      <div
+                        className={clsx(
+                          "max-w-[75%] rounded-2xl px-3.5 py-2 text-sm",
+                          failed
+                            ? "border border-red-200 bg-red-50 text-slate-800"
+                            : m.direction === "outbound"
+                              ? "bg-primary-500 text-white"
+                              : "bg-white text-slate-800 shadow-sm",
+                        )}
+                      >
+                        <div className="whitespace-pre-line">{m.body}</div>
+                        <div
+                          className={clsx(
+                            "mt-1 flex items-center gap-1 text-[10px]",
+                            failed ? "text-red-600" : m.direction === "outbound" ? "text-white/70" : "text-slate-400",
+                          )}
+                        >
+                          {failed && <TriangleAlert size={11} className="shrink-0" />}
+                          <span>{formatDateTime(m.createdAt)}</span>
+                          {failed && <span className="font-bold">· Not delivered</span>}
+                        </div>
+                        {failed && m.deliveryError && (
+                          <div className="mt-1 border-t border-red-200 pt-1 text-[10px] text-red-600">{m.deliveryError}</div>
+                        )}
                       </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
                 <div ref={bottomRef} />
               </div>
               <div className="flex items-end gap-2 border-t border-slate-100 p-3">
