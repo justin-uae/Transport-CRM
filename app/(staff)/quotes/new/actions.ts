@@ -7,7 +7,7 @@ import { hasPermission, PERMISSIONS } from "@/lib/permissions";
 import { recordAudit } from "@/lib/audit";
 import { STRIPE_PRICE_THRESHOLD, paymentMethodsForGbpValue } from "@/lib/quoteMoney";
 import { convertToGbp } from "@/lib/fxRates";
-import { sendTemplatedEmail } from "@/lib/emailTemplates";
+import { renderAndSendTemplate } from "@/lib/emailTemplates";
 import { generateQuotePdf } from "@/lib/quotePdf";
 import { persistGeneratedPdf } from "@/lib/documentArchive";
 
@@ -257,6 +257,7 @@ export async function createQuoteAction(
 
   const canSend = await hasPermission(actor, PERMISSIONS.QUOTES_SEND);
   let publicLink: string | null = null;
+  let emailWarning: string | null = null;
 
   if (canSend && formData.get("sendNow") === "on") {
     await supabase
@@ -274,7 +275,7 @@ export async function createQuoteAction(
       console.error(`generateQuotePdf failed for quote ${quote.id}:`, err);
       return null;
     });
-    await sendTemplatedEmail(supabase, {
+    const emailResult = await renderAndSendTemplate(supabase, {
       tenantId: actor.tenant_id,
       key: "quote_sent",
       to: customer?.email,
@@ -289,6 +290,10 @@ export async function createQuoteAction(
       attachments: quotePdf ? [{ filename: `${quote.quote_number}.pdf`, content: quotePdf, contentType: "application/pdf" }] : undefined,
       senderId: actor.id,
     });
+    if (emailResult.error) {
+      console.error(`createQuoteAction: quote_sent email failed for quote ${quote.id}: ${emailResult.error}`);
+      emailWarning = `The quote was created, but the email could not be sent: ${emailResult.error}`;
+    }
 
     if (quotePdf) {
       await persistGeneratedPdf(supabase, {
@@ -314,5 +319,5 @@ export async function createQuoteAction(
 
   revalidatePath("/quotes");
   if (enquiry.lead_id) revalidatePath("/leads");
-  return { error: null, link: publicLink };
+  return { error: null, link: publicLink, emailWarning };
 }

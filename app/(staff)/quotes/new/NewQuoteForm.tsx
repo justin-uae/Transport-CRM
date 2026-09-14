@@ -188,7 +188,7 @@ export function NewQuoteForm({
       setConfirmOpen(false);
       if (result?.link) {
         setLink(result.link);
-        notify("Quote sent — share the link below");
+        notify(result.emailWarning ? result.emailWarning : "Quote sent — share the link below");
       } else {
         notify("Quote saved as a draft");
       }
