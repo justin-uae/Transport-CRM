@@ -10,6 +10,7 @@ import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { formatDateTime } from "@/lib/formatDate";
 import type { EnquiryStatus, QuoteStatus, TaskStatus } from "@/lib/supabase/database.types";
+import { QUOTE_STATUS_LABEL, QUOTE_STATUS_STYLE } from "@/lib/quoteStatus";
 
 const ENQUIRY_STATUS_STYLE: Record<EnquiryStatus, string> = {
   new: "bg-slate-100 text-slate-700",
@@ -22,19 +23,6 @@ const ENQUIRY_STATUS_STYLE: Record<EnquiryStatus, string> = {
   cancelled: "bg-slate-100 text-slate-500",
   converted_to_booking: "bg-emerald-50 text-emerald-700",
   completed: "bg-emerald-50 text-emerald-700",
-};
-
-const QUOTE_STATUS_STYLE: Record<QuoteStatus, string> = {
-  draft: "bg-slate-100 text-slate-700",
-  sent: "bg-blue-50 text-blue-700",
-  viewed: "bg-blue-50 text-blue-700",
-  accepted: "bg-emerald-50 text-emerald-700",
-  partially_paid: "bg-amber-50 text-amber-700",
-  rejected: "bg-red-50 text-red-700",
-  expired: "bg-red-50 text-red-700",
-  cancelled: "bg-slate-100 text-slate-500",
-  converted: "bg-emerald-50 text-emerald-700",
-  paid: "bg-emerald-50 text-emerald-700",
 };
 
 function money(amount: number | undefined | null, currency: string) {
@@ -148,7 +136,7 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
       title: q.quote_number,
       subtitle: `${money(q.quote_versions?.selling_price, q.currency)} · ${formatDateTime(q.created_at)}`,
       href: `/quotes/${q.id}`,
-      badge: { label: q.status, className: QUOTE_STATUS_STYLE[q.status] },
+      badge: { label: QUOTE_STATUS_LABEL[q.status], className: QUOTE_STATUS_STYLE[q.status] },
     })),
     ...paymentRows.map((p) => ({
       id: `payment-${p.id}`,

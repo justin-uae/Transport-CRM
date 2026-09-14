@@ -12,6 +12,7 @@ import { QuoteDetailActions } from "@/components/pages/QuoteDetailActions";
 import { JourneyLegDetail, type JourneyLeg } from "@/components/pages/JourneyLegDetail";
 import { formatDateTime, formatDate } from "@/lib/formatDate";
 import type { QuoteStatus, QuoteEventType, QuoteDecisionType, CustomerPaymentMethod, Refund } from "@/lib/supabase/database.types";
+import { QUOTE_STATUS_LABEL, QUOTE_STATUS_STYLE } from "@/lib/quoteStatus";
 
 interface LineItemRow {
   id: string;
@@ -71,19 +72,6 @@ interface QuoteDetailRow {
   customer_payments: PaymentRow[];
   quote_payment_milestones: MilestoneRow[];
 }
-
-const STATUS_STYLE: Record<QuoteStatus, string> = {
-  draft: "bg-slate-100 text-slate-700",
-  sent: "bg-blue-50 text-blue-700",
-  viewed: "bg-blue-50 text-blue-700",
-  accepted: "bg-emerald-50 text-emerald-700",
-  partially_paid: "bg-amber-50 text-amber-700",
-  rejected: "bg-red-50 text-red-700",
-  expired: "bg-red-50 text-red-700",
-  cancelled: "bg-slate-100 text-slate-500",
-  converted: "bg-emerald-50 text-emerald-700",
-  paid: "bg-emerald-50 text-emerald-700",
-};
 
 const EVENT_LABEL: Record<QuoteEventType, string> = {
   sent: "Quote sent to customer",
@@ -165,8 +153,8 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
           <Panel>
             <div className="flex items-start justify-between">
               <SectionTitle title="Journey" sub={legs.length > 1 ? `${legs.length} legs` : "Pickup, destination and passenger details"} />
-              <span className={"rounded-full px-2.5 py-1 text-xs font-bold capitalize " + STATUS_STYLE[quote.status]}>
-                {quote.status}
+              <span className={"rounded-full px-2.5 py-1 text-xs font-bold " + QUOTE_STATUS_STYLE[quote.status]}>
+                {QUOTE_STATUS_LABEL[quote.status]}
               </span>
             </div>
             <div className="mt-4">

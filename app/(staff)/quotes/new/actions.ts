@@ -154,6 +154,8 @@ export async function createQuoteAction(
     }
   }
 
+  const forceBankTransfer = formData.get("forceBankTransfer") === "true";
+
   // Stripe is only offered once the selling price converts to under £1000
   // GBP, regardless of the quote's own currency — convert in the background
   // here rather than showing Stripe based on the raw (possibly non-GBP)
@@ -187,12 +189,23 @@ export async function createQuoteAction(
       currency,
       deposit_percentage: depositPercentage,
       deposit_fixed_amount: depositFixedAmount,
-      // System-computed, never a manual staff toggle — below the
-      // GBP-converted threshold is Stripe-only, at or above it is
-      // bank-transfer-only.
-      payment_methods: paymentMethodsForGbpValue(sellingPriceGbp),
+      // Below the GBP-converted threshold defaults to Stripe-only, at or
+      // above it defaults to bank-transfer-only — but staff can force bank
+      // transfer regardless of amount (e.g. a regular corporate account that
+      // always pays by transfer even on a small booking). There's no
+      // override in the other direction: Stripe is never offered above the
+      // threshold, since that's a real card-processing/fraud-risk limit, not
+      // just a default.
+      payment_methods:
+        forceBankTransfer && sellingPriceGbp < STRIPE_PRICE_THRESHOLD
+          ? { stripe: false, bank_transfer: true }
+          : paymentMethodsForGbpValue(sellingPriceGbp),
       customer_notes: String(formData.get("customerNotes") ?? "").trim() || null,
-      terms_snapshot: String(formData.get("terms") ?? "").trim() || null,
+      // Always null on creation — the customer-facing quote/invoice pages
+      // and PDFs fall back to the tenant's own Terms & Conditions
+      // (Settings -> Bank Details & Terms) whenever this is unset, so quote
+      // creation no longer asks staff to type terms in by hand.
+      terms_snapshot: null,
       brand_snapshot: {
         name: brand.name,
         logo_url: brand.logo_url,

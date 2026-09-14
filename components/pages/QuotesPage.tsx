@@ -10,6 +10,7 @@ import { Pagination } from "@/components/ui/Pagination";
 import { JourneyCell } from "@/components/ui/JourneyCell";
 import { useToast } from "@/components/ui/Toast";
 import type { QuoteStatus } from "@/lib/supabase/database.types";
+import { QUOTE_STATUS_LABEL, QUOTE_STATUS_STYLE } from "@/lib/quoteStatus";
 
 export interface QuoteRow {
   id: string;
@@ -25,18 +26,6 @@ export interface QuoteRow {
   quote_versions: { selling_price: number } | null;
 }
 
-const STATUS_STYLE: Record<QuoteStatus, string> = {
-  draft: "bg-slate-100 text-slate-700",
-  sent: "bg-blue-50 text-blue-700",
-  viewed: "bg-blue-50 text-blue-700",
-  accepted: "bg-emerald-50 text-emerald-700",
-  partially_paid: "bg-amber-50 text-amber-700",
-  rejected: "bg-red-50 text-red-700",
-  expired: "bg-red-50 text-red-700",
-  cancelled: "bg-slate-100 text-slate-500",
-  converted: "bg-emerald-50 text-emerald-700",
-  paid: "bg-emerald-50 text-emerald-700",
-};
 
 function money(amount: number | undefined, currency: string) {
   if (amount === undefined) return "—";
@@ -118,7 +107,7 @@ export function QuotesPage({
                   </Link>
                   {q.invoice_number && <div className="text-xs text-slate-400">Inv {q.invoice_number}</div>}
                 </div>
-                <span className={"rounded-full px-2.5 py-1 text-xs font-bold capitalize " + STATUS_STYLE[q.status]}>{q.status}</span>
+                <span className={"rounded-full px-2.5 py-1 text-xs font-bold " + QUOTE_STATUS_STYLE[q.status]}>{QUOTE_STATUS_LABEL[q.status]}</span>
               </div>
               <div className="mt-2 text-sm font-semibold">{q.customers?.company_name || q.customers?.contact_name || "—"}</div>
               <div className="mt-1 text-sm text-slate-600">
@@ -170,8 +159,8 @@ export function QuotesPage({
                   </td>
                   <td className="whitespace-nowrap px-3 py-4 font-black">{money(q.quote_versions?.selling_price, q.currency)}</td>
                   <td className="whitespace-nowrap px-3 py-4">
-                    <span className={"rounded-full px-2.5 py-1 text-xs font-bold capitalize " + STATUS_STYLE[q.status]}>
-                      {q.status}
+                    <span className={"rounded-full px-2.5 py-1 text-xs font-bold " + QUOTE_STATUS_STYLE[q.status]}>
+                      {QUOTE_STATUS_LABEL[q.status]}
                     </span>
                   </td>
                   <td className="whitespace-nowrap px-3 py-4 text-right">

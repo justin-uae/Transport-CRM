@@ -102,7 +102,7 @@ export function NewQuoteForm({
   const [milestones, setMilestones] = useState<MilestoneRow[]>([]);
   const [lineItems, setLineItems] = useState<LineItemRow[]>([]);
   const [customerNotes, setCustomerNotes] = useState("");
-  const [terms, setTerms] = useState("");
+  const [forceBankTransfer, setForceBankTransfer] = useState(false);
   const [sendNow, setSendNow] = useState(true);
   // Holds the warning text (not just a boolean) so it can double as the
   // "confirmed" flag and be shown inline — same warn-then-allow shape as
@@ -132,7 +132,17 @@ export function NewQuoteForm({
       : gbpRates?.[currencyCode]
         ? sellingPriceNum / gbpRates[currencyCode]
         : null;
-  const methods = sellingPriceGbp === null ? { stripe: false, bank_transfer: true } : paymentMethodsForGbpValue(sellingPriceGbp);
+  // Card payment is only ever offered under £1000 GBP — a real
+  // processing/fraud-risk limit, not just a default, so there's no override
+  // in that direction. Below it, staff can still choose bank transfer
+  // instead (e.g. a regular corporate account that always pays that way).
+  const stripeEligible = sellingPriceGbp !== null && sellingPriceGbp < STRIPE_PRICE_THRESHOLD;
+  const methods =
+    sellingPriceGbp === null
+      ? { stripe: false, bank_transfer: true }
+      : forceBankTransfer
+        ? { stripe: false, bank_transfer: true }
+        : paymentMethodsForGbpValue(sellingPriceGbp);
 
   const money = (amount: number) =>
     new Intl.NumberFormat("en-GB", { style: "currency", currency, maximumFractionDigits: 2 }).format(amount);
@@ -256,8 +266,8 @@ export function NewQuoteForm({
               {sellingPriceGbp === null
                 ? "Calculating — confirmed once the exchange rate loads"
                 : methods.stripe
-                  ? `Online payment (Stripe) — converts to under £${STRIPE_PRICE_THRESHOLD} GBP (≈ £${sellingPriceGbp.toFixed(2)})`
-                  : `Bank transfer — converts to £${STRIPE_PRICE_THRESHOLD} GBP or more (≈ £${sellingPriceGbp.toFixed(2)})`}
+                  ? "Card payment (Stripe)"
+                  : "Bank transfer"}
             </dd>
           </div>
           <div>
@@ -272,12 +282,6 @@ export function NewQuoteForm({
             <div className="col-span-2">
               <dt className="text-xs font-bold uppercase text-slate-400">Notes to customer</dt>
               <dd className="mt-0.5 font-semibold">{customerNotes}</dd>
-            </div>
-          )}
-          {terms && (
-            <div className="col-span-2">
-              <dt className="text-xs font-bold uppercase text-slate-400">Terms &amp; conditions</dt>
-              <dd className="mt-0.5 font-semibold">{terms}</dd>
             </div>
           )}
         </dl>
@@ -419,6 +423,56 @@ export function NewQuoteForm({
                   className="mt-2 w-full rounded-xl border px-3 py-3 font-normal"
                 />
               </label>
+              <div className="md:col-span-2">
+                <div className="text-sm font-bold">How will the customer pay?</div>
+                <div className="mt-2 grid gap-3 sm:grid-cols-2">
+                  <label
+                    className={clsx(
+                      "flex flex-col gap-1 rounded-xl border p-3",
+                      !forceBankTransfer && stripeEligible ? "border-primary-400 bg-primary-50/40" : "border-slate-200",
+                      stripeEligible ? "cursor-pointer" : "cursor-not-allowed opacity-50",
+                    )}
+                  >
+                    <span className="flex items-center gap-2 font-bold">
+                      <input
+                        type="radio"
+                        name="paymentMethodChoice"
+                        checked={!forceBankTransfer && stripeEligible}
+                        disabled={!stripeEligible}
+                        onChange={() => setForceBankTransfer(false)}
+                      />
+                      Card payment
+                    </span>
+                    <span className="text-xs font-normal text-slate-500">
+                      {stripeEligible
+                        ? "The customer gets a secure link to pay by card online. Available for bookings under £1,000."
+                        : `Not available for this amount — bookings of £${STRIPE_PRICE_THRESHOLD} or more must be paid by bank transfer.`}
+                    </span>
+                  </label>
+                  <label
+                    className={clsx(
+                      "flex cursor-pointer flex-col gap-1 rounded-xl border p-3",
+                      forceBankTransfer || !stripeEligible ? "border-primary-400 bg-primary-50/40" : "border-slate-200",
+                    )}
+                  >
+                    <span className="flex items-center gap-2 font-bold">
+                      <input
+                        type="radio"
+                        name="paymentMethodChoice"
+                        checked={forceBankTransfer || !stripeEligible}
+                        onChange={() => setForceBankTransfer(true)}
+                      />
+                      Bank transfer
+                    </span>
+                    <span className="text-xs font-normal text-slate-500">
+                      {stripeEligible
+                        ? "The customer pays by bank transfer instead of card — choose this if they prefer to pay this way."
+                        : "Required for this amount."}
+                    </span>
+                  </label>
+                </div>
+                <input type="hidden" name="forceBankTransfer" value={forceBankTransfer ? "true" : "false"} />
+              </div>
               <fieldset className="text-sm font-bold md:col-span-2">
                 How does the customer pay?
                 <div className="mt-2 flex flex-wrap gap-3 font-normal">
@@ -548,36 +602,12 @@ export function NewQuoteForm({
                   </button>
                 </div>
               </div>
-              <div className="rounded-xl bg-slate-50 p-3 text-sm font-normal md:col-span-2">
-                <span className="font-bold">Payment method: </span>
-                {sellingPriceGbp === null ? (
-                  <span className="font-semibold text-slate-500">Calculating — confirmed once the exchange rate loads</span>
-                ) : methods.stripe ? (
-                  <span className="font-semibold text-emerald-700">
-                    Online payment (Stripe) — converts to under £{STRIPE_PRICE_THRESHOLD} GBP (≈ £{sellingPriceGbp.toFixed(2)})
-                  </span>
-                ) : (
-                  <span className="font-semibold text-emerald-700">
-                    Bank transfer — converts to £{STRIPE_PRICE_THRESHOLD} GBP or more (≈ £{sellingPriceGbp.toFixed(2)})
-                  </span>
-                )}
-                <span className="ml-2 text-slate-400">Stripe and bank transfer are never both offered on the same quote.</span>
-              </div>
               <label className="text-sm font-bold md:col-span-2">
                 Notes to customer
                 <textarea
                   name="customerNotes"
                   value={customerNotes}
                   onChange={(e) => setCustomerNotes(e.target.value)}
-                  className="mt-2 min-h-20 w-full rounded-xl border p-3 font-normal"
-                />
-              </label>
-              <label className="text-sm font-bold md:col-span-2">
-                Terms &amp; conditions
-                <textarea
-                  name="terms"
-                  value={terms}
-                  onChange={(e) => setTerms(e.target.value)}
                   className="mt-2 min-h-20 w-full rounded-xl border p-3 font-normal"
                 />
               </label>
