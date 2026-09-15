@@ -1,7 +1,9 @@
 import { PageHead } from "@/components/ui/PageHead";
+import { PageGuide } from "@/components/ui/PageGuide";
 import { Panel } from "@/components/ui/Panel";
 import { SearchInput } from "@/components/ui/SearchInput";
 import { Pagination } from "@/components/ui/Pagination";
+import { UsersDiagram } from "@/components/ui/guide-diagrams/UsersDiagram";
 import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { hasPermission, PERMISSIONS } from "@/lib/permissions";
@@ -53,7 +55,34 @@ export default async function UsersPage({ searchParams }: { searchParams: Promis
         eyebrow="Administration"
         title="Users"
         text="Invite, assign roles and manage account status for everyone in your organisation."
-        action={canManage ? <InviteUserForm roles={roles ?? []} brands={brands ?? []} /> : undefined}
+        action={
+          <div className="flex flex-wrap items-start gap-2">
+            <PageGuide
+              title="Users"
+              subtitle="Everyone with sign-in access to this CRM, and what controls their access."
+              screenshot={<UsersDiagram />}
+              sections={[
+                {
+                  heading: "Inviting someone",
+                  body: [
+                    "Invite user sends an email invite — the person sets their own password on first login, nothing plaintext is generated or shown here.",
+                  ],
+                },
+                {
+                  heading: "What each column controls",
+                  bullets: true,
+                  body: [
+                    "Brand / Region — scopes what a user sees and can be assigned on enquiries/jobs, for roles that are brand- or region-limited.",
+                    "Role — which permission set this person has; change it here or build a new role under Roles & Permissions.",
+                    "Status — Suspended blocks sign-in immediately without deleting the account or its history.",
+                    "Mailbox — whether this person has connected a personal SMTP/IMAP mailbox (Email Centre → My Signature); customer-facing emails they send go out from it when connected.",
+                  ],
+                },
+              ]}
+            />
+            {canManage && <InviteUserForm roles={roles ?? []} brands={brands ?? []} />}
+          </div>
+        }
       />
       <Panel>
         <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center">

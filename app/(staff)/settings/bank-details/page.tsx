@@ -1,6 +1,8 @@
 import { PageHead } from "@/components/ui/PageHead";
+import { PageGuide } from "@/components/ui/PageGuide";
 import { Panel } from "@/components/ui/Panel";
 import { SectionTitle } from "@/components/ui/SectionTitle";
+import { BankDetailsDiagram } from "@/components/ui/guide-diagrams/BankDetailsDiagram";
 import { requireProfile } from "@/lib/auth";
 import { hasPermission, PERMISSIONS } from "@/lib/permissions";
 import { createClient } from "@/lib/supabase/server";
@@ -24,6 +26,27 @@ export default async function BankDetailsPage() {
         eyebrow="Administration"
         title="Bank Details & Terms"
         text="Payment profiles and the Terms & Conditions boilerplate shown to customers on quotes and invoices."
+        action={
+          <PageGuide
+            title="Bank Details & Terms"
+            subtitle="Where customer payments land, and the default terms text they see."
+            screenshot={<BankDetailsDiagram />}
+            sections={[
+              {
+                heading: "Payment profiles",
+                body: [
+                  "One profile per currency you accept bank transfers in. The correct profile is picked automatically to match a quote's own currency on the public quote page, the invoice and the quote PDF — customers only ever see the one that matches what they're paying in.",
+                ],
+              },
+              {
+                heading: "Terms & Conditions",
+                body: [
+                  "The fallback text shown whenever a specific quote doesn't have its own override — set this once here and every quote uses it unless overridden at quote level.",
+                ],
+              },
+            ]}
+          />
+        }
       />
 
       <Panel>

@@ -1,7 +1,9 @@
 import Link from "next/link";
 import { ChevronRight, ShieldCheck } from "lucide-react";
 import { PageHead } from "@/components/ui/PageHead";
+import { PageGuide } from "@/components/ui/PageGuide";
 import { Panel } from "@/components/ui/Panel";
+import { RolesDiagram } from "@/components/ui/guide-diagrams/RolesDiagram";
 import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { NewRoleForm } from "./NewRoleForm";
@@ -22,7 +24,36 @@ export default async function RolesPage() {
         eyebrow="Administration"
         title="Roles & Permissions"
         text="Predefined system roles plus any custom roles for your organisation."
-        action={<NewRoleForm />}
+        action={
+          <div className="flex flex-wrap items-start gap-2">
+            <PageGuide
+              title="Roles & Permissions"
+              subtitle="The permission catalogue — grouped into roles, one checkbox grid per role."
+              screenshot={<RolesDiagram />}
+              sections={[
+                {
+                  heading: "System vs custom roles",
+                  body: [
+                    "System roles (Master Admin, Sales User, Ops User, Finance Manager, etc.) ship with the CRM and cover most day-to-day needs — their permissions can still be adjusted for your tenant. New role builds a custom role from scratch when a system role doesn't fit.",
+                  ],
+                },
+                {
+                  heading: "The permission grid",
+                  body: [
+                    "Open a role to see every permission, grouped by category (Bookings & Dispatch, Finance, Administration, etc.), with a checkbox for each. Master Admin bypasses every check regardless of what's ticked here — it's the one role that can't be locked out of anything.",
+                  ],
+                },
+                {
+                  heading: "Where else permissions show up",
+                  body: [
+                    "A permission key here is the same key referenced everywhere else in the CRM — e.g. bookings.amend is what gates the Edit Booking button on a quote/job. Granting or revoking it here takes effect immediately for anyone with that role.",
+                  ],
+                },
+              ]}
+            />
+            <NewRoleForm />
+          </div>
+        }
       />
       <div className="grid gap-3">
         {(roles ?? []).map((role) => (

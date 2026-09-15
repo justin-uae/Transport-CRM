@@ -6,9 +6,11 @@ import { usePathname, useSearchParams, useRouter } from "next/navigation";
 import clsx from "clsx";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { PageHead } from "@/components/ui/PageHead";
+import { PageGuide } from "@/components/ui/PageGuide";
 import { Panel } from "@/components/ui/Panel";
 import { SearchInput } from "@/components/ui/SearchInput";
 import { Pagination } from "@/components/ui/Pagination";
+import { AuditLogDiagram } from "@/components/ui/guide-diagrams/AuditLogDiagram";
 import { formatDateTime } from "@/lib/formatDate";
 
 export interface AuditEntryRow {
@@ -96,6 +98,33 @@ export function AuditLogPage({
         eyebrow="Administration"
         title="Audit Log"
         text="Every financial, pricing, allocation and user change, plus login activity — append-only, most recent first."
+        action={
+          <PageGuide
+            title="Audit Log"
+            subtitle="A permanent, append-only record — who changed what, when, and why."
+            screenshot={<AuditLogDiagram />}
+            sections={[
+              {
+                heading: "Changes vs Logins",
+                body: [
+                  "Changes covers every recorded write — pricing edits, cancellations, booking amendments, payment/refund actions, permission changes and more. Logins is purely sign-in activity: successes, failures, logouts and forced logouts.",
+                ],
+              },
+              {
+                heading: "Reading a row",
+                body: [
+                  "Click a row with a ▸ to expand it — shows the before/after values as raw data, plus the reason given (for actions that require one, like a cancellation or a booking edit) and the actor's IP/device.",
+                ],
+              },
+              {
+                heading: "Why it exists",
+                body: [
+                  "This is the one place nothing can be edited or deleted — every sensitive action writes here through a single shared code path, specifically so it can be trusted as a genuine record if a change is ever questioned.",
+                ],
+              },
+            ]}
+          />
+        }
       />
 
       <div className="mb-4 flex gap-2">

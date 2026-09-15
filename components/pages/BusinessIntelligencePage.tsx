@@ -4,7 +4,9 @@ import { AlertTriangle, Download } from "lucide-react";
 import { LineChart, Line, BarChart, Bar, CartesianGrid, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 import { Panel } from "@/components/ui/Panel";
 import { PageHead } from "@/components/ui/PageHead";
+import { PageGuide } from "@/components/ui/PageGuide";
 import { SectionTitle } from "@/components/ui/SectionTitle";
+import { BusinessIntelligenceDiagram } from "@/components/ui/guide-diagrams/BusinessIntelligenceDiagram";
 import { downloadCsv } from "@/lib/exportCsv";
 import { formatDateTime } from "@/lib/formatDate";
 import type { BusinessIntelligenceSummary } from "@/lib/businessIntelligenceSummary";
@@ -26,6 +28,35 @@ export function BusinessIntelligencePage({ summary }: { summary: BusinessIntelli
         eyebrow="Business Intelligence"
         title="Executive analytics"
         text="Interactive group reporting across brands, countries, users and lead channels."
+        action={
+          <PageGuide
+            title="Executive analytics"
+            subtitle="Group-wide reporting — read-only, refreshed periodically rather than live."
+            screenshot={<BusinessIntelligenceDiagram />}
+            sections={[
+              {
+                heading: "What's on this page",
+                bullets: true,
+                body: [
+                  "Monthly revenue — paid quotes only, grouped by invoice month, converted to GBP.",
+                  "Profit by brand — this month's gross profit, one bar per brand.",
+                ],
+              },
+              {
+                heading: "Currency conversion",
+                body: [
+                  "Everything is converted to GBP so figures from different brands/currencies can be compared directly. If a currency has no live exchange rate available, an amber warning banner appears and that figure is added at face value instead of being converted.",
+                ],
+              },
+              {
+                heading: "Exporting",
+                body: [
+                  "Export on either chart downloads its underlying data as a CSV — useful for a board pack or a deeper analysis outside the CRM.",
+                ],
+              },
+            ]}
+          />
+        }
       />
       <div className="mb-4 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
         <span>Data as of {formatDateTime(summary.lastRefreshedAt)}</span>

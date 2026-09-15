@@ -2,6 +2,8 @@ import Link from "next/link";
 import { Users, ShieldCheck, Building2, History } from "lucide-react";
 import { Panel } from "@/components/ui/Panel";
 import { PageHead } from "@/components/ui/PageHead";
+import { PageGuide } from "@/components/ui/PageGuide";
+import { SettingsOverviewDiagram } from "@/components/ui/guide-diagrams/SettingsOverviewDiagram";
 import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 
@@ -28,6 +30,32 @@ export default async function SettingsOverviewPage() {
         eyebrow="Administration"
         title="Settings"
         text={`Configuration for ${tenant?.name ?? "your organisation"}.`}
+        action={
+          <PageGuide
+            title="Settings"
+            subtitle="Administration — every organisation-wide setting lives under this tab strip."
+            screenshot={<SettingsOverviewDiagram />}
+            sections={[
+              {
+                heading: "What lives here",
+                bullets: true,
+                body: [
+                  "Users — invite people, assign a role/brand/region, manage account status and connect a personal mailbox.",
+                  "Roles & Permissions — the permission catalogue, grouped into system roles plus any custom roles for your organisation.",
+                  "Companies & Brands — legal entities and the trading brands under them, including each brand's webhook credentials.",
+                  "Bank Details & Terms — payment profiles shown on quotes/invoices, and the fallback Terms & Conditions text.",
+                  "Audit Log — an append-only record of every financial, pricing, allocation and user change, plus login activity.",
+                ],
+              },
+              {
+                heading: "Who can see this",
+                body: [
+                  "The whole /settings surface is gated separately from the sidebar — even a direct link only works for someone holding an admin permission. Most day-to-day roles never see this tab at all.",
+                ],
+              },
+            ]}
+          />
+        }
       />
       <div className="grid gap-4 sm:grid-cols-2">
         {CARDS.map(({ label, href, icon: Icon, text }) => (

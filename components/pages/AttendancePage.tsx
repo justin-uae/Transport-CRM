@@ -4,7 +4,9 @@ import { LogIn, Coffee, LogOut, Clock3 } from "lucide-react";
 import clsx from "clsx";
 import { Panel } from "@/components/ui/Panel";
 import { PageHead } from "@/components/ui/PageHead";
+import { PageGuide } from "@/components/ui/PageGuide";
 import { SectionTitle } from "@/components/ui/SectionTitle";
+import { AttendanceDiagram } from "@/components/ui/guide-diagrams/AttendanceDiagram";
 import { useAttendance } from "@/components/ui/AttendanceState";
 import { legalNextEvents, formatDuration } from "@/lib/attendanceState";
 import { formatDate, formatTime } from "@/lib/formatDate";
@@ -58,6 +60,33 @@ export function AttendancePage({ recentDays, teamRows }: { recentDays: DailySumm
         eyebrow="People Operations"
         title="Time & attendance"
         text="Clock in, take breaks and clock out — your active time is tracked automatically."
+        action={
+          <PageGuide
+            title="Time & attendance"
+            subtitle="Clock in/out for yourself, plus a live team view for managers."
+            screenshot={<AttendanceDiagram />}
+            sections={[
+              {
+                heading: "Your clock card",
+                body: [
+                  "Clock in, Start break, End break and Clock out are only ever available in the order that makes sense — you can't clock out while on a break, or start a break before clocking in.",
+                ],
+              },
+              {
+                heading: "Today's attendance overview",
+                body: [
+                  "Managers see every team member's live status here — Not Clocked In, Working, On Break or Clocked Out — with each person's clock-in time and running active time.",
+                ],
+              },
+              {
+                heading: "Your recent days",
+                body: [
+                  "A day-by-day history of your own clock-in, clock-out and active time. Incomplete means a clock-out was never recorded for that day — not a fabricated duration.",
+                ],
+              },
+            ]}
+          />
+        }
       />
       <div className={clsx("grid gap-6", teamRows && "xl:grid-cols-[.8fr_1.2fr]")}>
         <Panel>

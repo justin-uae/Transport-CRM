@@ -111,6 +111,16 @@ export function QuotesPage({
                   ],
                 },
                 {
+                  heading: "Editing after the fact",
+                  bullets: true,
+                  body: [
+                    "Edit Booking, on the quote detail page, works at any stage — draft through fully paid — right up until the job is marked completed by the supplier.",
+                    "Change the pickup, destination, date, time, passengers or luggage; optionally charge or credit the customer, and/or adjust what a supplier is owed — a reason is always required.",
+                    "A positive customer amount adds to the balance due (the customer gets an emailed link to pay it); a negative amount lowers the price and auto-queues a refund if that leaves them overpaid.",
+                    "Every edit is logged to that quote's Edit history panel with who made it, why, and a before/after diff, and (when relevant) emails both the customer and the supplier — the same button and history also appear on the matching Dispatch job page.",
+                  ],
+                },
+                {
                   heading: "The KPI cards",
                   bullets: true,
                   body: [

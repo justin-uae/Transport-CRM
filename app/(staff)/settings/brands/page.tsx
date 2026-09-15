@@ -1,8 +1,10 @@
 import { Building2 } from "lucide-react";
 import { PageHead } from "@/components/ui/PageHead";
+import { PageGuide } from "@/components/ui/PageGuide";
 import { Panel } from "@/components/ui/Panel";
 import { SearchInput } from "@/components/ui/SearchInput";
 import { Pagination } from "@/components/ui/Pagination";
+import { BrandsDiagram } from "@/components/ui/guide-diagrams/BrandsDiagram";
 import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { NewCompanyForm } from "./NewCompanyForm";
@@ -53,7 +55,39 @@ export default async function BrandsPage({
         eyebrow="Administration"
         title="Companies & Brands"
         text="Legal entities and the trading brands under them — quote, invoice and email identity flow from here."
-        action={<NewCompanyForm />}
+        action={
+          <div className="flex flex-wrap items-start gap-2">
+            <PageGuide
+              title="Companies & Brands"
+              subtitle="Two layers — legal companies above, the trading brands under each one below."
+              screenshot={<BrandsDiagram />}
+              sections={[
+                {
+                  heading: "Companies vs brands",
+                  body: [
+                    "A company is the legal entity — stays few, added rarely. A brand is a trading identity under a company — every external brand site/domain gets its own brand, so this list is searchable and paginated.",
+                  ],
+                },
+                {
+                  heading: "What flows from a brand",
+                  bullets: true,
+                  body: [
+                    "Quote/invoice numbering prefix and currency.",
+                    "The colour and identity shown on the public quote page and PDFs.",
+                    "The webhook slug + secret a brand's website uses to submit leads into this CRM (shown under each brand card).",
+                  ],
+                },
+                {
+                  heading: "Adding one",
+                  body: [
+                    "New company creates a legal entity first; New brand (below the grid) then attaches a trading brand to whichever company you pick.",
+                  ],
+                },
+              ]}
+            />
+            <NewCompanyForm />
+          </div>
+        }
       />
 
       <div className="mb-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">

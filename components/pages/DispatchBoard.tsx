@@ -123,6 +123,12 @@ export function DispatchBoard({
                   "Once the supplier marks a job done, it moves to Completed Booking. If it never gets past unassigned or gets rejected everywhere, it stays visible here until you act on it — nothing disappears on its own.",
                 ],
               },
+              {
+                heading: "Editing a job after it's dispatched",
+                body: [
+                  "Open a job and use Edit Booking (in the Journey panel) to change pickup, destination, date, time, passengers or luggage — even once a supplier has accepted or confirmed. A reason is required, you can charge/credit the customer and/or adjust the supplier's payout at the same time, and it's logged to the Edit history panel on the same page. It closes off only once the job is marked Completed.",
+                ],
+              },
             ]}
           />
         }

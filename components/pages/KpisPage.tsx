@@ -7,8 +7,10 @@ import { ChevronLeft, ChevronRight, Plus, Trash2 } from "lucide-react";
 import clsx from "clsx";
 import { Panel } from "@/components/ui/Panel";
 import { PageHead } from "@/components/ui/PageHead";
+import { PageGuide } from "@/components/ui/PageGuide";
 import { SectionTitle } from "@/components/ui/SectionTitle";
 import { ConfirmDetailModal } from "@/components/ui/ConfirmDetailModal";
+import { KpisDiagram } from "@/components/ui/guide-diagrams/KpisDiagram";
 import { useToast } from "@/components/ui/Toast";
 import { setTargetAction, deleteTargetAction } from "@/app/(staff)/kpis/actions";
 import type { TargetMetric } from "@/lib/supabase/database.types";
@@ -169,14 +171,41 @@ export function KpisPage({
         title="KPIs & Targets"
         text="Individual monthly targets, tracked against real revenue, profit, quotes and bookings data."
         action={
-          <div className="flex items-center gap-2 rounded-xl border bg-white px-2 py-1.5">
-            <Link href={`/kpis?month=${shiftMonth(periodMonth, -1)}`} className="rounded-lg p-1.5 hover:bg-slate-100" aria-label="Previous month">
-              <ChevronLeft size={16} />
-            </Link>
-            <span className="min-w-[9rem] text-center text-sm font-bold">{monthLabel(periodMonth)}</span>
-            <Link href={`/kpis?month=${shiftMonth(periodMonth, 1)}`} className="rounded-lg p-1.5 hover:bg-slate-100" aria-label="Next month">
-              <ChevronRight size={16} />
-            </Link>
+          <div className="flex flex-wrap items-start gap-2">
+            <PageGuide
+              title="KPIs & Targets"
+              subtitle="Monthly targets for yourself, plus a team leaderboard and target management for managers."
+              screenshot={<KpisDiagram />}
+              sections={[
+                {
+                  heading: "My targets",
+                  body: [
+                    "Your own targets for the selected month, shown as progress bars against real data — revenue, gross profit, quotes sent and paid bookings. A bar turns green once you hit 100%.",
+                  ],
+                },
+                {
+                  heading: "Leaderboard",
+                  body: [
+                    "Managers only. Ranks everyone by whichever metric is selected in the dropdown, using the same real figures as My targets.",
+                  ],
+                },
+                {
+                  heading: "Manage targets",
+                  body: [
+                    "Managers only. Set target adds a new target for a person/metric/month; Edit changes an existing one. Targets are per calendar month — use the ◂ ▸ arrows to switch months.",
+                  ],
+                },
+              ]}
+            />
+            <div className="flex items-center gap-2 rounded-xl border bg-white px-2 py-1.5">
+              <Link href={`/kpis?month=${shiftMonth(periodMonth, -1)}`} className="rounded-lg p-1.5 hover:bg-slate-100" aria-label="Previous month">
+                <ChevronLeft size={16} />
+              </Link>
+              <span className="min-w-[9rem] text-center text-sm font-bold">{monthLabel(periodMonth)}</span>
+              <Link href={`/kpis?month=${shiftMonth(periodMonth, 1)}`} className="rounded-lg p-1.5 hover:bg-slate-100" aria-label="Next month">
+                <ChevronRight size={16} />
+              </Link>
+            </div>
           </div>
         }
       />
