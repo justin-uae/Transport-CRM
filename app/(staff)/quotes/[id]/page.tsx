@@ -8,10 +8,11 @@ import { PageHead } from "@/components/ui/PageHead";
 import { Breadcrumb } from "@/components/ui/Breadcrumb";
 import { BackLink } from "@/components/ui/BackLink";
 import { SectionTitle } from "@/components/ui/SectionTitle";
-import { QuoteDetailActions } from "@/components/pages/QuoteDetailActions";
+import { QuoteDetailActions, type AmendableLeg } from "@/components/pages/QuoteDetailActions";
+import { BookingEditHistory, type BookingEditRecord } from "@/components/pages/BookingEditHistory";
 import { JourneyLegDetail, type JourneyLeg } from "@/components/pages/JourneyLegDetail";
 import { formatDateTime, formatDate } from "@/lib/formatDate";
-import type { QuoteStatus, QuoteEventType, QuoteDecisionType, CustomerPaymentMethod, Refund } from "@/lib/supabase/database.types";
+import type { QuoteStatus, QuoteEventType, QuoteDecisionType, CustomerPaymentMethod, Refund, JobStatus } from "@/lib/supabase/database.types";
 import { QUOTE_STATUS_LABEL, QUOTE_STATUS_STYLE } from "@/lib/quoteStatus";
 
 interface LineItemRow {
@@ -65,7 +66,7 @@ interface QuoteDetailRow {
   viewed_at: string | null;
   decided_at: string | null;
   customers: { company_name: string | null; contact_name: string; phone: string | null; email: string | null } | null;
-  enquiries: { enquiry_legs: JourneyLeg[] } | null;
+  enquiries: { assigned_user_id: string | null; enquiry_legs: JourneyLeg[] } | null;
   quote_versions: VersionRow[];
   quote_events: { event: QuoteEventType; created_at: string }[];
   quote_decisions: { decision: QuoteDecisionType; reason: string | null; free_text: string | null; decided_at: string }[];
@@ -93,15 +94,16 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
   const { id } = await params;
   const actor = await requireProfile();
   const supabase = await createClient();
-  const [canCancel, canProcessRefunds] = await Promise.all([
+  const [canCancel, canProcessRefunds, canAmendPermission] = await Promise.all([
     hasPermission(actor, PERMISSIONS.QUOTES_CANCEL),
     hasPermission(actor, PERMISSIONS.FINANCE_PROCESS_REFUNDS),
+    hasPermission(actor, PERMISSIONS.BOOKINGS_AMEND),
   ]);
 
   const { data: quoteRaw, error: quoteError } = await supabase
     .from("quotes")
     .select(
-      "id, quote_number, status, currency, expiry_at, invoice_number, invoiced_at, public_token, created_at, sent_at, viewed_at, decided_at, customers(company_name, contact_name, phone, email), enquiries(enquiry_legs(sequence, journey_type, pickup_address, destination_address, via_points, pickup_date, pickup_time, return_date, return_time, passenger_count, luggage_count, wheelchair_required, child_seats, special_requirements, vehicle_types(name))), quote_versions!quote_versions_quote_id_fkey(id, version_number, vehicle_description, supplier_estimated_cost, selling_price, currency, deposit_percentage, deposit_fixed_amount, customer_notes, terms_snapshot, created_at, quote_line_items(id, description, amount, category)), quote_events(event, created_at), quote_decisions(decision, reason, free_text, decided_at), customer_payments(id, amount, method, paid_at), quote_payment_milestones(id, sequence, label, amount, due_date)",
+      "id, quote_number, status, currency, expiry_at, invoice_number, invoiced_at, public_token, created_at, sent_at, viewed_at, decided_at, customers(company_name, contact_name, phone, email), enquiries(assigned_user_id, enquiry_legs(sequence, journey_type, pickup_address, destination_address, via_points, pickup_date, pickup_time, return_date, return_time, passenger_count, luggage_count, wheelchair_required, child_seats, special_requirements, vehicle_types(name))), quote_versions!quote_versions_quote_id_fkey(id, version_number, vehicle_description, supplier_estimated_cost, selling_price, currency, deposit_percentage, deposit_fixed_amount, customer_notes, terms_snapshot, created_at, quote_line_items(id, description, amount, category)), quote_events(event, created_at), quote_decisions(decision, reason, free_text, decided_at), customer_payments(id, amount, method, paid_at), quote_payment_milestones(id, sequence, label, amount, due_date)",
     )
     .eq("id", id)
     .single();
@@ -110,20 +112,39 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
   if (!quoteRaw) notFound();
   const quote = quoteRaw as unknown as QuoteDetailRow;
 
-  const [{ data: job }, { data: refunds }] = await Promise.all([
+  const [{ data: job }, { data: refunds }, { data: amendmentsRaw }] = await Promise.all([
     supabase.from("jobs").select("id, status, suppliers(name)").eq("quote_id", id).maybeSingle(),
     supabase.from("refunds").select("*").eq("quote_id", id).order("created_at", { ascending: false }),
+    supabase
+      .from("booking_amendments")
+      .select("id, reason, changes, customer_charge_amount, supplier_adjustment_amount, created_at, profiles(full_name)")
+      .eq("quote_id", id)
+      .order("created_at", { ascending: false }),
   ]);
+
+  const canAmend = actor.is_master_admin || (canAmendPermission && quote.enquiries?.assigned_user_id === actor.id);
 
   const customer = quote.customers;
   const legs = [...(quote.enquiries?.enquiry_legs ?? [])].sort((a, b) => a.sequence - b.sequence);
+  const firstLeg = legs[0] ?? null;
+  const currentLeg: AmendableLeg | null = firstLeg
+    ? {
+        pickupAddress: firstLeg.pickup_address,
+        destinationAddress: firstLeg.destination_address,
+        pickupDate: firstLeg.pickup_date,
+        pickupTime: firstLeg.pickup_time,
+        passengerCount: firstLeg.passenger_count,
+        luggageCount: firstLeg.luggage_count,
+      }
+    : null;
+  const amendments = (amendmentsRaw ?? []) as unknown as BookingEditRecord[];
   const versions = [...(quote.quote_versions ?? [])].sort((a, b) => b.version_number - a.version_number);
   const currentVersion = versions[0] ?? null;
   const events = [...(quote.quote_events ?? [])].sort(
     (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
   );
   const decision = quote.quote_decisions?.[0] ?? null;
-  const jobRow = job as unknown as { id: string; status: string; suppliers: { name: string } | null } | null;
+  const jobRow = job as unknown as { id: string; status: JobStatus; suppliers: { name: string } | null } | null;
   const payments = [...(quote.customer_payments ?? [])].sort((a, b) => new Date(a.paid_at).getTime() - new Date(b.paid_at).getTime());
   const paidSoFar = payments.reduce((sum, p) => sum + Number(p.amount), 0);
   const balanceRemaining = Math.max(0, (currentVersion?.selling_price ?? 0) - paidSoFar);
@@ -255,6 +276,8 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
             )}
           </Panel>
 
+          <BookingEditHistory amendments={amendments} currency={quote.currency} />
+
           {versions.length > 1 && (
             <Panel>
               <SectionTitle title="Version history" />
@@ -309,6 +332,9 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
                 }}
                 canCancel={canCancel}
                 canProcessRefunds={canProcessRefunds}
+                canAmend={canAmend}
+                currentLeg={currentLeg}
+                jobStatus={jobRow?.status ?? null}
                 refunds={(refunds ?? []) as Refund[]}
               />
             </div>

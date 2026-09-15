@@ -14,7 +14,7 @@ export default async function Page() {
   const { data: invoices } = await supabase
     .from("job_supplier_invoices")
     .select(
-      "id, job_allocation_id, amount, currency, notes, file_name, storage_path, forwarded_at, job_allocations(id, status, supplier_payment_status, suppliers(id, name, phone, email), jobs(quotes(quote_number, customers(company_name, contact_name))), supplier_payments(id, amount, bank_reference, notes, paid_at, proof_storage_path))",
+      "id, job_allocation_id, amount, currency, notes, file_name, storage_path, forwarded_at, job_allocations(id, status, supplier_payment_status, suppliers(id, name, phone, email), jobs(quotes(quote_number, customers(company_name, contact_name))), supplier_payments(id, amount, bank_reference, notes, paid_at, proof_storage_path), job_allocation_adjustments(id, amount, reason, created_at))",
     )
     .eq("status", "forwarded_to_accounting")
     .order("forwarded_at", { ascending: false });

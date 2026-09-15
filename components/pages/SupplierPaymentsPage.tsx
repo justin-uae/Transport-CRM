@@ -37,6 +37,7 @@ export interface SupplierInvoiceRow {
       paid_at: string;
       proof_storage_path: string | null;
     }[];
+    job_allocation_adjustments: { id: string; amount: number; reason: string | null; created_at: string }[];
   } | null;
 }
 
@@ -52,6 +53,16 @@ function money(amount: number, currency: string) {
 
 function paidSoFar(row: SupplierInvoiceRow) {
   return (row.job_allocations?.supplier_payments ?? []).reduce((sum, p) => sum + p.amount, 0);
+}
+
+/** Sum of every post-invoice amendment adjustment (can be negative) — see 0067_booking_amendments.sql. Added on top of the submitted invoice amount rather than editing it, since the invoice is the supplier's own document. */
+function totalAdjustments(row: SupplierInvoiceRow) {
+  return (row.job_allocations?.job_allocation_adjustments ?? []).reduce((sum, a) => sum + Number(a.amount), 0);
+}
+
+/** The invoice amount plus any amendment adjustments — the real amount owed, which a negative adjustment can push below what's already been paid (a refund owed back from the supplier) rather than just toward zero. */
+function effectiveAmount(row: SupplierInvoiceRow) {
+  return row.amount + totalAdjustments(row);
 }
 
 export function SupplierPaymentsPage({
@@ -131,8 +142,9 @@ export function SupplierPaymentsPage({
       },
       { header: "Currency", value: (row) => row.currency },
       { header: "Invoice amount", value: (row) => row.amount },
+      { header: "Adjustments", value: (row) => totalAdjustments(row) },
       { header: "Paid so far", value: (row) => paidSoFar(row) },
-      { header: "Balance", value: (row) => row.amount - paidSoFar(row) },
+      { header: "Balance", value: (row) => effectiveAmount(row) - paidSoFar(row) },
       { header: "Status", value: (row) => row.job_allocations?.supplier_payment_status ?? "unpaid" },
       { header: "Forwarded", value: (row) => (row.forwarded_at ? formatDate(row.forwarded_at) : "") },
       { header: "Latest payment date", value: (row) => { const d = latestPaymentDate(row); return d ? formatDate(d) : ""; } },
@@ -140,7 +152,7 @@ export function SupplierPaymentsPage({
   }
 
   function open(row: SupplierInvoiceRow) {
-    const balance = row.amount - paidSoFar(row);
+    const balance = effectiveAmount(row) - paidSoFar(row);
     setTarget(row);
     setAmount(balance > 0 ? balance.toFixed(2) : "");
     setBankReference("");
@@ -300,7 +312,9 @@ export function SupplierPaymentsPage({
         <div className="space-y-3">
           {visible.map((row) => {
             const paid = paidSoFar(row);
-            const bal = row.amount - paid;
+            const adjustments = totalAdjustments(row);
+            const bal = effectiveAmount(row) - paid;
+            const refundOwed = bal < -0.01;
             const customer = row.job_allocations?.jobs?.quotes?.customers;
             const status = row.job_allocations?.supplier_payment_status ?? "unpaid";
             return (
@@ -316,20 +330,44 @@ export function SupplierPaymentsPage({
                     {status.replaceAll("_", " ")}
                   </span>
                 </div>
-                <div className="mt-3 grid grid-cols-1 gap-3 rounded-xl bg-slate-50 p-3 text-sm sm:grid-cols-3">
+                <div className={`mt-3 grid grid-cols-1 gap-3 rounded-xl bg-slate-50 p-3 text-sm ${adjustments !== 0 ? "sm:grid-cols-4" : "sm:grid-cols-3"}`}>
                   <div>
                     <div className="text-xs font-bold uppercase text-slate-400">Invoice</div>
                     <b>{money(row.amount, row.currency)}</b>
                   </div>
+                  {adjustments !== 0 && (
+                    <div>
+                      <div className="text-xs font-bold uppercase text-slate-400">Adjustments</div>
+                      <b className={adjustments < 0 ? "text-red-600" : "text-slate-800"}>
+                        {adjustments > 0 ? "+" : ""}
+                        {money(adjustments, row.currency)}
+                      </b>
+                    </div>
+                  )}
                   <div>
                     <div className="text-xs font-bold uppercase text-slate-400">Paid so far</div>
                     <b>{money(paid, row.currency)}</b>
                   </div>
                   <div>
-                    <div className="text-xs font-bold uppercase text-slate-400">Balance</div>
-                    <b className="text-primary-600">{money(bal, row.currency)}</b>
+                    <div className="text-xs font-bold uppercase text-slate-400">{refundOwed ? "Refund owed from supplier" : "Balance"}</div>
+                    <b className={refundOwed ? "text-red-600" : "text-primary-600"}>{money(Math.abs(bal), row.currency)}</b>
                   </div>
                 </div>
+                {row.job_allocations!.job_allocation_adjustments.length > 0 && (
+                  <div className="mt-3 space-y-1 border-t pt-3 text-xs text-slate-500">
+                    {row.job_allocations!.job_allocation_adjustments.map((a) => (
+                      <div key={a.id} className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
+                        <span>
+                          {a.reason ?? "Booking update adjustment"} · {formatDateTime(a.created_at)}
+                        </span>
+                        <b className={a.amount < 0 ? "text-red-600" : "text-slate-700"}>
+                          {a.amount > 0 ? "+" : ""}
+                          {money(a.amount, row.currency)}
+                        </b>
+                      </div>
+                    ))}
+                  </div>
+                )}
                 {(row.job_allocations?.supplier_payments?.length ?? 0) > 0 && (
                   <div className="mt-3 space-y-1 border-t pt-3 text-xs text-slate-500">
                     {row.job_allocations!.supplier_payments.map((p) => (

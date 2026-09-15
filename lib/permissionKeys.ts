@@ -42,6 +42,7 @@ export const PERMISSIONS = {
   BOOKINGS_VIEW: "bookings.view",
   BOOKINGS_EDIT: "bookings.edit",
   BOOKINGS_CANCEL: "bookings.cancel",
+  BOOKINGS_AMEND: "bookings.amend",
   DISPATCH_SEND_MANUAL: "dispatch.send_manual",
   DISPATCH_USE_ASSISTED: "dispatch.use_assisted",
   DISPATCH_USE_AUTOMATIC: "dispatch.use_automatic",

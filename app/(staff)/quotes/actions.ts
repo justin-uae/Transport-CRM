@@ -111,7 +111,7 @@ export async function verifyBankTransferAction(paymentId: string) {
   const { data: payment } = await supabase
     .from("customer_payments")
     .select(
-      "id, quote_id, amount, method, verification_status, quotes(id, tenant_id, brand_id, customer_id, enquiry_id, quote_number, public_token, currency, brands(invoice_number_prefix), quote_versions!quotes_current_version_id_fkey(selling_price, deposit_percentage))",
+      "id, quote_id, amount, method, verification_status, quotes(id, tenant_id, brand_id, customer_id, enquiry_id, quote_number, public_token, currency, invoice_number, brands(invoice_number_prefix), quote_versions!quotes_current_version_id_fkey(selling_price, deposit_percentage))",
     )
     .eq("id", paymentId)
     .single();
@@ -136,6 +136,7 @@ export async function verifyBankTransferAction(paymentId: string) {
     quote_number: string;
     public_token: string;
     currency: string;
+    invoice_number: string | null;
     brands: { invoice_number_prefix: string } | null;
     quote_versions: { selling_price: number; deposit_percentage: number | null } | null;
   } | null;
@@ -150,6 +151,7 @@ export async function verifyBankTransferAction(paymentId: string) {
     quote_number: quote.quote_number,
     public_token: quote.public_token,
     currency: quote.currency,
+    invoiceNumber: quote.invoice_number,
     brands: quote.brands,
     version: quote.quote_versions,
     recordedBy: actor.id,
@@ -411,6 +413,460 @@ export async function cancelBookingAction(quoteId: string, reason: string) {
   revalidatePath("/dispatch");
   revalidatePath(`/quotes/${quoteId}`);
   return { error: null };
+}
+
+// Editable at any stage of its life — draft through paid — right up until
+// the job is completed (every allocation marked done by its supplier) or
+// the booking itself has reached a dead end. Not gated on payment status:
+// the user was explicit that a lead/booking should stay editable regardless
+// of whether it's been paid, only closing off once there's nothing left to
+// edit towards.
+const UNEDITABLE_QUOTE_STATUSES = ["rejected", "expired", "cancelled"];
+
+function round2(n: number) {
+  return Math.round(n * 100) / 100;
+}
+
+interface AmendBookingLegChange {
+  pickupAddress?: string;
+  destinationAddress?: string;
+  pickupDate?: string | null;
+  pickupTime?: string | null;
+  passengerCount?: number | null;
+  luggageCount?: number | null;
+}
+
+export interface AmendBookingInput {
+  reason: string;
+  /** Which leg to edit, when there's more than one — defaults to sequence 1. */
+  legId?: string;
+  legChanges?: AmendBookingLegChange;
+  /** Signed — positive charges the customer more, negative credits them (and auto-refunds any resulting overpayment). */
+  priceAdjustment?: number | null;
+  /** Signed — positive means the supplier is owed more, negative means less/a refund is owed back from them. */
+  supplierAdjustment?: { amount: number; note: string } | null;
+}
+
+/**
+ * Post-payment booking amendment — lets a Master Admin or the enquiry's
+ * assigned owner edit an already-accepted/paid booking's journey details,
+ * and optionally charge/credit the customer and/or adjust the supplier's
+ * payout, all under one required reason. See
+ * supabase/migrations/0067_booking_amendments.sql for the full design
+ * rationale (why a new quote_versions row for a price change, why
+ * job_allocation_adjustments is a ledger rather than an agreed_cost edit).
+ */
+export async function amendBookingAction(quoteId: string, input: AmendBookingInput) {
+  const actor = await requireProfile();
+  const reason = input.reason.trim();
+  if (!reason) return { error: "A reason is required to edit a booking." };
+
+  const hasLegChange = !!input.legChanges && Object.keys(input.legChanges).length > 0;
+  const hasPriceAdjustment = !!input.priceAdjustment;
+  const hasSupplierAdjustment = !!input.supplierAdjustment && input.supplierAdjustment.amount !== 0;
+  if (!hasLegChange && !hasPriceAdjustment && !hasSupplierAdjustment) {
+    return { error: "Change at least one journey detail, or enter a customer or supplier amount." };
+  }
+
+  const supabase = await createClient();
+
+  const { data: quoteRaw } = await supabase
+    .from("quotes")
+    .select(
+      "id, tenant_id, brand_id, customer_id, enquiry_id, status, quote_number, public_token, currency, invoice_number, " +
+        "brands(name, invoice_number_prefix), customers(contact_name, company_name, email), " +
+        "enquiries(assigned_user_id), " +
+        "quote_versions!quotes_current_version_id_fkey(id, version_number, vehicle_type_id, vehicle_description, supplier_estimated_cost, selling_price, currency, payment_methods, customer_notes, terms_snapshot, brand_snapshot, deposit_percentage, deposit_fixed_amount, quote_line_items(sequence, description, amount, category)), " +
+        "customer_payments(amount, verification_status)",
+    )
+    .eq("id", quoteId)
+    .single();
+  if (!quoteRaw) return { error: "Quote not found." };
+
+  const quote = quoteRaw as unknown as {
+    id: string;
+    tenant_id: string;
+    brand_id: string;
+    customer_id: string;
+    enquiry_id: string;
+    status: string;
+    quote_number: string;
+    public_token: string;
+    currency: string;
+    invoice_number: string | null;
+    brands: { name: string; invoice_number_prefix: string } | null;
+    customers: { contact_name: string; company_name: string | null; email: string | null } | null;
+    enquiries: { assigned_user_id: string | null } | null;
+    quote_versions: {
+      id: string;
+      version_number: number;
+      vehicle_type_id: string | null;
+      vehicle_description: string | null;
+      supplier_estimated_cost: number | null;
+      selling_price: number;
+      currency: string;
+      payment_methods: unknown;
+      customer_notes: string | null;
+      terms_snapshot: string | null;
+      brand_snapshot: unknown;
+      deposit_percentage: number | null;
+      deposit_fixed_amount: number | null;
+      quote_line_items: { sequence: number; description: string; amount: number; category: string }[];
+    } | null;
+    customer_payments: { amount: number; verification_status: string }[];
+  };
+
+  if (quote.tenant_id !== actor.tenant_id) return { error: "Quote not found." };
+  if (UNEDITABLE_QUOTE_STATUSES.includes(quote.status)) {
+    return { error: "A rejected, expired, or cancelled booking can no longer be edited." };
+  }
+
+  const isOwner = quote.enquiries?.assigned_user_id === actor.id;
+  const allowedToAmend = actor.is_master_admin || ((await hasPermission(actor, PERMISSIONS.BOOKINGS_AMEND)) && isOwner);
+  if (!allowedToAmend) {
+    return { error: "Only a Master Admin or this booking's owner can edit it." };
+  }
+
+  const version = quote.quote_versions;
+  if (hasPriceAdjustment && !version) return { error: "This quote has no priced version." };
+
+  const { data: job } = await supabase.from("jobs").select("id, status").eq("quote_id", quoteId).maybeSingle();
+  // recalc_job_status rolls jobs.status up to 'completed' only once every
+  // allocation on the booking has been marked done by its supplier — that's
+  // the one hard stop on editing, everything earlier in the lifecycle stays open.
+  if (job?.status === "completed") {
+    return { error: "This job has been completed and can no longer be edited." };
+  }
+
+  let allocationId: string | null = null;
+  let supplierId: string | null = null;
+  if (job && (hasLegChange || hasSupplierAdjustment)) {
+    const { data: allocation } = await supabase
+      .from("job_allocations")
+      .select("id, assigned_supplier_id")
+      .eq("job_id", job.id)
+      .not("status", "in", "(cancelled)")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    allocationId = allocation?.id ?? null;
+    supplierId = allocation?.assigned_supplier_id ?? null;
+  }
+  if (hasSupplierAdjustment && !allocationId) {
+    return { error: "There's no active supplier allocation on this job to adjust." };
+  }
+
+  // ---- Journey changes ---------------------------------------------------
+  const changes: Record<string, { from: unknown; to: unknown }> = {};
+
+  if (hasLegChange) {
+    const legQuery = supabase
+      .from("enquiry_legs")
+      .select("id, pickup_address, destination_address, pickup_date, pickup_time, passenger_count, luggage_count")
+      .eq("enquiry_id", quote.enquiry_id);
+    const { data: leg } = input.legId ? await legQuery.eq("id", input.legId).maybeSingle() : await legQuery.eq("sequence", 1).maybeSingle();
+    if (!leg) return { error: "Journey leg not found." };
+
+    const legUpdate: Record<string, unknown> = {};
+    const lc = input.legChanges!;
+    if (lc.pickupAddress !== undefined && lc.pickupAddress !== leg.pickup_address) {
+      changes.pickup_address = { from: leg.pickup_address, to: lc.pickupAddress };
+      legUpdate.pickup_address = lc.pickupAddress;
+    }
+    if (lc.destinationAddress !== undefined && lc.destinationAddress !== leg.destination_address) {
+      changes.destination_address = { from: leg.destination_address, to: lc.destinationAddress };
+      legUpdate.destination_address = lc.destinationAddress;
+    }
+    if (lc.pickupDate !== undefined && lc.pickupDate !== leg.pickup_date) {
+      changes.pickup_date = { from: leg.pickup_date, to: lc.pickupDate };
+      legUpdate.pickup_date = lc.pickupDate;
+    }
+    if (lc.pickupTime !== undefined && lc.pickupTime !== leg.pickup_time) {
+      changes.pickup_time = { from: leg.pickup_time, to: lc.pickupTime };
+      legUpdate.pickup_time = lc.pickupTime;
+    }
+    if (lc.passengerCount !== undefined && lc.passengerCount !== leg.passenger_count) {
+      changes.passenger_count = { from: leg.passenger_count, to: lc.passengerCount };
+      legUpdate.passenger_count = lc.passengerCount;
+    }
+    if (lc.luggageCount !== undefined && lc.luggageCount !== leg.luggage_count) {
+      changes.luggage_count = { from: leg.luggage_count, to: lc.luggageCount };
+      legUpdate.luggage_count = lc.luggageCount;
+    }
+
+    if (Object.keys(legUpdate).length > 0) {
+      const { error: legError } = await supabase.from("enquiry_legs").update(legUpdate).eq("id", leg.id);
+      if (legError) return { error: legError.message };
+    }
+  }
+
+  // ---- Price adjustment (new quote_versions row) -------------------------
+  let newVersionId: string | null = null;
+  let newSellingPrice: number | null = null;
+  let refundId: string | null = null;
+  let newStatus = quote.status;
+
+  if (hasPriceAdjustment && version) {
+    const adjustment = round2(input.priceAdjustment!);
+    newSellingPrice = round2(version.selling_price + adjustment);
+    if (newSellingPrice < 0) return { error: "This adjustment would make the price negative." };
+
+    const { data: maxVersion } = await supabase
+      .from("quote_versions")
+      .select("version_number")
+      .eq("quote_id", quoteId)
+      .order("version_number", { ascending: false })
+      .limit(1)
+      .single();
+    const nextVersionNumber = (maxVersion?.version_number ?? version.version_number) + 1;
+
+    const { data: newVersion, error: versionError } = await supabase
+      .from("quote_versions")
+      .insert({
+        quote_id: quoteId,
+        version_number: nextVersionNumber,
+        vehicle_type_id: version.vehicle_type_id,
+        vehicle_description: version.vehicle_description,
+        supplier_estimated_cost: version.supplier_estimated_cost,
+        selling_price: newSellingPrice,
+        currency: version.currency,
+        payment_methods: version.payment_methods,
+        customer_notes: version.customer_notes,
+        terms_snapshot: version.terms_snapshot,
+        brand_snapshot: version.brand_snapshot,
+        // Deposit terms deliberately not carried forward — after an
+        // amendment the new balance is simply "pay the new total", so a
+        // stale deposit_percentage from the original version can't end up
+        // hiding it (see the migration's comment).
+        deposit_percentage: null,
+        deposit_fixed_amount: null,
+        created_by: actor.id,
+      })
+      .select("id")
+      .single();
+    if (versionError || !newVersion) return { error: versionError?.message ?? "Could not create the new version." };
+    newVersionId = newVersion.id;
+
+    // Carries the old itemisation forward plus one new line for the
+    // amendment itself, so the invoice still reads as a full breakdown
+    // instead of losing its history.
+    const carriedItems = (version.quote_line_items ?? []).map((li) => ({
+      tenant_id: actor.tenant_id,
+      quote_version_id: newVersionId,
+      sequence: li.sequence,
+      description: li.description,
+      amount: li.amount,
+      category: li.category,
+    }));
+    const nextSequence = carriedItems.length > 0 ? Math.max(...carriedItems.map((i) => i.sequence)) + 1 : 1;
+    await supabase.from("quote_line_items").insert([
+      ...carriedItems,
+      {
+        tenant_id: actor.tenant_id,
+        quote_version_id: newVersionId,
+        sequence: nextSequence,
+        description: `Booking update: ${reason}`.slice(0, 200),
+        amount: adjustment,
+        category: "other",
+      },
+    ]);
+
+    const { error: quoteVersionUpdateError } = await supabase.from("quotes").update({ current_version_id: newVersionId }).eq("id", quoteId);
+    if (quoteVersionUpdateError) return { error: quoteVersionUpdateError.message };
+
+    changes.selling_price = { from: version.selling_price, to: newSellingPrice };
+
+    const totalPaidVerified = round2(
+      quote.customer_payments.filter((p) => p.verification_status === "verified").reduce((sum, p) => sum + Number(p.amount), 0),
+    );
+    const newBalance = round2(newSellingPrice - totalPaidVerified);
+
+    if (newBalance > 0.01 && quote.status === "paid") {
+      newStatus = "partially_paid";
+      await supabase.from("quotes").update({ status: "partially_paid" }).eq("id", quoteId);
+      await supabase.from("quote_events").insert({ quote_id: quoteId, event: "partially_paid" });
+    } else if (newBalance <= 0.01 && totalPaidVerified > 0 && adjustment < 0) {
+      // The reduction leaves the customer having paid more than the new
+      // total — record it as a pending refund via the same table/flow
+      // cancelBookingAction already uses, rather than inventing a second one.
+      const overpaid = round2(totalPaidVerified - newSellingPrice);
+      if (overpaid > 0.01) {
+        const { data: refund } = await supabase
+          .from("refunds")
+          .insert({
+            tenant_id: actor.tenant_id,
+            quote_id: quoteId,
+            amount: overpaid,
+            currency: quote.currency,
+            reason: `Booking update: ${reason}`,
+            requested_by: actor.id,
+          })
+          .select("id")
+          .single();
+        refundId = refund?.id ?? null;
+      }
+    }
+  }
+
+  // ---- Supplier adjustment -------------------------------------------------
+  if (hasSupplierAdjustment && allocationId) {
+    const { error: adjError } = await supabase.from("job_allocation_adjustments").insert({
+      tenant_id: actor.tenant_id,
+      job_allocation_id: allocationId,
+      amount: round2(input.supplierAdjustment!.amount),
+      reason: input.supplierAdjustment!.note?.trim() || reason,
+      created_by: actor.id,
+    });
+    if (adjError) return { error: adjError.message };
+  }
+
+  // ---- Amendment record ----------------------------------------------------
+  const { data: amendment } = await supabase
+    .from("booking_amendments")
+    .insert({
+      tenant_id: actor.tenant_id,
+      quote_id: quoteId,
+      job_id: job?.id ?? null,
+      job_allocation_id: allocationId,
+      created_by: actor.id,
+      reason,
+      changes,
+      previous_quote_version_id: version?.id ?? null,
+      new_quote_version_id: newVersionId,
+      customer_charge_amount: hasPriceAdjustment ? input.priceAdjustment : null,
+      customer_charge_currency: hasPriceAdjustment ? quote.currency : null,
+      refund_id: refundId,
+      supplier_adjustment_amount: hasSupplierAdjustment ? input.supplierAdjustment!.amount : null,
+      supplier_adjustment_note: hasSupplierAdjustment ? input.supplierAdjustment!.note : null,
+    })
+    .select("id")
+    .single();
+
+  await recordAudit({
+    tenantId: actor.tenant_id,
+    actorId: actor.id,
+    action: "booking_amended",
+    entityType: "quote",
+    entityId: quoteId,
+    previousValue: { status: quote.status },
+    newValue: { status: newStatus, changes },
+    reason,
+  });
+
+  // ---- Notifications ---------------------------------------------------
+  const changesSummary = Object.entries(changes)
+    .filter(([key]) => key !== "selling_price")
+    .map(([key, { from, to }]) => `${key.replaceAll("_", " ")}: ${from ?? "—"} → ${to ?? "—"}`)
+    .join("<br />");
+
+  const customer = quote.customers;
+  const brand = quote.brands;
+  // Surfaced to the caller as a non-blocking warning — the edit itself has
+  // already been saved by this point, so a mail failure shouldn't look like
+  // the whole action failed, but it also shouldn't be invisible (previously
+  // it was: swallowed with no logging and no way for staff to know a
+  // customer/supplier never actually heard about the change).
+  let notifyWarning: string | null = null;
+  let notifiedCustomerAt: string | null = null;
+  // A draft has never been sent to the customer — they don't know this
+  // quote exists yet, so an "updated" email would be news to them for the
+  // wrong reason. Notify only once they've actually seen/acted on it.
+  if ((hasLegChange || hasPriceAdjustment) && customer?.email && quote.status !== "draft") {
+    const totalPaidVerifiedNow = round2(
+      quote.customer_payments.filter((p) => p.verification_status === "verified").reduce((sum, p) => sum + Number(p.amount), 0),
+    );
+    const newBalanceForEmail = Math.max(0, round2((newSellingPrice ?? version?.selling_price ?? 0) - totalPaidVerifiedNow));
+
+    const invoicePdf = await generateInvoicePdf(supabase, quoteId).catch(() => null);
+    if (invoicePdf && quote.invoice_number) {
+      await persistGeneratedPdf(supabase, {
+        tenantId: actor.tenant_id,
+        uploadedBy: actor.id,
+        docType: "invoice",
+        label: `Invoice ${quote.invoice_number} (updated)`,
+        fileName: `${quote.invoice_number}.pdf`,
+        quoteId,
+        pdf: invoicePdf,
+      });
+    }
+
+    const result = await renderAndSendTemplate(supabase, {
+      tenantId: actor.tenant_id,
+      key: "booking_amended",
+      to: customer.email,
+      variables: {
+        customer_name: customer.company_name || customer.contact_name || "Customer",
+        quote_number: quote.quote_number,
+        brand_name: brand?.name ?? "",
+        reason,
+        changes_summary: changesSummary,
+        currency: quote.currency,
+        adjustment_amount: hasPriceAdjustment ? Number(input.priceAdjustment).toFixed(2) : "0.00",
+        new_balance: newBalanceForEmail.toFixed(2),
+        link: `${process.env.NEXT_PUBLIC_APP_URL ?? ""}/q/${quote.public_token}`,
+      },
+      attachments:
+        invoicePdf && quote.invoice_number
+          ? [{ filename: `${quote.invoice_number}.pdf`, content: invoicePdf, contentType: "application/pdf" }]
+          : undefined,
+      senderId: actor.id,
+    });
+    if (!result.error) {
+      notifiedCustomerAt = new Date().toISOString();
+    } else {
+      console.error(`amendBookingAction: failed to email customer for quote ${quoteId}: ${result.error}`);
+      notifyWarning = `The change was saved, but the customer couldn't be emailed: ${result.error}`;
+    }
+  }
+
+  let notifiedSupplierAt: string | null = null;
+  if ((hasLegChange || hasSupplierAdjustment) && supplierId) {
+    const { data: supplier } = await supabase.from("suppliers").select("name, email").eq("id", supplierId).maybeSingle();
+    if (supplier?.email) {
+      const payoutNote = hasSupplierAdjustment
+        ? `Your payout has been adjusted by ${quote.currency} ${Number(input.supplierAdjustment!.amount).toFixed(2)}.`
+        : "";
+      const result = await renderAndSendTemplate(supabase, {
+        tenantId: actor.tenant_id,
+        key: "job_amended",
+        to: supplier.email,
+        variables: {
+          supplier_name: supplier.name,
+          quote_number: quote.quote_number,
+          brand_name: brand?.name ?? "",
+          reason,
+          changes_summary: changesSummary,
+          payout_note: payoutNote,
+          link: `${process.env.NEXT_PUBLIC_APP_URL ?? ""}/supplier/dashboard`,
+        },
+      });
+      if (!result.error) {
+        notifiedSupplierAt = new Date().toISOString();
+      } else {
+        console.error(`amendBookingAction: failed to email supplier for quote ${quoteId}: ${result.error}`);
+        notifyWarning = notifyWarning
+          ? `${notifyWarning} The supplier couldn't be emailed either: ${result.error}`
+          : `The change was saved, but the supplier couldn't be emailed: ${result.error}`;
+      }
+    }
+  }
+
+  if (amendment?.id && (notifiedCustomerAt || notifiedSupplierAt)) {
+    await supabase
+      .from("booking_amendments")
+      .update({ customer_notified_at: notifiedCustomerAt, supplier_notified_at: notifiedSupplierAt })
+      .eq("id", amendment.id);
+  }
+
+  revalidatePath("/quotes");
+  revalidatePath(`/quotes/${quoteId}`);
+  revalidatePath("/bookings");
+  revalidatePath("/dispatch");
+  if (job?.id) revalidatePath(`/dispatch/${job.id}`);
+  revalidatePath("/accounting/customer-payments");
+  revalidatePath("/accounting/supplier-payments");
+
+  return { error: null, warning: notifyWarning };
 }
 
 /** Finance confirms a cancellation's pending refund has actually been paid out. */

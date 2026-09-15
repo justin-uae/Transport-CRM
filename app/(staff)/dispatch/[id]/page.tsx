@@ -4,17 +4,18 @@ import { createClient } from "@/lib/supabase/server";
 import { hasPermission, PERMISSIONS } from "@/lib/permissions";
 import { DispatchJobDetail, type JobDetailRow, type JobAllocationRow } from "@/components/pages/DispatchJobDetail";
 import type { SupplierOption } from "@/components/pages/DispatchBoard";
+import type { BookingEditRecord } from "@/components/pages/BookingEditHistory";
 
 export default async function DispatchJobDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const actor = await requireProfile();
   const supabase = await createClient();
 
-  const [{ data: job }, { data: allocations }, { data: suppliers }, canTransfer, canDispatchManual] = await Promise.all([
+  const [{ data: job }, { data: allocations }, { data: suppliers }, canTransfer, canDispatchManual, canEditBookingPermission, { data: amendmentsRaw }] = await Promise.all([
     supabase
       .from("jobs")
       .select(
-        "id, status, region, created_at, created_by, quotes(quote_number, currency, customers(company_name, contact_name, phone, email), enquiries(enquiry_legs(id, sequence, journey_type, pickup_address, destination_address, via_points, pickup_date, pickup_time, return_date, return_time, passenger_count, luggage_count, wheelchair_required, child_seats, special_requirements, vehicle_types(name))), quote_versions!quotes_current_version_id_fkey(selling_price, supplier_estimated_cost))",
+        "id, status, region, created_at, created_by, quotes(id, status, quote_number, currency, customers(company_name, contact_name, phone, email), enquiries(assigned_user_id, enquiry_legs(id, sequence, journey_type, pickup_address, destination_address, via_points, pickup_date, pickup_time, return_date, return_time, passenger_count, luggage_count, wheelchair_required, child_seats, special_requirements, vehicle_types(name))), quote_versions!quotes_current_version_id_fkey(selling_price, supplier_estimated_cost))",
       )
       .eq("id", id)
       .single(),
@@ -28,14 +29,26 @@ export default async function DispatchJobDetailPage({ params }: { params: Promis
     supabase.from("suppliers").select("id, name, region").eq("status", "approved").order("name"),
     hasPermission(actor, PERMISSIONS.DISPATCH_TRANSFER_SUPPLIER_INVOICE),
     hasPermission(actor, PERMISSIONS.DISPATCH_SEND_MANUAL),
+    hasPermission(actor, PERMISSIONS.BOOKINGS_AMEND),
+    supabase
+      .from("booking_amendments")
+      .select("id, reason, changes, customer_charge_amount, supplier_adjustment_amount, created_at, profiles(full_name)")
+      .eq("job_id", id)
+      .order("created_at", { ascending: false }),
   ]);
 
   if (!job) notFound();
+  const jobRow = job as unknown as JobDetailRow;
 
   // Mirrors canDispatch() in app/(staff)/dispatch/actions.ts — owning the
   // job (it was created from a quote this user handled) is enough even
   // without the blanket dispatch.send_manual permission.
   const canDispatchJobs = job.created_by === actor.id || canDispatchManual;
+
+  // Mirrors the same check on the Quote detail page — Master Admin, or the
+  // enquiry's assigned owner with bookings.amend.
+  const canEditBooking =
+    actor.is_master_admin || (canEditBookingPermission && jobRow.quotes?.enquiries?.assigned_user_id === actor.id);
 
   const allocationRows = (allocations ?? []) as unknown as JobAllocationRow[];
   const invoiceUrls: Record<string, string | null> = {};
@@ -51,12 +64,14 @@ export default async function DispatchJobDetailPage({ params }: { params: Promis
 
   return (
     <DispatchJobDetail
-      job={job as unknown as JobDetailRow}
+      job={jobRow}
       allocations={allocationRows}
       invoiceUrls={invoiceUrls}
       suppliers={(suppliers ?? []) as unknown as SupplierOption[]}
       canTransferInvoice={canTransfer}
       canDispatchJobs={canDispatchJobs}
+      canEditBooking={canEditBooking}
+      amendments={(amendmentsRaw ?? []) as unknown as BookingEditRecord[]}
     />
   );
 }

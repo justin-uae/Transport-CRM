@@ -9,7 +9,8 @@ import {
   cancelBookingAction,
   processRefundAction,
 } from "@/app/(staff)/quotes/actions";
-import type { QuoteStatus, Refund } from "@/lib/supabase/database.types";
+import { EditBookingButton, type EditableLeg } from "@/components/pages/EditBookingButton";
+import type { QuoteStatus, JobStatus, Refund } from "@/lib/supabase/database.types";
 
 interface QuoteSummary {
   id: string;
@@ -21,6 +22,8 @@ interface QuoteSummary {
   customerLabel: string;
   sellingPrice: number | null;
 }
+
+export type AmendableLeg = EditableLeg;
 
 function money(amount: number | null, currency: string) {
   if (amount === null) return "—";
@@ -41,11 +44,17 @@ export function QuoteDetailActions({
   quote,
   canCancel,
   canProcessRefunds,
+  canAmend,
+  currentLeg,
+  jobStatus,
   refunds,
 }: {
   quote: QuoteSummary;
   canCancel: boolean;
   canProcessRefunds: boolean;
+  canAmend: boolean;
+  currentLeg: AmendableLeg | null;
+  jobStatus: JobStatus | null;
   refunds: Refund[];
 }) {
   const notify = useToast();
@@ -135,6 +144,14 @@ export function QuoteDetailActions({
           {pending ? "Sending…" : "Resend Quote Email"}
         </button>
       )}
+      <EditBookingButton
+        quoteId={quote.id}
+        quoteStatus={quote.status}
+        jobStatus={jobStatus}
+        currency={quote.currency}
+        canEdit={canAmend}
+        currentLeg={currentLeg}
+      />
       {canCancel && CANCELLABLE.includes(quote.status) && (
         <button
           onClick={() => setCancelOpen(true)}

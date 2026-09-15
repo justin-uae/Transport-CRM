@@ -46,7 +46,7 @@ export async function recordCustomerPayment(
   const { data: quote } = await supabase
     .from("quotes")
     .select(
-      "id, tenant_id, brand_id, customer_id, enquiry_id, status, quote_number, public_token, currency, brands(invoice_number_prefix), quote_versions!quotes_current_version_id_fkey(selling_price, deposit_percentage)",
+      "id, tenant_id, brand_id, customer_id, enquiry_id, status, quote_number, public_token, currency, invoice_number, brands(invoice_number_prefix), quote_versions!quotes_current_version_id_fkey(selling_price, deposit_percentage)",
     )
     .eq("id", input.quoteId)
     .single();
@@ -101,6 +101,7 @@ export async function recordCustomerPayment(
     quote_number: quote.quote_number,
     public_token: quote.public_token,
     currency: quote.currency,
+    invoiceNumber: quote.invoice_number,
     brands: quote.brands as unknown as { invoice_number_prefix: string } | null,
     version,
     recordedBy: input.recordedBy ?? null,
@@ -117,6 +118,11 @@ interface QuoteForFinalize {
   quote_number: string;
   public_token: string;
   currency: string;
+  /** Already set once a quote has been invoiced before — an amendment can
+      send a quote back through this function a second time (paid ->
+      partially_paid -> paid again), and it must keep the SAME invoice
+      number rather than issuing a new one and orphaning the first. */
+  invoiceNumber: string | null;
   brands: { invoice_number_prefix: string } | null;
   version: VersionForDue;
   recordedBy: string | null;
@@ -182,12 +188,16 @@ export async function finalizeQuoteFromVerifiedPayments(
   // was somehow finalized once before, so guard against a duplicate insert.
   const { data: existingJob } = await supabase.from("jobs").select("id").eq("quote_id", quote.id).maybeSingle();
 
-  const { data: invoiceNumber, error: numberError } = await supabase.rpc("next_document_number", {
-    p_brand_id: quote.brand_id,
-    p_doc_type: "invoice",
-    p_prefix: quote.brands?.invoice_number_prefix ?? "INV",
-  });
-  if (numberError || !invoiceNumber) return { error: numberError?.message ?? "Could not generate an invoice number.", status: null };
+  let invoiceNumber = quote.invoiceNumber;
+  if (!invoiceNumber) {
+    const { data, error: numberError } = await supabase.rpc("next_document_number", {
+      p_brand_id: quote.brand_id,
+      p_doc_type: "invoice",
+      p_prefix: quote.brands?.invoice_number_prefix ?? "INV",
+    });
+    if (numberError || !data) return { error: numberError?.message ?? "Could not generate an invoice number.", status: null };
+    invoiceNumber = data;
+  }
 
   const { error: updateError } = await supabase
     .from("quotes")

@@ -21,8 +21,10 @@ import {
   updateAllocationTermsAction,
 } from "@/app/(staff)/dispatch/actions";
 import { JourneyLegDetail, type JourneyLeg } from "@/components/pages/JourneyLegDetail";
+import { EditBookingButton, type EditableLeg } from "@/components/pages/EditBookingButton";
+import { BookingEditHistory, type BookingEditRecord } from "@/components/pages/BookingEditHistory";
 import { formatDateTime, formatDateAndTime } from "@/lib/formatDate";
-import type { JobOfferStatus, JobStatus, JobSupplierInvoice, SupplierPaymentStatus } from "@/lib/supabase/database.types";
+import type { JobOfferStatus, JobStatus, JobSupplierInvoice, SupplierPaymentStatus, QuoteStatus } from "@/lib/supabase/database.types";
 import type { SupplierOption } from "@/components/pages/DispatchBoard";
 
 type DispatchLeg = JourneyLeg & { id: string };
@@ -33,10 +35,12 @@ export interface JobDetailRow {
   region: string | null;
   created_at: string;
   quotes: {
+    id: string;
+    status: QuoteStatus;
     quote_number: string;
     currency: string;
     customers: { company_name: string | null; contact_name: string; phone: string | null; email: string | null } | null;
-    enquiries: { enquiry_legs: DispatchLeg[] } | null;
+    enquiries: { assigned_user_id: string | null; enquiry_legs: DispatchLeg[] } | null;
     quote_versions: { selling_price: number; supplier_estimated_cost: number | null } | null;
   } | null;
 }
@@ -576,6 +580,8 @@ export function DispatchJobDetail({
   suppliers,
   canTransferInvoice,
   canDispatchJobs,
+  canEditBooking,
+  amendments,
 }: {
   job: JobDetailRow;
   allocations: JobAllocationRow[];
@@ -583,6 +589,8 @@ export function DispatchJobDetail({
   suppliers: SupplierOption[];
   canTransferInvoice: boolean;
   canDispatchJobs: boolean;
+  canEditBooking: boolean;
+  amendments: BookingEditRecord[];
 }) {
   const router = useRouter();
   const notify = useToast();
@@ -604,6 +612,18 @@ export function DispatchJobDetail({
   const legs = [...(job.quotes?.enquiries?.enquiry_legs ?? [])].sort((a, b) => a.sequence - b.sequence);
   const customer = job.quotes?.customers;
   const currency = job.quotes?.currency ?? "EUR";
+
+  const firstLeg = legs[0] ?? null;
+  const currentLeg: EditableLeg | null = firstLeg
+    ? {
+        pickupAddress: firstLeg.pickup_address,
+        destinationAddress: firstLeg.destination_address,
+        pickupDate: firstLeg.pickup_date,
+        pickupTime: firstLeg.pickup_time,
+        passengerCount: firstLeg.passenger_count,
+        luggageCount: firstLeg.luggage_count,
+      }
+    : null;
 
   const claimedLegIds = useMemo(
     () => new Set(allocations.flatMap((a) => a.job_allocation_legs.map((l) => l.enquiry_leg_id))),
@@ -648,7 +668,20 @@ export function DispatchJobDetail({
       <div className="grid gap-5 lg:grid-cols-3">
         <div className="space-y-5 lg:col-span-2">
           <Panel>
-            <SectionTitle title="Journey" sub={legs.length > 1 ? `${legs.length} legs` : "Pickup, destination and passenger details"} />
+            <div className="flex flex-wrap items-start justify-between gap-2">
+              <SectionTitle title="Journey" sub={legs.length > 1 ? `${legs.length} legs` : "Pickup, destination and passenger details"} />
+              {job.quotes && (
+                <EditBookingButton
+                  quoteId={job.quotes.id}
+                  quoteStatus={job.quotes.status}
+                  jobStatus={job.status}
+                  currency={currency}
+                  canEdit={canEditBooking}
+                  currentLeg={currentLeg}
+                  className="shrink-0 rounded-xl border px-3 py-1.5 text-xs font-bold"
+                />
+              )}
+            </div>
             <div className="mt-4">
               {legs.map((leg, i) => {
                 const claimed = claimedLegIds.has(leg.id);
@@ -727,6 +760,8 @@ export function DispatchJobDetail({
               </div>
             )}
           </Panel>
+
+          <BookingEditHistory amendments={amendments} currency={currency} />
 
           <Panel>
             <SectionTitle

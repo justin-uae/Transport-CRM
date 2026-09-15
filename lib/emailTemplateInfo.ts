@@ -14,7 +14,9 @@ export type EmailTemplateKey =
   | "feedback_request"
   | "staff_invited"
   | "supplier_invited"
-  | "payment_received";
+  | "payment_received"
+  | "booking_amended"
+  | "job_amended";
 
 /** Friendly labels + the {{variable}} tokens each template supports — shown as an editing hint in Email Centre -> Templates. */
 export const EMAIL_TEMPLATE_INFO: Record<EmailTemplateKey, { label: string; description: string; variables: string[] }> = {
@@ -88,5 +90,15 @@ export const EMAIL_TEMPLATE_INFO: Record<EmailTemplateKey, { label: string; desc
     label: "Payment received",
     description: "Sent to the customer once a payment is verified/counted (immediately for card payments, after Finance verifies a bank transfer).",
     variables: ["customer_name", "quote_number", "brand_name", "currency", "amount", "balance", "link"],
+  },
+  booking_amended: {
+    label: "Booking updated",
+    description: "Sent to the customer when staff edit an already-accepted/paid booking's journey details or price.",
+    variables: ["customer_name", "quote_number", "brand_name", "reason", "changes_summary", "currency", "adjustment_amount", "new_balance", "link"],
+  },
+  job_amended: {
+    label: "Job updated",
+    description: "Sent to the supplier when staff edit a job's journey details or their payout.",
+    variables: ["supplier_name", "quote_number", "brand_name", "reason", "changes_summary", "payout_note", "link"],
   },
 };
