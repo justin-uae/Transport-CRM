@@ -5,6 +5,8 @@ import { Send, TriangleAlert } from "lucide-react";
 import clsx from "clsx";
 import { createClient } from "@/lib/supabase/client";
 import { PageHead } from "@/components/ui/PageHead";
+import { PageGuide } from "@/components/ui/PageGuide";
+import { WhatsAppDiagram } from "@/components/ui/guide-diagrams/WhatsAppDiagram";
 import { useToast } from "@/components/ui/Toast";
 import { formatDateTime } from "@/lib/formatDate";
 import { sendWhatsAppReplyAction } from "@/app/(staff)/whatsapp/actions";
@@ -172,7 +174,38 @@ export function WhatsAppInboxPage({
 
   return (
     <div>
-      <PageHead eyebrow="Communications" title="WhatsApp" text="Conversations synced from your connected WhatsApp number." />
+      <PageHead
+        eyebrow="Communications"
+        title="WhatsApp"
+        text="Conversations synced from your connected WhatsApp number."
+        action={
+          <PageGuide
+            title="WhatsApp"
+            subtitle="Every conversation from your connected WhatsApp Business number."
+            screenshot={<WhatsAppDiagram />}
+            sections={[
+              {
+                heading: "What this page is",
+                body: [
+                  "A synced log of every inbound and outbound WhatsApp message on your connected number (via 360dialog) — automated intake prompts and staff-typed replies both show up here, threaded by contact.",
+                ],
+              },
+              {
+                heading: "Replying",
+                body: [
+                  "Pick a conversation on the left, type in the box at the bottom of the thread. New messages — from either side — arrive live without needing to refresh.",
+                ],
+              },
+              {
+                heading: "The 24-hour rule",
+                body: [
+                  "WhatsApp only allows a business to send free-form text within 24 hours of the contact's last message. Reply outside that window and it won't go through — the message still appears in the thread, but in a red \"Not delivered\" bubble with the reason underneath, instead of silently vanishing.",
+                ],
+              },
+            ]}
+          />
+        }
+      />
       <div className="grid gap-5 lg:grid-cols-[320px_1fr]" style={{ height: "calc(100vh - 220px)", minHeight: 480 }}>
         <div className="flex flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white">
           <div className="flex-1 overflow-y-auto">

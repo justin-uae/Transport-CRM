@@ -4,6 +4,8 @@ import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Panel } from "@/components/ui/Panel";
 import { PageHead } from "@/components/ui/PageHead";
+import { PageGuide } from "@/components/ui/PageGuide";
+import { CustomerPaymentsDiagram } from "@/components/ui/guide-diagrams/CustomerPaymentsDiagram";
 import { useToast } from "@/components/ui/Toast";
 import { ConfirmDetailModal } from "@/components/ui/ConfirmDetailModal";
 import { createClient } from "@/lib/supabase/client";
@@ -189,6 +191,36 @@ export function CustomerPaymentsPage({
         eyebrow="Accounting"
         title="Customer Payments"
         text="Quotes the customer has accepted — record deposits, balances and full payments as bank transfers arrive."
+        action={
+          <PageGuide
+            title="Customer Payments"
+            subtitle="Record every deposit and balance as a customer's bank transfer arrives."
+            screenshot={<CustomerPaymentsDiagram />}
+            sections={[
+              {
+                heading: "What this page is",
+                body: [
+                  "Every quote the customer has accepted lands here, waiting on payment. Recording a payment that covers the full balance marks the quote Paid, generates the invoice, and sends the job on to Dispatch — all in one action.",
+                ],
+              },
+              {
+                heading: "The three tabs",
+                bullets: true,
+                body: [
+                  "Awaiting Payment — accepted quotes with a balance still outstanding.",
+                  "Pending Verification — bank transfers a rep has logged that a Finance role still needs to verify before they count toward the balance.",
+                  "Paid — quotes fully settled.",
+                ],
+              },
+              {
+                heading: "Recording a payment",
+                body: [
+                  "Record Payment (or Mark as Paid once it's the final amount) opens a form for the amount and proof of payment — proof is always required. Partial amounts are fine; the remaining balance stays open for next time.",
+                ],
+              },
+            ]}
+          />
+        }
       />
       <div className="mb-4 flex flex-wrap gap-2">
         {(["awaiting", "verify", "paid"] as const).map((t) => (

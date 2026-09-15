@@ -5,6 +5,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Plus, Search, Paperclip, Send, Mail as MailIcon, X, FileText, Loader2 } from "lucide-react";
 import { PageHead } from "@/components/ui/PageHead";
+import { PageGuide } from "@/components/ui/PageGuide";
+import { EmailDiagram } from "@/components/ui/guide-diagrams/EmailDiagram";
 import { useToast } from "@/components/ui/Toast";
 import { sendEmailAction, getEmailAttachmentUrlAction } from "@/app/(staff)/email/mailActions";
 import { createClient } from "@/lib/supabase/client";
@@ -163,15 +165,52 @@ export function EmailCentrePage({
         title="Email Centre"
         text={account ? `Connected as ${account.email_address}` : "Shared inboxes, CRM-linked conversations, templates and AI-assisted replies."}
         action={
-          tab === "inbox" && account ? (
-            <button
-              onClick={() => setComposeOpen(true)}
-              className="flex items-center gap-2 self-start rounded-xl bg-primary-500 px-4 py-3 text-sm font-bold text-white"
-            >
-              <Plus size={17} />
-              Compose
-            </button>
-          ) : undefined
+          <div className="flex shrink-0 flex-wrap items-start gap-2">
+            <PageGuide
+              title="Email Centre"
+              subtitle="A shared, CRM-linked inbox — with templates and a personal signature."
+              screenshot={<EmailDiagram />}
+              sections={[
+                {
+                  heading: "What this page is",
+                  body: [
+                    "Your connected mailbox (IMAP/SMTP, set up by a Master Admin under Settings → Users) synced straight into the CRM — every message is automatically linked to the customer, supplier or quote it relates to where a match is found, so you don't lose context switching out to a separate email client.",
+                  ],
+                },
+                {
+                  heading: "Folders & reading mail",
+                  bullets: true,
+                  body: [
+                    "Inbox / Sent / Archived on the left, same as any mail client.",
+                    "Click a message in the middle list to read it and reply on the right — attachments can be downloaded, and a reply can carry its own attachments too.",
+                  ],
+                },
+                {
+                  heading: "The other two tabs",
+                  bullets: true,
+                  body: [
+                    "Templates — reusable canned replies (visible if you can manage them) so common answers don't get retyped every time.",
+                    "My Signature — your personal sign-off, appended automatically to mail you send from here.",
+                  ],
+                },
+                {
+                  heading: "No mailbox connected?",
+                  body: [
+                    "You'll see a placeholder instead of the inbox until a Master Admin connects your IMAP/SMTP account from Settings → Users — nothing to configure on this page itself.",
+                  ],
+                },
+              ]}
+            />
+            {tab === "inbox" && account ? (
+              <button
+                onClick={() => setComposeOpen(true)}
+                className="flex items-center gap-2 self-start rounded-xl bg-primary-500 px-4 py-3 text-sm font-bold text-white"
+              >
+                <Plus size={17} />
+                Compose
+              </button>
+            ) : undefined}
+          </div>
         }
       />
 

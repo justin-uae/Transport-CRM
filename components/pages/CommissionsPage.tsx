@@ -8,6 +8,8 @@ import { CircleGauge, Clock3, FileCheck2, CheckCircle2 } from "lucide-react";
 import { Panel } from "@/components/ui/Panel";
 import { Kpi } from "@/components/ui/Kpi";
 import { PageHead } from "@/components/ui/PageHead";
+import { PageGuide } from "@/components/ui/PageGuide";
+import { CommissionsDiagram } from "@/components/ui/guide-diagrams/CommissionsDiagram";
 import { SectionTitle } from "@/components/ui/SectionTitle";
 import { SearchInput } from "@/components/ui/SearchInput";
 import { Pagination } from "@/components/ui/Pagination";
@@ -197,6 +199,39 @@ export function CommissionsPage({
         eyebrow="Completed-Job Commission"
         title="Commission management"
         text="Commission becomes payable only after the journey is completed and final costs are approved."
+        action={
+          <PageGuide
+            title="Commission management"
+            subtitle="Sales commission — only payable once a job is complete and costs are locked in."
+            screenshot={<CommissionsDiagram />}
+            sections={[
+              {
+                heading: "What this page is",
+                body: [
+                  "A commission is calculated automatically once a job is completed and its final costs are in — as a percentage of gross profit (selling price minus supplier cost), not the full booking value. Nothing on this page needs a manual calculation.",
+                ],
+              },
+              {
+                heading: "The lifecycle",
+                bullets: true,
+                body: [
+                  "Pending Approval — calculated, waiting for a manager to confirm the margin and amount are correct.",
+                  "Approved — confirmed, waiting to be included in payroll.",
+                  "Paid — included in a payroll run, with an optional reference number.",
+                  "Reversed — a carry-forward adjustment for a dispute or cancellation after approval, kept as a record rather than deleted.",
+                ],
+              },
+              {
+                heading: "Pipeline & Rates",
+                bullets: true,
+                body: [
+                  "Pipeline — jobs still in flight, shown as an estimate only until the job actually completes.",
+                  "Rates — the % of gross profit paid out, with a per-salesperson override on top of the tenant default. Only visible if you manage commissions.",
+                ],
+              },
+            ]}
+          />
+        }
       />
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">

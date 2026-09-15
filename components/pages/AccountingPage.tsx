@@ -7,6 +7,8 @@ import { Landmark, ReceiptText, TrendingUp, Truck, X, AlertTriangle } from "luci
 import { Panel } from "@/components/ui/Panel";
 import { Kpi } from "@/components/ui/Kpi";
 import { PageHead } from "@/components/ui/PageHead";
+import { PageGuide } from "@/components/ui/PageGuide";
+import { AccountingDiagram } from "@/components/ui/guide-diagrams/AccountingDiagram";
 import { SectionTitle } from "@/components/ui/SectionTitle";
 import type { AccountingSummary, AgeBucket } from "@/lib/accountingSummary";
 
@@ -46,6 +48,43 @@ export function AccountingPage({ summary }: { summary: AccountingSummary }) {
         eyebrow="Finance Suite"
         title="Accounting & payment control"
         text="Invoices, bank transfers, supplier costs, reconciliation and group reporting."
+        action={
+          <PageGuide
+            title="Accounting & payment control"
+            subtitle="The finance overview — cash collected, outstanding, margin, and what's owed to suppliers."
+            screenshot={<AccountingDiagram />}
+            sections={[
+              {
+                heading: "What this page is",
+                body: [
+                  "The top-level finance dashboard — a snapshot of where money stands across every quote and job, plus the queue of bank transfers still waiting on a Finance sign-off.",
+                ],
+              },
+              {
+                heading: "The KPI cards",
+                bullets: true,
+                body: [
+                  "Collected revenue — payments received this month.",
+                  "Outstanding — accepted quotes still unpaid, and how many.",
+                  "Gross profit — collected revenue minus supplier cost, with margin %.",
+                  "Supplier payable — what's owed to suppliers on forwarded invoices.",
+                ],
+              },
+              {
+                heading: "Bank transfer verification",
+                body: [
+                  "Quotes waiting on a customer's bank transfer to be confirmed. Review & record jumps straight to Customer Payments to log it — full detail and history live there, this is just the queue.",
+                ],
+              },
+              {
+                heading: "Accounts receivable ageing",
+                body: [
+                  "How long unpaid balances have been outstanding, bucketed from Current up to 61+ days. Click a bar to see exactly which quotes make up that bucket.",
+                ],
+              },
+            ]}
+          />
+        }
       />
       {summary.fxFallbackUsed && (
         <div className="mb-4 flex items-center gap-2 rounded-xl bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-700">

@@ -4,6 +4,8 @@ import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Panel } from "@/components/ui/Panel";
 import { PageHead } from "@/components/ui/PageHead";
+import { PageGuide } from "@/components/ui/PageGuide";
+import { SupplierPaymentsDiagram } from "@/components/ui/guide-diagrams/SupplierPaymentsDiagram";
 import { useToast } from "@/components/ui/Toast";
 import { ConfirmDetailModal } from "@/components/ui/ConfirmDetailModal";
 import { createClient } from "@/lib/supabase/client";
@@ -205,6 +207,36 @@ export function SupplierPaymentsPage({
         eyebrow="Accounting"
         title="Supplier Payments"
         text="Invoices forwarded from Dispatch — pay the supplier by bank transfer outside the system, then record it here (partial payments supported)."
+        action={
+          <PageGuide
+            title="Supplier Payments"
+            subtitle="Invoices forwarded from Dispatch — log what you pay suppliers outside the system."
+            screenshot={<SupplierPaymentsDiagram />}
+            sections={[
+              {
+                heading: "What this page is",
+                body: [
+                  "Once a job is confirmed, Dispatch forwards the supplier's invoice here automatically — there's nothing to upload from this page. Pay the supplier by bank transfer outside the CRM, then record that payment here so the balance stays accurate.",
+                ],
+              },
+              {
+                heading: "Outstanding vs. Paid History",
+                bullets: true,
+                body: [
+                  "Outstanding — invoices with a balance still owed to the supplier.",
+                  "Paid History — invoices fully settled, with every payment against them.",
+                  "Search, filter by supplier, and filter by date (forwarded date on Outstanding, payment date on Paid History) to narrow the list; Export CSV downloads whatever's currently visible.",
+                ],
+              },
+              {
+                heading: "Recording a payment",
+                body: [
+                  "Record Payment takes the amount, an optional bank reference/notes, and proof — proof is only required when the amount fully settles the invoice. Partial payments are supported; the remaining balance stays outstanding.",
+                ],
+              },
+            ]}
+          />
+        }
       />
       <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
         <div className="flex gap-2">
