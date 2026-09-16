@@ -24,7 +24,7 @@ export function WhatsAppDiagram() {
       <Tag x={30} y={82} label="CONVERSATIONS" />
       <rect x={20} y={102} width={210} height={38} fill="#fff7ed" />
       <Text x={30} y={116} size={7.5} weight={800}>
-        Justin KM
+        Farah Al Mansoori
       </Text>
       <Text x={207} y={116} size={6.5} fill={MUTED} anchor="end">
         2:34 PM
@@ -57,10 +57,10 @@ export function WhatsAppDiagram() {
       {/* Thread pane */}
       <Tag x={250} y={82} label="THREAD" />
       <Text x={250} y={106} size={9.5} weight={800}>
-        Justin KM
+        Farah Al Mansoori
       </Text>
       <Text x={250} y={119} size={7.5} fill={MUTED}>
-        971502300557
+        971551234567
       </Text>
       <rect x={250} y={130} width={400} height={1} fill={LINE} />
 

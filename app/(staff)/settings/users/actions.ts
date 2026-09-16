@@ -218,7 +218,11 @@ export async function updateUserStatusAction(userId: string, status: ProfileStat
   revalidatePath("/settings/users");
 }
 
-export async function addUserRegionAction(userId: string, region: string) {
+export async function addUserRegionAction(
+  userId: string,
+  region: string,
+  coords?: { lat: number; lng: number } | null,
+) {
   const actor = await requireUserManager();
   const supabase = await createClient();
 
@@ -230,7 +234,9 @@ export async function addUserRegionAction(userId: string, region: string) {
     return { error: "User not found." };
   }
 
-  const { error } = await supabase.from("user_regions").insert({ user_id: userId, region: trimmed });
+  const { error } = await supabase
+    .from("user_regions")
+    .insert({ user_id: userId, region: trimmed, lat: coords?.lat ?? null, lng: coords?.lng ?? null });
   if (error) {
     return { error: error.message.includes("duplicate") ? "That region is already assigned." : error.message };
   }
@@ -241,7 +247,7 @@ export async function addUserRegionAction(userId: string, region: string) {
     action: "user_region_added",
     entityType: "profile",
     entityId: userId,
-    newValue: { region: trimmed },
+    newValue: { region: trimmed, lat: coords?.lat ?? null, lng: coords?.lng ?? null },
   });
 
   revalidatePath("/settings/users");

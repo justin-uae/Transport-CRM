@@ -146,11 +146,13 @@ export interface UserBrand {
   brand_id: string;
 }
 
-/** A user can cover several regions — matched against lead pickup/destination text for routing. */
+/** A user can cover several regions — matched against lead pickup/destination text for routing. lat/lng are set when the region was added via the map picker; null for older rows added as plain text. */
 export interface UserRegion {
   id: string;
   user_id: string;
   region: string;
+  lat: number | null;
+  lng: number | null;
   created_at: string;
 }
 

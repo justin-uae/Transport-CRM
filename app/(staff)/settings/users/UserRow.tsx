@@ -6,10 +6,10 @@ import { useToast } from "@/components/ui/Toast";
 import {
   updateUserStatusAction,
   updateUserRoleAction,
-  addUserRegionAction,
   removeUserRegionAction,
   resendUserInviteAction,
 } from "./actions";
+import { RegionMapModal, type AllocatedRegion } from "./RegionMapModal";
 import { MailboxBadge, type EmailAccountStatus } from "./EmailAccountForm";
 import type { ProfileStatus } from "@/lib/supabase/database.types";
 
@@ -43,7 +43,7 @@ export interface UserListRow {
   role_id: string | null;
   is_master_admin: boolean;
   brands: { name: string } | null;
-  user_regions: { id: string; region: string }[];
+  user_regions: { id: string; region: string; lat: number | null; lng: number | null }[];
 }
 
 /**
@@ -54,26 +54,7 @@ export interface UserListRow {
 function useUserRowActions(user: UserListRow) {
   const notify = useToast();
   const [pending, startTransition] = useTransition();
-  const [regionInput, setRegionInput] = useState("");
-  const [addingRegion, setAddingRegion] = useState(false);
-
-  function addRegion() {
-    const value = regionInput.trim();
-    if (!value) {
-      setAddingRegion(false);
-      return;
-    }
-    startTransition(async () => {
-      const result = await addUserRegionAction(user.id, value);
-      if (result?.error) {
-        notify(result.error);
-        return;
-      }
-      setRegionInput("");
-      setAddingRegion(false);
-      notify(`Region added for ${user.full_name}`);
-    });
-  }
+  const [regionModalOpen, setRegionModalOpen] = useState(false);
 
   function removeRegion(regionId: string) {
     startTransition(async () => {
@@ -119,7 +100,7 @@ function useUserRowActions(user: UserListRow) {
     });
   }
 
-  return { pending, regionInput, setRegionInput, addingRegion, setAddingRegion, addRegion, removeRegion, changeStatus, changeRole, resendInvite };
+  return { pending, regionModalOpen, setRegionModalOpen, removeRegion, changeStatus, changeRole, resendInvite };
 }
 
 /**
@@ -135,22 +116,18 @@ function RegionEditor({
   user,
   canManage,
   pending,
-  regionInput,
-  setRegionInput,
-  addingRegion,
-  setAddingRegion,
-  addRegion,
+  regionModalOpen,
+  setRegionModalOpen,
   removeRegion,
+  allRegions,
 }: {
   user: UserListRow;
   canManage: boolean;
   pending: boolean;
-  regionInput: string;
-  setRegionInput: (v: string) => void;
-  addingRegion: boolean;
-  setAddingRegion: (v: boolean) => void;
-  addRegion: () => void;
+  regionModalOpen: boolean;
+  setRegionModalOpen: (v: boolean) => void;
   removeRegion: (regionId: string) => void;
+  allRegions: AllocatedRegion[];
 }) {
   return (
     <div className="flex min-w-0 flex-wrap items-center gap-1">
@@ -174,39 +151,27 @@ function RegionEditor({
         </span>
       ))}
       {/* Empty-state dash only shown read-only — when canManage, the Add button below already signals "none yet". */}
-      {user.user_regions.length === 0 && !addingRegion && !canManage && <span className="text-slate-300">—</span>}
-      {canManage &&
-        (addingRegion ? (
-          <input
-            autoFocus
-            value={regionInput}
-            onChange={(e) => setRegionInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault();
-                addRegion();
-              }
-              if (e.key === "Escape") {
-                setAddingRegion(false);
-                setRegionInput("");
-              }
-            }}
-            onBlur={addRegion}
-            placeholder="Region name"
-            className="w-24 shrink-0 rounded-lg border px-1.5 py-1 text-xs outline-none focus:border-primary-400"
-          />
-        ) : (
-          <button
-            type="button"
-            disabled={pending}
-            onClick={() => setAddingRegion(true)}
-            className="flex shrink-0 items-center gap-0.5 rounded-full border border-dashed border-slate-300 px-1.5 py-0.5 text-[10px] font-bold text-slate-400 hover:border-slate-400 hover:text-slate-600 disabled:opacity-60"
-            aria-label="Add region"
-          >
-            <Plus size={10} />
-            {user.user_regions.length === 0 && "Add"}
-          </button>
-        ))}
+      {user.user_regions.length === 0 && !canManage && <span className="text-slate-300">—</span>}
+      {canManage && (
+        <button
+          type="button"
+          disabled={pending}
+          onClick={() => setRegionModalOpen(true)}
+          className="flex shrink-0 items-center gap-0.5 rounded-full border border-dashed border-slate-300 px-1.5 py-0.5 text-[10px] font-bold text-slate-400 hover:border-slate-400 hover:text-slate-600 disabled:opacity-60"
+          aria-label="Add region"
+        >
+          <Plus size={10} />
+          {user.user_regions.length === 0 && "Add"}
+        </button>
+      )}
+      <RegionMapModal
+        open={regionModalOpen}
+        onClose={() => setRegionModalOpen(false)}
+        targetUserId={user.id}
+        targetUserName={user.full_name}
+        allRegions={allRegions}
+        canManage={canManage}
+      />
     </div>
   );
 }
@@ -217,11 +182,13 @@ export function UserRow({
   roles,
   canManage,
   mailbox,
+  allRegions,
 }: {
   user: UserListRow;
   roles: { id: string; name: string }[];
   canManage: boolean;
   mailbox: EmailAccountStatus | null;
+  allRegions: AllocatedRegion[];
 }) {
   const a = useUserRowActions(user);
 
@@ -243,7 +210,7 @@ export function UserRow({
         {user.brands?.name ?? <span className="font-semibold text-red-500">No brand</span>}
       </td>
       <td className="min-w-0 px-3 py-3 text-sm text-slate-600">
-        <RegionEditor user={user} canManage={canManage} {...a} />
+        <RegionEditor user={user} canManage={canManage} allRegions={allRegions} {...a} />
       </td>
       <td className="px-3 py-3">
         {user.is_master_admin ? (
@@ -309,11 +276,13 @@ export function UserCard({
   roles,
   canManage,
   mailbox,
+  allRegions,
 }: {
   user: UserListRow;
   roles: { id: string; name: string }[];
   canManage: boolean;
   mailbox: EmailAccountStatus | null;
+  allRegions: AllocatedRegion[];
 }) {
   const a = useUserRowActions(user);
 
@@ -346,38 +315,47 @@ export function UserCard({
       <div className="mt-3">
         <div className="text-xs font-bold uppercase tracking-wide text-slate-400">Region</div>
         <div className="mt-1">
-          <RegionEditor user={user} canManage={canManage} {...a} />
+          <RegionEditor user={user} canManage={canManage} allRegions={allRegions} {...a} />
         </div>
       </div>
 
-      <div className="mt-3 flex flex-wrap items-center gap-2">
-        {user.is_master_admin ? (
-          <span className="text-sm font-bold">Master Admin</span>
-        ) : (
-          <select
-            value={user.role_id ?? ""}
-            disabled={!canManage || a.pending}
-            onChange={(e) => a.changeRole(e.target.value)}
-            className="rounded-lg border px-2 py-1.5 text-xs"
-          >
-            {roles.map((r) => (
-              <option key={r.id} value={r.id}>
-                {r.name}
-              </option>
-            ))}
-          </select>
-        )}
-        <MailboxBadge userId={user.id} userName={user.full_name} account={mailbox} canManage={canManage} />
+      <div className="mt-3">
+        <div className="text-xs font-bold uppercase tracking-wide text-slate-400">Role</div>
+        <div className="mt-1">
+          {user.is_master_admin ? (
+            <span className="text-sm font-bold">Master Admin</span>
+          ) : (
+            <select
+              value={user.role_id ?? ""}
+              disabled={!canManage || a.pending}
+              onChange={(e) => a.changeRole(e.target.value)}
+              className="w-full rounded-lg border px-2 py-1.5 text-xs"
+            >
+              {roles.map((r) => (
+                <option key={r.id} value={r.id}>
+                  {r.name}
+                </option>
+              ))}
+            </select>
+          )}
+        </div>
+      </div>
+
+      <div className="mt-3">
+        <div className="text-xs font-bold uppercase tracking-wide text-slate-400">Mailbox</div>
+        <div className="mt-1">
+          <MailboxBadge userId={user.id} userName={user.full_name} account={mailbox} canManage={canManage} />
+        </div>
       </div>
 
       {canManage && (user.status === "invited" || !user.is_master_admin) && (
-        <div className="mt-3 flex flex-wrap items-center gap-2 border-t pt-3">
+        <div className="mt-3 flex flex-col gap-2 border-t pt-3">
           {user.status === "invited" && (
             <button
               type="button"
               disabled={a.pending}
               onClick={a.resendInvite}
-              className="rounded-lg border px-2 py-1.5 text-xs font-bold disabled:opacity-60"
+              className="w-full rounded-lg border px-3 py-2 text-xs font-bold disabled:opacity-60"
             >
               Resend invite
             </button>
@@ -387,7 +365,7 @@ export function UserCard({
               disabled={a.pending}
               value=""
               onChange={(e) => e.target.value && a.changeStatus(e.target.value as ProfileStatus)}
-              className="rounded-lg border px-2 py-1.5 text-xs font-bold"
+              className="w-full rounded-lg border px-3 py-2 text-xs font-bold"
             >
               <option value="">Change status…</option>
               <option value="active">Activate</option>

@@ -9,6 +9,7 @@ import { createClient } from "@/lib/supabase/server";
 import { hasPermission, PERMISSIONS } from "@/lib/permissions";
 import { InviteUserForm } from "./InviteUserForm";
 import { UserRow, UserCard, type UserListRow } from "./UserRow";
+import type { AllocatedRegion } from "./RegionMapModal";
 import type { EmailAccountStatus } from "./EmailAccountForm";
 
 const PAGE_SIZE = 25;
@@ -27,27 +28,47 @@ export default async function UsersPage({ searchParams }: { searchParams: Promis
   let usersQuery = supabase
     .from("profiles")
     .select(
-      "id, full_name, email, job_title, status, role_id, is_master_admin, brands:default_brand_id(name), user_regions(id, region)",
+      "id, full_name, email, job_title, status, role_id, is_master_admin, brands:default_brand_id(name), user_regions(id, region, lat, lng)",
       { count: "exact" },
     );
   if (q) {
     usersQuery = usersQuery.or(`full_name.ilike.%${q}%,email.ilike.%${q}%`);
   }
 
-  const [{ data, count }, { data: roles }, { data: brands }, { data: mailboxes }] = await Promise.all([
-    usersQuery.order("full_name").range(from, to),
-    supabase.from("roles").select("id, name").order("name"),
-    supabase.from("brands").select("id, name").order("name"),
-    supabase
-      .from("email_accounts")
-      .select(
-        "id, user_id, display_name, email_address, imap_host, imap_port, imap_security, imap_username, smtp_host, smtp_port, smtp_security, smtp_username, is_active, last_synced_at, last_sync_error",
-      ),
-  ]);
+  const [{ data, count, error: usersError }, { data: roles }, { data: brands }, { data: mailboxes }, { data: regionsRaw, error: regionsError }] =
+    await Promise.all([
+      usersQuery.order("full_name").range(from, to),
+      supabase.from("roles").select("id, name").order("name"),
+      supabase.from("brands").select("id, name").order("name"),
+      supabase
+        .from("email_accounts")
+        .select(
+          "id, user_id, display_name, email_address, imap_host, imap_port, imap_security, imap_username, smtp_host, smtp_port, smtp_security, smtp_username, is_active, last_synced_at, last_sync_error",
+        ),
+      // Unpaginated, tenant-wide (RLS-scoped) — the region map needs every
+      // colleague's coverage, not just whichever page of users is showing.
+      supabase.from("user_regions").select("id, region, lat, lng, user_id, profiles(full_name)").order("region"),
+    ]);
+  // Both queries reach columns added by migration 0069 — if that hasn't been
+  // applied yet, Postgres rejects them outright rather than returning
+  // partial rows, so `data` comes back null and the page would otherwise
+  // render a silent, misleading "No users yet." Surface it instead.
+  if (usersError) console.error("settings/users: users query failed:", usersError.message);
+  if (regionsError) console.error("settings/users: user_regions query failed:", regionsError.message);
   const users = (data ?? []) as unknown as UserListRow[];
   const mailboxByUserId = new Map(
     ((mailboxes ?? []) as unknown as (EmailAccountStatus & { user_id: string })[]).map((m) => [m.user_id, m]),
   );
+  const allRegions: AllocatedRegion[] = (
+    (regionsRaw ?? []) as unknown as {
+      id: string;
+      region: string;
+      lat: number | null;
+      lng: number | null;
+      user_id: string;
+      profiles: { full_name: string } | null;
+    }[]
+  ).map((r) => ({ id: r.id, region: r.region, lat: r.lat, lng: r.lng, userId: r.user_id, userName: r.profiles?.full_name ?? "Unknown" }));
 
   return (
     <div>
@@ -78,6 +99,12 @@ export default async function UsersPage({ searchParams }: { searchParams: Promis
                     "Mailbox — whether this person has connected a personal SMTP/IMAP mailbox (Email Centre → My Signature); customer-facing emails they send go out from it when connected.",
                   ],
                 },
+                {
+                  heading: "Assigning a region",
+                  body: [
+                    "The + next to a user's regions opens a map — search a place or click anywhere on it, and see every colleague's coverage as coloured pins before adding a new one. Regions are matched against a lead's pickup/destination text to help route it, so keep them as real place names (a city or neighbourhood, not a vague area).",
+                  ],
+                },
               ]}
             />
             {canManage && <InviteUserForm roles={roles ?? []} brands={brands ?? []} />}
@@ -96,6 +123,7 @@ export default async function UsersPage({ searchParams }: { searchParams: Promis
               roles={roles ?? []}
               canManage={canManage}
               mailbox={mailboxByUserId.get(user.id) ?? null}
+              allRegions={allRegions}
             />
           ))}
           {users.length === 0 && <p className="py-8 text-center text-sm text-slate-500">No users yet.</p>}
@@ -132,6 +160,7 @@ export default async function UsersPage({ searchParams }: { searchParams: Promis
                   roles={roles ?? []}
                   canManage={canManage}
                   mailbox={mailboxByUserId.get(user.id) ?? null}
+                  allRegions={allRegions}
                 />
               ))}
             </tbody>
