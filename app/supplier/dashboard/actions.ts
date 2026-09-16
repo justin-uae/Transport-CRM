@@ -210,11 +210,34 @@ export async function rejectAmendedAllocationAction(allocationId: string) {
     .eq("id", allocationId);
   if (error) throw new Error(error.message);
 
-  await admin()
+  const { data: pendingAmendment } = await admin()
     .from("booking_amendments")
     .update({ supplier_approval_status: "rejected", supplier_responded_at: new Date().toISOString() })
     .eq("job_allocation_id", allocationId)
-    .eq("supplier_approval_status", "pending");
+    .eq("supplier_approval_status", "pending")
+    .select("id")
+    .maybeSingle();
+
+  // They're being pulled off a job we may have already paid them for
+  // (fully or in part) — that money doesn't belong to them anymore once
+  // they're not doing the job, so it's logged as a refund owed back,
+  // exactly the same ledger a staff-entered negative payout adjustment
+  // already uses (see amendBookingAction / SupplierPaymentsPage's
+  // "Refund owed from supplier"). Nothing to do if nothing was ever paid.
+  const { data: payments } = await admin().from("supplier_payments").select("amount").eq("job_allocation_id", allocationId);
+  const totalPaid = (payments ?? []).reduce((sum, p) => sum + Number(p.amount), 0);
+  if (totalPaid > 0.01) {
+    await admin()
+      .from("job_allocation_adjustments")
+      .insert({
+        tenant_id: allocation.tenant_id,
+        job_allocation_id: allocationId,
+        amendment_id: pendingAmendment?.id ?? null,
+        amount: -Math.round(totalPaid * 100) / 100,
+        reason: "Job rejected after edit — refund owed for the amount already paid before the job was pulled.",
+        created_by: null,
+      });
+  }
 
   await recordAudit({
     client: admin(),
@@ -223,6 +246,7 @@ export async function rejectAmendedAllocationAction(allocationId: string) {
     action: "job_allocation_amendment_rejected",
     entityType: "job_allocation",
     entityId: allocationId,
+    newValue: totalPaid > 0.01 ? { refund_owed: Math.round(totalPaid * 100) / 100 } : undefined,
   });
 
   const info = await loadAllocationJobInfo(admin(), allocationId);
@@ -233,7 +257,13 @@ export async function rejectAmendedAllocationAction(allocationId: string) {
       createdBy: info.createdBy,
       quoteId: info.quoteId,
       key: "job_reapproval_rejected",
-      extraVariables: { supplier_name: supplier.name },
+      extraVariables: {
+        supplier_name: supplier.name,
+        refund_note:
+          totalPaid > 0.01
+            ? `A refund of ${totalPaid.toFixed(2)} is now owed back from ${supplier.name} — it's logged on Supplier Payments.`
+            : "",
+      },
     });
   }
 
