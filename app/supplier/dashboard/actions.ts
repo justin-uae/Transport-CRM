@@ -195,7 +195,16 @@ export async function rejectAmendedAllocationAction(allocationId: string) {
     throw new Error("This job isn't waiting on your approval right now.");
   }
 
-  const { error } = await supabase
+  // job_allocations_update's RLS has no explicit WITH CHECK, so Postgres
+  // reuses its USING expression for the post-update row too — and that
+  // expression's first (and, for a supplier, only reachable) branch is
+  // `assigned_supplier_id = auth.uid()`. Nulling that column as part of
+  // this very update makes the new row fail its own policy check under the
+  // supplier's own session (a generic, masked RLS-violation error in
+  // production). We've already authorized the request above via the
+  // RLS-respecting read, so finish the write with the admin client instead
+  // of asking RLS to approve a row that structurally can't satisfy it.
+  const { error } = await admin()
     .from("job_allocations")
     .update({ status: "rejected_by_supplier", assigned_supplier_id: null, responded_at: new Date().toISOString() })
     .eq("id", allocationId);
