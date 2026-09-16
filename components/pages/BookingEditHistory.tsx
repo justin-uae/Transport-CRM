@@ -14,6 +14,8 @@ export interface BookingEditRecord {
   supplier_responded_at: string | null;
   created_at: string;
   profiles: { full_name: string } | null;
+  /** Set automatically if the supplier rejected this edit after already being paid — see rejectAmendedAllocationAction. Empty for every other amendment. */
+  job_allocation_adjustments: { amount: number; reason: string | null; created_at: string }[];
 }
 
 function money(amount: number | null, currency: string) {
@@ -59,6 +61,13 @@ export function BookingEditHistory({ amendments, currency }: { amendments: Booki
                   )}
                 </div>
               )}
+              {a.job_allocation_adjustments.map((adj, i) => (
+                <p key={i} className="mt-1 text-xs font-bold text-red-600">
+                  {adj.amount < 0 ? "Refund owed from supplier: " : "Supplier payout adjustment: "}
+                  {adj.amount > 0 ? "+" : ""}
+                  {money(adj.amount, currency)} — see Supplier Payments to record it.
+                </p>
+              ))}
               {fieldChanges.length > 0 && (
                 <ul className="mt-2 space-y-0.5 text-xs text-slate-500">
                   {fieldChanges.map(([key, { from, to }]) => (

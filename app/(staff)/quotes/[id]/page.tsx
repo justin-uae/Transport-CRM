@@ -118,7 +118,7 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
     supabase
       .from("booking_amendments")
       .select(
-        "id, reason, changes, customer_charge_amount, supplier_adjustment_amount, supplier_approval_status, supplier_responded_at, created_at, profiles(full_name)",
+        "id, reason, changes, customer_charge_amount, supplier_adjustment_amount, supplier_approval_status, supplier_responded_at, created_at, profiles(full_name), job_allocation_adjustments(amount, reason, created_at)",
       )
       .eq("quote_id", id)
       .order("created_at", { ascending: false }),

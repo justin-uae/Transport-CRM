@@ -653,6 +653,22 @@ export interface SupplierPayment {
   created_at: string;
 }
 
+/** Money actually received back from a supplier — the reverse of SupplierPayment, kept as its own table rather than a negative payment since it's a genuinely different event (see 0073_supplier_refunds.sql). */
+export interface SupplierRefund {
+  id: string;
+  tenant_id: string;
+  job_allocation_id: string;
+  amount: number;
+  currency: string;
+  bank_reference: string | null;
+  notes: string | null;
+  proof_storage_path: string | null;
+  proof_file_name: string | null;
+  received_by: string | null;
+  received_at: string;
+  created_at: string;
+}
+
 // -----------------------------------------------------------------------------
 // Supplier invoice upload (0008_supplier_invoice_upload.sql) — a supplier
 // uploads their own invoice once an allocation is confirmed/completed; a
@@ -1102,6 +1118,7 @@ export interface Database {
       job_allocation_offers: Table<JobAllocationOffer>;
       job_supplier_invoices: Table<JobSupplierInvoice>;
       supplier_payments: Table<SupplierPayment>;
+      supplier_refunds: Table<SupplierRefund>;
       customer_payments: Table<CustomerPayment>;
       email_templates: Table<EmailTemplate>;
       email_accounts: Table<EmailAccount>;

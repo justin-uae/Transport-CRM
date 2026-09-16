@@ -20,7 +20,7 @@ import {
   rejectAmendedAllocationAction,
 } from "@/app/supplier/dashboard/actions";
 import { statusDetailText } from "@/lib/supplierJobStatus";
-import { formatDateAndTime } from "@/lib/formatDate";
+import { formatDateAndTime, formatDateTime } from "@/lib/formatDate";
 import type { JobAllocationOfferView, JobSupplierInvoice, SupplierPaymentStatus } from "@/lib/supabase/database.types";
 
 const PAYMENT_STATUS_STYLE: Record<SupplierPaymentStatus, string> = {
@@ -53,12 +53,18 @@ export function SupplierJobDetail({
   invoiceUrl,
   supplierId,
   pendingAmendment,
+  payments,
+  adjustments,
+  refunds,
 }: {
   job: JobAllocationOfferView;
   invoice: JobSupplierInvoice | null;
   invoiceUrl: string | null;
   supplierId: string;
   pendingAmendment: { reason: string; changes: Record<string, { from: unknown; to: unknown }> } | null;
+  payments: { id: string; amount: number; bank_reference: string | null; paid_at: string }[];
+  adjustments: { id: string; amount: number; reason: string | null; created_at: string }[];
+  refunds: { id: string; amount: number; bank_reference: string | null; received_at: string }[];
 }) {
   const notify = useToast();
   const router = useRouter();
@@ -399,7 +405,11 @@ export function SupplierJobDetail({
         </div>
       )}
 
-      {(job.allocation_status === "confirmed" || job.allocation_status === "completed") && (
+      {(job.allocation_status === "confirmed" ||
+        job.allocation_status === "completed" ||
+        payments.length > 0 ||
+        adjustments.length > 0 ||
+        refunds.length > 0) && (
         <div className="mt-5">
           <Panel>
             <SectionTitle title="Invoice" />
@@ -430,6 +440,37 @@ export function SupplierJobDetail({
                 prefillAmount={job.agreed_cost}
                 prefillCurrency={job.quote_currency}
               />
+            )}
+
+            {(payments.length > 0 || adjustments.length > 0 || refunds.length > 0) && (
+              <div className="mt-4 space-y-1.5 border-t pt-4 text-xs text-slate-500">
+                <div className="text-xs font-black uppercase tracking-wide text-slate-400">Payment history</div>
+                {payments.map((p) => (
+                  <div key={p.id} className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
+                    <span>
+                      Paid {money(p.amount, job.quote_currency)} · {formatDateTime(p.paid_at)}
+                      {p.bank_reference && ` · ${p.bank_reference}`}
+                    </span>
+                  </div>
+                ))}
+                {adjustments.map((a) => (
+                  <div key={a.id} className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
+                    <span>{a.reason ?? "Adjustment"} · {formatDateTime(a.created_at)}</span>
+                    <b className={a.amount < 0 ? "text-red-600" : "text-slate-700"}>
+                      {a.amount > 0 ? "+" : ""}
+                      {money(a.amount, job.quote_currency)}
+                    </b>
+                  </div>
+                ))}
+                {refunds.map((r) => (
+                  <div key={r.id} className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
+                    <span>
+                      Refund sent {money(r.amount, job.quote_currency)} · {formatDateTime(r.received_at)}
+                      {r.bank_reference && ` · ${r.bank_reference}`}
+                    </span>
+                  </div>
+                ))}
+              </div>
             )}
           </Panel>
         </div>

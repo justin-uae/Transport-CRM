@@ -10,7 +10,7 @@ import { useToast } from "@/components/ui/Toast";
 import { ConfirmDetailModal } from "@/components/ui/ConfirmDetailModal";
 import { createClient } from "@/lib/supabase/client";
 import { formatDateTime, formatDate } from "@/lib/formatDate";
-import { recordSupplierPaymentAction } from "@/app/(staff)/accounting/supplier-payments/actions";
+import { recordSupplierPaymentAction, recordSupplierRefundAction } from "@/app/(staff)/accounting/supplier-payments/actions";
 import { downloadCsv } from "@/lib/exportCsv";
 import type { SupplierPaymentStatus } from "@/lib/supabase/database.types";
 
@@ -23,11 +23,16 @@ export interface SupplierInvoiceRow {
   file_name: string;
   storage_path: string;
   forwarded_at: string | null;
+  // Joined via this invoice's OWN supplier_id (set once at submission, never
+  // touched again) rather than through job_allocations.assigned_supplier_id
+  // — that column goes null once a supplier rejects an edited job
+  // (rejectAmendedAllocationAction), which used to make an already-paid,
+  // now-rejected job show up here as "Unknown supplier".
+  suppliers: { id: string; name: string; phone: string | null; email: string | null } | null;
   job_allocations: {
     id: string;
     status: string;
     supplier_payment_status: SupplierPaymentStatus;
-    suppliers: { id: string; name: string; phone: string | null; email: string | null } | null;
     jobs: { quotes: { quote_number: string; customers: { company_name: string | null; contact_name: string } | null } | null } | null;
     supplier_payments: {
       id: string;
@@ -38,6 +43,14 @@ export interface SupplierInvoiceRow {
       proof_storage_path: string | null;
     }[];
     job_allocation_adjustments: { id: string; amount: number; reason: string | null; created_at: string }[];
+    supplier_refunds: {
+      id: string;
+      amount: number;
+      bank_reference: string | null;
+      notes: string | null;
+      received_at: string;
+      proof_storage_path: string | null;
+    }[];
   } | null;
 }
 
@@ -60,20 +73,37 @@ function totalAdjustments(row: SupplierInvoiceRow) {
   return (row.job_allocations?.job_allocation_adjustments ?? []).reduce((sum, a) => sum + Number(a.amount), 0);
 }
 
+/** Money actually received back from the supplier — see 0073_supplier_refunds.sql. Kept separate from adjustments (why the amount owed changed) since this is money that actually moved. */
+function refundedSoFar(row: SupplierInvoiceRow) {
+  return (row.job_allocations?.supplier_refunds ?? []).reduce((sum, r) => sum + r.amount, 0);
+}
+
 /** The invoice amount plus any amendment adjustments — the real amount owed, which a negative adjustment can push below what's already been paid (a refund owed back from the supplier) rather than just toward zero. */
 function effectiveAmount(row: SupplierInvoiceRow) {
   return row.amount + totalAdjustments(row);
+}
+
+/** What's paid minus what's since been refunded back — the net cash actually sitting with the supplier right now. */
+function netPaid(row: SupplierInvoiceRow) {
+  return paidSoFar(row) - refundedSoFar(row);
+}
+
+/** Positive = still owed to the supplier; negative = a refund is still owed back from them; ~0 = fully settled either way. */
+function balance(row: SupplierInvoiceRow) {
+  return effectiveAmount(row) - netPaid(row);
 }
 
 export function SupplierPaymentsPage({
   invoices,
   invoiceUrls,
   proofUrls,
+  refundProofUrls,
   currentUserId,
 }: {
   invoices: SupplierInvoiceRow[];
   invoiceUrls: Record<string, string | null>;
   proofUrls: Record<string, string | null>;
+  refundProofUrls: Record<string, string | null>;
   currentUserId: string;
 }) {
   const router = useRouter();
@@ -81,6 +111,7 @@ export function SupplierPaymentsPage({
   const [pending, startTransition] = useTransition();
   const [tab, setTab] = useState<"outstanding" | "paid">("outstanding");
   const [target, setTarget] = useState<SupplierInvoiceRow | null>(null);
+  const [refundTarget, setRefundTarget] = useState<SupplierInvoiceRow | null>(null);
   const [amount, setAmount] = useState("");
   const [bankReference, setBankReference] = useState("");
   const [notes, setNotes] = useState("");
@@ -91,11 +122,17 @@ export function SupplierPaymentsPage({
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
 
-  const outstanding = invoices.filter((row) => row.job_allocations?.supplier_payment_status !== "paid");
-  const paidHistory = invoices.filter((row) => row.job_allocations?.supplier_payment_status === "paid");
+  // A row counts as outstanding as long as there's a non-zero balance in
+  // EITHER direction — still owed to the supplier, or a refund still owed
+  // back from them (job_allocations.supplier_payment_status alone can't
+  // tell these apart: it only tracks money paid out, not adjustments, so a
+  // fully-paid-then-refund-owed row would otherwise stay stuck in Paid
+  // History looking settled when it isn't).
+  const outstanding = invoices.filter((row) => Math.abs(balance(row)) > 0.01);
+  const paidHistory = invoices.filter((row) => Math.abs(balance(row)) <= 0.01);
 
   const supplierOptions = useMemo(() => {
-    const names = new Set(invoices.map((row) => row.job_allocations?.suppliers?.name).filter((n): n is string => !!n));
+    const names = new Set(invoices.map((row) => row.suppliers?.name).filter((n): n is string => !!n));
     return [...names].sort();
   }, [invoices]);
 
@@ -110,10 +147,10 @@ export function SupplierPaymentsPage({
     const base = tab === "outstanding" ? outstanding : paidHistory;
     const q = search.trim().toLowerCase();
     return base.filter((row) => {
-      if (supplierFilter && row.job_allocations?.suppliers?.name !== supplierFilter) return false;
+      if (supplierFilter && row.suppliers?.name !== supplierFilter) return false;
       if (q) {
         const haystack = [
-          row.job_allocations?.suppliers?.name,
+          row.suppliers?.name,
           row.job_allocations?.jobs?.quotes?.quote_number,
           row.job_allocations?.jobs?.quotes?.customers?.company_name,
           row.job_allocations?.jobs?.quotes?.customers?.contact_name,
@@ -134,7 +171,7 @@ export function SupplierPaymentsPage({
 
   function exportVisible() {
     downloadCsv(`supplier-payments-${tab}`, visible, [
-      { header: "Supplier", value: (row) => row.job_allocations?.suppliers?.name },
+      { header: "Supplier", value: (row) => row.suppliers?.name },
       { header: "Quote number", value: (row) => row.job_allocations?.jobs?.quotes?.quote_number },
       {
         header: "Customer",
@@ -144,7 +181,8 @@ export function SupplierPaymentsPage({
       { header: "Invoice amount", value: (row) => row.amount },
       { header: "Adjustments", value: (row) => totalAdjustments(row) },
       { header: "Paid so far", value: (row) => paidSoFar(row) },
-      { header: "Balance", value: (row) => effectiveAmount(row) - paidSoFar(row) },
+      { header: "Refunded so far", value: (row) => refundedSoFar(row) },
+      { header: "Balance", value: (row) => balance(row) },
       { header: "Status", value: (row) => row.job_allocations?.supplier_payment_status ?? "unpaid" },
       { header: "Forwarded", value: (row) => (row.forwarded_at ? formatDate(row.forwarded_at) : "") },
       { header: "Latest payment date", value: (row) => { const d = latestPaymentDate(row); return d ? formatDate(d) : ""; } },
@@ -152,9 +190,19 @@ export function SupplierPaymentsPage({
   }
 
   function open(row: SupplierInvoiceRow) {
-    const balance = effectiveAmount(row) - paidSoFar(row);
+    const bal = effectiveAmount(row) - paidSoFar(row);
     setTarget(row);
-    setAmount(balance > 0 ? balance.toFixed(2) : "");
+    setAmount(bal > 0 ? bal.toFixed(2) : "");
+    setBankReference("");
+    setNotes("");
+    setProofFile(null);
+    setModalError(null);
+  }
+
+  function openRefund(row: SupplierInvoiceRow) {
+    const owed = -balance(row);
+    setRefundTarget(row);
+    setAmount(owed > 0 ? owed.toFixed(2) : "");
     setBankReference("");
     setNotes("");
     setProofFile(null);
@@ -164,12 +212,14 @@ export function SupplierPaymentsPage({
   function close() {
     if (pending) return;
     setTarget(null);
+    setRefundTarget(null);
   }
 
   const enteredAmount = Number(amount) || 0;
-  const balance = target ? target.amount - paidSoFar(target) : 0;
-  const remainingAfter = balance - enteredAmount;
+  const paymentBalance = target ? target.amount - paidSoFar(target) : 0;
+  const remainingAfter = paymentBalance - enteredAmount;
   const willFullySettle = enteredAmount > 0 && remainingAfter <= 0;
+  const refundOwedAmount = refundTarget ? -balance(refundTarget) : 0;
 
   function confirm() {
     if (!target) return;
@@ -213,6 +263,44 @@ export function SupplierPaymentsPage({
     });
   }
 
+  function confirmRefund() {
+    if (!refundTarget) return;
+    startTransition(async () => {
+      let proofStoragePath: string | null = null;
+      let proofFileName: string | null = null;
+
+      if (proofFile) {
+        const supabase = createClient();
+        const path = `${currentUserId}/${crypto.randomUUID()}-${proofFile.name}`;
+        const { error: uploadError } = await supabase.storage.from("supplier-refund-proofs").upload(path, proofFile);
+        if (uploadError) {
+          setModalError(uploadError.message);
+          notify(uploadError.message);
+          return;
+        }
+        proofStoragePath = path;
+        proofFileName = proofFile.name;
+      }
+
+      const result = await recordSupplierRefundAction(refundTarget.job_allocation_id, {
+        amount: enteredAmount,
+        currency: refundTarget.currency,
+        bankReference,
+        notes,
+        proofStoragePath,
+        proofFileName,
+      });
+      if (result?.error) {
+        setModalError(result.error);
+        notify(result.error);
+        return;
+      }
+      notify("Refund recorded");
+      setRefundTarget(null);
+      router.refresh();
+    });
+  }
+
   return (
     <div>
       <PageHead
@@ -235,8 +323,8 @@ export function SupplierPaymentsPage({
                 heading: "Outstanding vs. Paid History",
                 bullets: true,
                 body: [
-                  "Outstanding — invoices with a balance still owed to the supplier.",
-                  "Paid History — invoices fully settled, with every payment against them.",
+                  "Outstanding — invoices with a non-zero balance either way: still owed to the supplier, or a refund still owed back from them.",
+                  "Paid History — invoices fully settled, with every payment (and refund, if any) against them.",
                   "Search, filter by supplier, and filter by date (forwarded date on Outstanding, payment date on Paid History) to narrow the list; Export CSV downloads whatever's currently visible.",
                 ],
               },
@@ -244,6 +332,12 @@ export function SupplierPaymentsPage({
                 heading: "Recording a payment",
                 body: [
                   "Record Payment takes the amount, an optional bank reference/notes, and proof — proof is only required when the amount fully settles the invoice. Partial payments are supported; the remaining balance stays outstanding.",
+                ],
+              },
+              {
+                heading: "When a refund is owed",
+                body: [
+                  "If a paid job gets edited and the supplier then rejects it (or a payout adjustment goes negative), the balance can go below zero — shown as \"Refund owed from supplier\". Once you've actually received that money back, Record Refund logs it the same way a payment is logged, and the balance settles to zero.",
                 ],
               },
             ]}
@@ -312,8 +406,9 @@ export function SupplierPaymentsPage({
         <div className="space-y-3">
           {visible.map((row) => {
             const paid = paidSoFar(row);
+            const refunded = refundedSoFar(row);
             const adjustments = totalAdjustments(row);
-            const bal = effectiveAmount(row) - paid;
+            const bal = balance(row);
             const refundOwed = bal < -0.01;
             const customer = row.job_allocations?.jobs?.quotes?.customers;
             const status = row.job_allocations?.supplier_payment_status ?? "unpaid";
@@ -321,7 +416,7 @@ export function SupplierPaymentsPage({
               <div key={row.id} className="rounded-2xl border p-4">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div>
-                    <b>{row.job_allocations?.suppliers?.name ?? "Unknown supplier"}</b>
+                    <b>{row.suppliers?.name ?? "Unknown supplier"}</b>
                     <div className="text-xs text-slate-500">
                       {row.job_allocations?.jobs?.quotes?.quote_number} · {customer?.company_name || customer?.contact_name || "—"}
                     </div>
@@ -330,7 +425,15 @@ export function SupplierPaymentsPage({
                     {status.replaceAll("_", " ")}
                   </span>
                 </div>
-                <div className={`mt-3 grid grid-cols-1 gap-3 rounded-xl bg-slate-50 p-3 text-sm ${adjustments !== 0 ? "sm:grid-cols-4" : "sm:grid-cols-3"}`}>
+                <div
+                  className={`mt-3 grid grid-cols-1 gap-3 rounded-xl bg-slate-50 p-3 text-sm ${
+                    adjustments !== 0 && refunded !== 0
+                      ? "sm:grid-cols-5"
+                      : adjustments !== 0 || refunded !== 0
+                        ? "sm:grid-cols-4"
+                        : "sm:grid-cols-3"
+                  }`}
+                >
                   <div>
                     <div className="text-xs font-bold uppercase text-slate-400">Invoice</div>
                     <b>{money(row.amount, row.currency)}</b>
@@ -348,6 +451,12 @@ export function SupplierPaymentsPage({
                     <div className="text-xs font-bold uppercase text-slate-400">Paid so far</div>
                     <b>{money(paid, row.currency)}</b>
                   </div>
+                  {refunded !== 0 && (
+                    <div>
+                      <div className="text-xs font-bold uppercase text-slate-400">Refunded so far</div>
+                      <b className="text-slate-800">{money(refunded, row.currency)}</b>
+                    </div>
+                  )}
                   <div>
                     <div className="text-xs font-bold uppercase text-slate-400">{refundOwed ? "Refund owed from supplier" : "Balance"}</div>
                     <b className={refundOwed ? "text-red-600" : "text-primary-600"}>{money(Math.abs(bal), row.currency)}</b>
@@ -373,11 +482,28 @@ export function SupplierPaymentsPage({
                     {row.job_allocations!.supplier_payments.map((p) => (
                       <div key={p.id} className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
                         <span>
-                          {money(p.amount, row.currency)} · {formatDateTime(p.paid_at)}
+                          Paid {money(p.amount, row.currency)} · {formatDateTime(p.paid_at)}
                           {p.bank_reference && ` · ${p.bank_reference}`}
                         </span>
                         {proofUrls[p.id] && (
                           <a href={proofUrls[p.id] ?? undefined} target="_blank" rel="noreferrer" className="font-bold text-primary-600">
+                            View proof
+                          </a>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {(row.job_allocations?.supplier_refunds?.length ?? 0) > 0 && (
+                  <div className="mt-3 space-y-1 border-t pt-3 text-xs text-slate-500">
+                    {row.job_allocations!.supplier_refunds.map((r) => (
+                      <div key={r.id} className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
+                        <span>
+                          Refund received {money(r.amount, row.currency)} · {formatDateTime(r.received_at)}
+                          {r.bank_reference && ` · ${r.bank_reference}`}
+                        </span>
+                        {refundProofUrls[r.id] && (
+                          <a href={refundProofUrls[r.id] ?? undefined} target="_blank" rel="noreferrer" className="font-bold text-primary-600">
                             View proof
                           </a>
                         )}
@@ -391,7 +517,15 @@ export function SupplierPaymentsPage({
                       View invoice file
                     </a>
                   )}
-                  {tab === "outstanding" && (
+                  {tab === "outstanding" && refundOwed && (
+                    <button
+                      onClick={() => openRefund(row)}
+                      className="ml-auto rounded-lg border border-red-200 bg-white px-3 py-2 text-xs font-bold text-red-600 hover:bg-red-50"
+                    >
+                      Record Refund
+                    </button>
+                  )}
+                  {tab === "outstanding" && !refundOwed && (
                     <button
                       onClick={() => open(row)}
                       className="ml-auto rounded-lg bg-primary-500 px-3 py-2 text-xs font-bold text-white"
@@ -420,9 +554,9 @@ export function SupplierPaymentsPage({
           pending={pending}
           error={modalError}
           details={[
-            { label: "Supplier", value: target.job_allocations?.suppliers?.name ?? "—" },
+            { label: "Supplier", value: target.suppliers?.name ?? "—" },
             { label: "Invoice total", value: money(target.amount, target.currency) },
-            { label: "Balance before", value: money(balance, target.currency) },
+            { label: "Balance before", value: money(paymentBalance, target.currency) },
             { label: "Balance after this payment", value: money(Math.max(remainingAfter, 0), target.currency) },
           ]}
           confirmLabel={willFullySettle ? "Mark supplier as paid" : "Record partial payment"}
@@ -475,6 +609,62 @@ export function SupplierPaymentsPage({
                 This settles the invoice in full — attach proof of payment to mark the supplier as paid.
               </p>
             )}
+          </div>
+        </ConfirmDetailModal>
+      )}
+
+      {refundTarget && (
+        <ConfirmDetailModal
+          open
+          onClose={close}
+          title="Record a refund received from this supplier?"
+          description="This confirms the supplier has already sent the money back outside the system — this just logs it."
+          pending={pending}
+          error={modalError}
+          details={[
+            { label: "Supplier", value: refundTarget.suppliers?.name ?? "—" },
+            { label: "Refund owed", value: money(refundOwedAmount, refundTarget.currency) },
+          ]}
+          confirmLabel="Record refund"
+          onConfirm={confirmRefund}
+        >
+          <div className="space-y-2">
+            <label className="block text-sm font-bold">
+              Amount ({refundTarget.currency})
+              <input
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+                type="number"
+                min={0}
+                step="0.01"
+                className="mt-1 w-full rounded-lg border px-3 py-2 text-sm font-normal"
+              />
+            </label>
+            <label className="block text-sm font-bold">
+              Bank reference
+              <input
+                value={bankReference}
+                onChange={(e) => setBankReference(e.target.value)}
+                placeholder="Transfer reference / ID"
+                className="mt-1 w-full rounded-lg border px-3 py-2 text-sm font-normal"
+              />
+            </label>
+            <label className="block text-sm font-bold">
+              Notes (optional)
+              <input
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                className="mt-1 w-full rounded-lg border px-3 py-2 text-sm font-normal"
+              />
+            </label>
+            <label className="block text-sm font-bold">
+              Proof (optional)
+              <input
+                type="file"
+                onChange={(e) => setProofFile(e.target.files?.[0] ?? null)}
+                className="mt-1 w-full text-xs font-normal"
+              />
+            </label>
           </div>
         </ConfirmDetailModal>
       )}
