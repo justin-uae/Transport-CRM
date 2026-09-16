@@ -118,6 +118,7 @@ export function QuotesPage({
                     "Change the pickup, destination, date, time, passengers or luggage; optionally charge or credit the customer, and/or adjust what a supplier is owed — a reason is always required.",
                     "A positive customer amount adds to the balance due (the customer gets an emailed link to pay it); a negative amount lowers the price and auto-queues a refund if that leaves them overpaid.",
                     "Every edit is logged to that quote's Edit history panel with who made it, why, and a before/after diff, and (when relevant) emails both the customer and the supplier — the same button and history also appear on the matching Dispatch job page.",
+                    "If a supplier had already accepted or confirmed the job, they're not just notified — the job goes to Awaiting supplier re-approval and they have to explicitly approve or reject the change before it proceeds. A rejection pulls the job off them entirely and reopens it on Dispatch to offer to someone else; either outcome shows up in Edit history.",
                   ],
                 },
                 {

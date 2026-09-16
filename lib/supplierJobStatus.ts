@@ -6,9 +6,21 @@ import type { JobAllocationOfferView } from "@/lib/supabase/database.types";
  * and the detail page so the label/badge/filtering logic isn't copy-pasted
  * per page.
  */
-export type SupplierJobStatusKey = "new" | "accepted" | "confirmed" | "completed" | "rejected" | "withdrawn" | "cancelled";
+export type SupplierJobStatusKey =
+  | "new"
+  | "accepted"
+  | "changes_pending"
+  | "confirmed"
+  | "completed"
+  | "rejected"
+  | "withdrawn"
+  | "cancelled";
 
 export function jobStatusKey(job: JobAllocationOfferView): SupplierJobStatusKey {
+  // Checked before offer_status — a job pulled back for re-approval keeps
+  // whatever its original (now stale) offer_status was, but the allocation
+  // status is what actually needs the supplier's attention here.
+  if (job.allocation_status === "pending_reapproval") return "changes_pending";
   if (job.offer_status === "withdrawn") return "withdrawn";
   if (job.offer_status === "rejected") return "rejected";
   if (job.offer_status === "sent") return "new";
@@ -29,6 +41,7 @@ export function jobStatusKey(job: JobAllocationOfferView): SupplierJobStatusKey 
 const STATUS_LABEL: Record<SupplierJobStatusKey, string> = {
   new: "New offer",
   accepted: "Accepted",
+  changes_pending: "Changes pending",
   confirmed: "Confirmed",
   completed: "Completed",
   rejected: "Rejected",
@@ -40,6 +53,7 @@ const STATUS_LABEL: Record<SupplierJobStatusKey, string> = {
 const STATUS_DETAIL_TEXT: Record<SupplierJobStatusKey, string> = {
   new: "New offer — view details, then accept or reject",
   accepted: "Accepted — confirm to proceed",
+  changes_pending: "The office edited this job — review and approve or reject",
   confirmed: "Confirmed",
   completed: "Completed",
   rejected: "You rejected this job",
@@ -58,6 +72,7 @@ export function statusDetailText(job: JobAllocationOfferView): string {
 export const STATUS_BADGE_STYLE: Record<SupplierJobStatusKey, string> = {
   new: "bg-blue-50 text-blue-700",
   accepted: "bg-amber-50 text-amber-700",
+  changes_pending: "bg-orange-50 text-orange-700",
   confirmed: "bg-primary-50 text-primary-700",
   completed: "bg-emerald-50 text-emerald-700",
   rejected: "bg-red-50 text-red-700",
@@ -74,6 +89,7 @@ export function isNewOffer(job: JobAllocationOfferView): boolean {
 }
 
 export function isActiveJob(job: JobAllocationOfferView): boolean {
+  if (job.allocation_status === "pending_reapproval") return true;
   return job.offer_status === "accepted" && (job.allocation_status === "accepted_by_supplier" || job.allocation_status === "confirmed");
 }
 

@@ -92,6 +92,7 @@ const STATUS_STYLE: Record<JobStatus, string> = {
   offered: "bg-blue-50 text-blue-700",
   accepted_by_supplier: "bg-amber-50 text-amber-700",
   rejected_by_supplier: "bg-red-50 text-red-700",
+  pending_reapproval: "bg-orange-50 text-orange-700",
   confirmed: "bg-emerald-50 text-emerald-700",
   completed: "bg-emerald-50 text-emerald-700",
   cancelled: "bg-slate-100 text-slate-500",

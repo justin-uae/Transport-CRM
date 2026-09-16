@@ -27,6 +27,7 @@ const STATUS_STYLE: Record<JobStatus, string> = {
   offered: "bg-blue-50 text-blue-700",
   accepted_by_supplier: "bg-amber-50 text-amber-700",
   rejected_by_supplier: "bg-red-50 text-red-700",
+  pending_reapproval: "bg-orange-50 text-orange-700",
   confirmed: "bg-emerald-50 text-emerald-700",
   completed: "bg-emerald-50 text-emerald-700",
   cancelled: "bg-slate-100 text-slate-500",
@@ -127,6 +128,7 @@ export function DispatchBoard({
                 heading: "Editing a job after it's dispatched",
                 body: [
                   "Open a job and use Edit Booking (in the Journey panel) to change pickup, destination, date, time, passengers or luggage — even once a supplier has accepted or confirmed. A reason is required, you can charge/credit the customer and/or adjust the supplier's payout at the same time, and it's logged to the Edit history panel on the same page. It closes off only once the job is marked Completed.",
+                  "If the supplier had already accepted or confirmed, editing the journey or their payout pulls the allocation back to Awaiting supplier re-approval — they have to explicitly approve or reject the change on their own dashboard before anything proceeds. Approve and it carries on exactly as before; reject and the job comes straight back here as Rejected by supplier, ready to re-offer to someone else — nothing else on your end changes.",
                 ],
               },
             ]}

@@ -37,6 +37,7 @@ const JOB_STATUS_LABEL: Record<JobStatus, string> = {
   offered: "Offered to suppliers",
   accepted_by_supplier: "Accepted by supplier",
   rejected_by_supplier: "Rejected by supplier",
+  pending_reapproval: "Awaiting supplier re-approval",
   confirmed: "Confirmed with supplier",
   completed: "Completed",
   cancelled: "Cancelled",

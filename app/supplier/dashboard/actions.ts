@@ -131,6 +131,107 @@ export async function rejectJobAllocationOfferAction(allocationId: string) {
   revalidatePath("/dispatch");
 }
 
+/**
+ * A job this supplier already accepted/confirmed got edited (Edit Booking,
+ * app/(staff)/quotes/actions.ts) — amendBookingAction pulls the allocation
+ * back to 'pending_reapproval' and this is where they sign off on it again.
+ * Approving restores whatever stage it was actually at before (confirmed if
+ * it had gotten that far, else accepted_by_supplier) — everything else about
+ * the booking proceeds exactly as it already would have.
+ */
+export async function approveAmendedAllocationAction(allocationId: string) {
+  const supplier = await requireSupplier();
+  const supabase = await createClient();
+
+  const { data: allocation } = await supabase
+    .from("job_allocations")
+    .select("status, assigned_supplier_id, tenant_id, confirmed_at")
+    .eq("id", allocationId)
+    .single();
+  if (!allocation || allocation.assigned_supplier_id !== supplier.id || allocation.status !== "pending_reapproval") {
+    throw new Error("This job isn't waiting on your approval right now.");
+  }
+
+  const restoredStatus = allocation.confirmed_at ? "confirmed" : "accepted_by_supplier";
+  const { error } = await supabase.from("job_allocations").update({ status: restoredStatus }).eq("id", allocationId);
+  if (error) throw new Error(error.message);
+
+  await admin()
+    .from("booking_amendments")
+    .update({ supplier_approval_status: "approved", supplier_responded_at: new Date().toISOString() })
+    .eq("job_allocation_id", allocationId)
+    .eq("supplier_approval_status", "pending");
+
+  await recordAudit({
+    client: admin(),
+    tenantId: allocation.tenant_id,
+    actorId: null,
+    action: "job_allocation_amendment_approved",
+    entityType: "job_allocation",
+    entityId: allocationId,
+  });
+
+  revalidatePath("/supplier/dashboard", "layout");
+  revalidatePath("/dispatch");
+}
+
+/**
+ * The reject side of the same re-approval flow — pulls the job off this
+ * supplier entirely (mirrors what a fresh-offer rejection already leaves
+ * behind: 'rejected_by_supplier' with no assigned supplier), so the
+ * existing "re-offer a rejected allocation" flow on Dispatch picks it up
+ * with no new staff-side UI needed.
+ */
+export async function rejectAmendedAllocationAction(allocationId: string) {
+  const supplier = await requireSupplier();
+  const supabase = await createClient();
+
+  const { data: allocation } = await supabase
+    .from("job_allocations")
+    .select("status, assigned_supplier_id, tenant_id, job_id")
+    .eq("id", allocationId)
+    .single();
+  if (!allocation || allocation.assigned_supplier_id !== supplier.id || allocation.status !== "pending_reapproval") {
+    throw new Error("This job isn't waiting on your approval right now.");
+  }
+
+  const { error } = await supabase
+    .from("job_allocations")
+    .update({ status: "rejected_by_supplier", assigned_supplier_id: null, responded_at: new Date().toISOString() })
+    .eq("id", allocationId);
+  if (error) throw new Error(error.message);
+
+  await admin()
+    .from("booking_amendments")
+    .update({ supplier_approval_status: "rejected", supplier_responded_at: new Date().toISOString() })
+    .eq("job_allocation_id", allocationId)
+    .eq("supplier_approval_status", "pending");
+
+  await recordAudit({
+    client: admin(),
+    tenantId: allocation.tenant_id,
+    actorId: null,
+    action: "job_allocation_amendment_rejected",
+    entityType: "job_allocation",
+    entityId: allocationId,
+  });
+
+  const info = await loadAllocationJobInfo(admin(), allocationId);
+  if (info) {
+    await notifyJobCreator(admin(), {
+      tenantId: info.tenantId,
+      jobId: info.jobId,
+      createdBy: info.createdBy,
+      quoteId: info.quoteId,
+      key: "job_reapproval_rejected",
+      extraVariables: { supplier_name: supplier.name },
+    });
+  }
+
+  revalidatePath("/supplier/dashboard", "layout");
+  revalidatePath("/dispatch");
+}
+
 export async function uploadSupplierInvoiceAction(
   allocationId: string,
   data: { notes: string; storagePath: string; fileName: string },

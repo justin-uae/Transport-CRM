@@ -2,12 +2,16 @@ import { Panel } from "@/components/ui/Panel";
 import { SectionTitle } from "@/components/ui/SectionTitle";
 import { formatDateTime } from "@/lib/formatDate";
 
+export type SupplierApprovalStatus = "not_required" | "pending" | "approved" | "rejected";
+
 export interface BookingEditRecord {
   id: string;
   reason: string;
   changes: Record<string, { from: unknown; to: unknown }>;
   customer_charge_amount: number | null;
   supplier_adjustment_amount: number | null;
+  supplier_approval_status: SupplierApprovalStatus;
+  supplier_responded_at: string | null;
   created_at: string;
   profiles: { full_name: string } | null;
 }
@@ -16,6 +20,12 @@ function money(amount: number | null, currency: string) {
   if (amount === null) return "—";
   return new Intl.NumberFormat("en-GB", { style: "currency", currency, maximumFractionDigits: 0 }).format(amount);
 }
+
+const APPROVAL_BADGE: Record<Exclude<SupplierApprovalStatus, "not_required">, { label: string; style: string }> = {
+  pending: { label: "Awaiting supplier re-approval", style: "bg-orange-50 text-orange-700" },
+  approved: { label: "Supplier approved", style: "bg-emerald-50 text-emerald-700" },
+  rejected: { label: "Supplier rejected — reopened for dispatch", style: "bg-red-50 text-red-700" },
+};
 
 /**
  * Every past edit to a booking — via amendBookingAction (see
@@ -39,6 +49,16 @@ export function BookingEditHistory({ amendments, currency }: { amendments: Booki
                 <span className="text-xs text-slate-400">{formatDateTime(a.created_at)}</span>
               </div>
               <p className="mt-1 text-slate-600">{a.reason}</p>
+              {a.supplier_approval_status !== "not_required" && (
+                <div className="mt-2">
+                  <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${APPROVAL_BADGE[a.supplier_approval_status].style}`}>
+                    {APPROVAL_BADGE[a.supplier_approval_status].label}
+                  </span>
+                  {a.supplier_responded_at && (
+                    <span className="ml-2 text-xs text-slate-400">{formatDateTime(a.supplier_responded_at)}</span>
+                  )}
+                </div>
+              )}
               {fieldChanges.length > 0 && (
                 <ul className="mt-2 space-y-0.5 text-xs text-slate-500">
                   {fieldChanges.map(([key, { from, to }]) => (

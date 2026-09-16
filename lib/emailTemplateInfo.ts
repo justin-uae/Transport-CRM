@@ -16,7 +16,9 @@ export type EmailTemplateKey =
   | "supplier_invited"
   | "payment_received"
   | "booking_amended"
-  | "job_amended";
+  | "job_amended"
+  | "job_reapproval_required"
+  | "job_reapproval_rejected";
 
 /** Friendly labels + the {{variable}} tokens each template supports — shown as an editing hint in Email Centre -> Templates. */
 export const EMAIL_TEMPLATE_INFO: Record<EmailTemplateKey, { label: string; description: string; variables: string[] }> = {
@@ -100,5 +102,15 @@ export const EMAIL_TEMPLATE_INFO: Record<EmailTemplateKey, { label: string; desc
     label: "Job updated",
     description: "Sent to the supplier when staff edit a job's journey details or their payout.",
     variables: ["supplier_name", "quote_number", "brand_name", "reason", "changes_summary", "payout_note", "link"],
+  },
+  job_reapproval_required: {
+    label: "Job needs re-approval",
+    description: "Sent to the supplier instead of \"Job updated\" when the edit is to a job they've already accepted or confirmed — they must approve or reject it again.",
+    variables: ["supplier_name", "quote_number", "brand_name", "reason", "changes_summary", "payout_note", "link"],
+  },
+  job_reapproval_rejected: {
+    label: "Job re-approval rejected",
+    description: "Sent to the booking's owner when a supplier rejects an edited job — it's open for dispatch to a new supplier.",
+    variables: ["supplier_name", "quote_number", "brand_name", "link"],
   },
 };

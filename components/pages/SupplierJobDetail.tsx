@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, AlertTriangle } from "lucide-react";
 import { PageHead } from "@/components/ui/PageHead";
 import { Panel } from "@/components/ui/Panel";
 import { SectionTitle } from "@/components/ui/SectionTitle";
@@ -16,6 +16,8 @@ import {
   rejectJobAllocationOfferAction,
   confirmAllocationAction,
   completeAllocationAction,
+  approveAmendedAllocationAction,
+  rejectAmendedAllocationAction,
 } from "@/app/supplier/dashboard/actions";
 import { statusDetailText } from "@/lib/supplierJobStatus";
 import { formatDateAndTime } from "@/lib/formatDate";
@@ -50,16 +52,18 @@ export function SupplierJobDetail({
   invoice,
   invoiceUrl,
   supplierId,
+  pendingAmendment,
 }: {
   job: JobAllocationOfferView;
   invoice: JobSupplierInvoice | null;
   invoiceUrl: string | null;
   supplierId: string;
+  pendingAmendment: { reason: string; changes: Record<string, { from: unknown; to: unknown }> } | null;
 }) {
   const notify = useToast();
   const router = useRouter();
   const [pending, startTransition] = useTransition();
-  const [modal, setModal] = useState<"accept" | "reject" | "confirm" | "complete" | null>(null);
+  const [modal, setModal] = useState<"accept" | "reject" | "confirm" | "complete" | "approveChanges" | "rejectChanges" | null>(null);
   const [modalError, setModalError] = useState<string | null>(null);
 
   function closeModal() {
@@ -88,6 +92,34 @@ export function SupplierJobDetail({
         await rejectJobAllocationOfferAction(job.job_allocation_id);
         closeModal();
         notify("Job rejected");
+        router.refresh();
+      } catch (err) {
+        setModalError(err instanceof Error ? err.message : "Could not reject this job.");
+      }
+    });
+  }
+
+  function approveChanges() {
+    setModalError(null);
+    startTransition(async () => {
+      try {
+        await approveAmendedAllocationAction(job.job_allocation_id);
+        closeModal();
+        notify("Changes approved — the job carries on as before");
+        router.refresh();
+      } catch (err) {
+        setModalError(err instanceof Error ? err.message : "Could not approve these changes.");
+      }
+    });
+  }
+
+  function rejectChanges() {
+    setModalError(null);
+    startTransition(async () => {
+      try {
+        await rejectAmendedAllocationAction(job.job_allocation_id);
+        closeModal();
+        notify("Job rejected — it's been taken off your schedule");
         router.refresh();
       } catch (err) {
         setModalError(err instanceof Error ? err.message : "Could not reject this job.");
@@ -144,6 +176,54 @@ export function SupplierJobDetail({
           </Link>
         }
       />
+
+      {job.allocation_status === "pending_reapproval" && (
+        <div className="mb-5 rounded-3xl border border-orange-200 bg-orange-50 p-5 shadow-sm">
+          <div className="flex items-start gap-3">
+            <span className="mt-0.5 shrink-0 rounded-full bg-orange-100 p-2 text-orange-700">
+              <AlertTriangle size={18} />
+            </span>
+            <div className="min-w-0">
+              <h3 className="font-black text-orange-900">This job has changed</h3>
+              <p className="mt-1 text-sm text-orange-800">
+                You already accepted this job, but the office has since edited it. Review what changed below, then
+                approve to carry on as before, or reject to take it off your schedule — no explanation needed.
+              </p>
+              {pendingAmendment && (
+                <div className="mt-3 rounded-xl bg-white/70 p-3 text-sm">
+                  <p className="font-bold text-slate-700">Reason given: {pendingAmendment.reason}</p>
+                  {Object.entries(pendingAmendment.changes).filter(([key]) => key !== "selling_price").length > 0 && (
+                    <ul className="mt-2 space-y-0.5 text-xs text-slate-600">
+                      {Object.entries(pendingAmendment.changes)
+                        .filter(([key]) => key !== "selling_price")
+                        .map(([key, { from, to }]) => (
+                          <li key={key}>
+                            <span className="capitalize">{key.replaceAll("_", " ")}</span>: {String(from ?? "—")} →{" "}
+                            <b className="text-slate-800">{String(to ?? "—")}</b>
+                          </li>
+                        ))}
+                    </ul>
+                  )}
+                </div>
+              )}
+              <div className="mt-4 flex flex-wrap gap-2">
+                <button
+                  onClick={() => setModal("approveChanges")}
+                  className="rounded-xl bg-emerald-600 px-5 py-2.5 text-sm font-bold text-white"
+                >
+                  Approve changes
+                </button>
+                <button
+                  onClick={() => setModal("rejectChanges")}
+                  className="rounded-xl border border-red-200 bg-white px-5 py-2.5 text-sm font-bold text-red-600"
+                >
+                  Reject job
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       <Panel>
         <SectionTitle
@@ -276,6 +356,31 @@ export function SupplierJobDetail({
         error={modalError}
         confirmLabel="Mark completed"
         onConfirm={complete}
+      />
+
+      <ConfirmDetailModal
+        open={modal === "approveChanges"}
+        onClose={closeModal}
+        title="Approve these changes?"
+        description="The job carries on exactly as it already would have — nothing else changes."
+        details={journeyDetails}
+        pending={pending}
+        error={modalError}
+        confirmLabel="Approve changes"
+        onConfirm={approveChanges}
+      />
+
+      <ConfirmDetailModal
+        open={modal === "rejectChanges"}
+        onClose={closeModal}
+        title="Reject this job?"
+        description="It's taken off your schedule entirely and goes back to the office to offer to another supplier — no explanation needed."
+        details={journeyDetails}
+        pending={pending}
+        error={modalError}
+        destructive
+        confirmLabel="Reject job"
+        onConfirm={rejectChanges}
       />
 
       {job.allocation_status === "completed" && (job.manual_invoice_note || job.manual_invoice_url) && (

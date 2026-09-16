@@ -553,6 +553,7 @@ export type JobStatus =
   | "offered"
   | "accepted_by_supplier"
   | "rejected_by_supplier"
+  | "pending_reapproval"
   | "confirmed"
   | "completed"
   | "cancelled";

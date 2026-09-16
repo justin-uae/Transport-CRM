@@ -15,11 +15,15 @@ export default async function ActiveJobsPage({ searchParams }: { searchParams: P
   const from = (page - 1) * PAGE_SIZE;
   const to = from + PAGE_SIZE - 1;
 
+  // offer_status stays 'accepted' from before even once an allocation moves
+  // to 'pending_reapproval' — a re-approval doesn't touch
+  // job_allocation_offers at all — so the offer_status filter already
+  // covers it; only the allocation_status list needs the new value added.
   let query = supabase
     .from("job_allocation_offer_view")
     .select("*", { count: "exact" })
     .eq("offer_status", "accepted")
-    .in("allocation_status", ["accepted_by_supplier", "confirmed"]);
+    .in("allocation_status", ["accepted_by_supplier", "confirmed", "pending_reapproval"]);
   if (q) query = query.ilike("region", `%${q}%`);
 
   const { data, count } = await query.order("offered_at", { ascending: false }).range(from, to);

@@ -540,10 +540,11 @@ export async function amendBookingAction(quoteId: string, input: AmendBookingInp
 
   let allocationId: string | null = null;
   let supplierId: string | null = null;
+  let allocationStatus: string | null = null;
   if (job && (hasLegChange || hasSupplierAdjustment)) {
     const { data: allocation } = await supabase
       .from("job_allocations")
-      .select("id, assigned_supplier_id")
+      .select("id, assigned_supplier_id, status")
       .eq("job_id", job.id)
       .not("status", "in", "(cancelled)")
       .order("created_at", { ascending: false })
@@ -551,10 +552,21 @@ export async function amendBookingAction(quoteId: string, input: AmendBookingInp
       .maybeSingle();
     allocationId = allocation?.id ?? null;
     supplierId = allocation?.assigned_supplier_id ?? null;
+    allocationStatus = allocation?.status ?? null;
   }
   if (hasSupplierAdjustment && !allocationId) {
     return { error: "There's no active supplier allocation on this job to adjust." };
   }
+
+  // A supplier who already committed to this job (accepted or confirmed)
+  // gets pulled back to a pending state and has to explicitly re-approve
+  // the edited job — rather than a change silently landing on a trip
+  // they've already signed off on. An allocation still just 'offered' (no
+  // commitment yet) or already rejected/unassigned doesn't need this.
+  const requiresSupplierReapproval =
+    (hasLegChange || hasSupplierAdjustment) &&
+    !!allocationId &&
+    (allocationStatus === "accepted_by_supplier" || allocationStatus === "confirmed");
 
   // ---- Journey changes ---------------------------------------------------
   const changes: Record<string, { from: unknown; to: unknown }> = {};
@@ -720,6 +732,23 @@ export async function amendBookingAction(quoteId: string, input: AmendBookingInp
     if (adjError) return { error: adjError.message };
   }
 
+  // ---- Pull the job back to "pending" if the supplier already committed ----
+  // Their original accept/confirm was for the trip as it stood then — an
+  // edited leg or payout needs their eyes again before anything proceeds,
+  // rather than quietly keeping their old sign-off. Approve/reject lives on
+  // their own dashboard (see approveAmendedAllocationAction /
+  // rejectAmendedAllocationAction in app/supplier/dashboard/actions.ts); a
+  // rejection frees the job straight back to dispatch (recalc_job_status
+  // rolls it to 'rejected_by_supplier', and the existing "re-offer a
+  // rejected allocation" flow on Dispatch takes it from there).
+  if (requiresSupplierReapproval) {
+    const { error: pendingError } = await supabase
+      .from("job_allocations")
+      .update({ status: "pending_reapproval" })
+      .eq("id", allocationId!);
+    if (pendingError) return { error: pendingError.message };
+  }
+
   // ---- Amendment record ----------------------------------------------------
   const { data: amendment } = await supabase
     .from("booking_amendments")
@@ -738,6 +767,7 @@ export async function amendBookingAction(quoteId: string, input: AmendBookingInp
       refund_id: refundId,
       supplier_adjustment_amount: hasSupplierAdjustment ? input.supplierAdjustment!.amount : null,
       supplier_adjustment_note: hasSupplierAdjustment ? input.supplierAdjustment!.note : null,
+      supplier_approval_status: requiresSupplierReapproval ? "pending" : "not_required",
     })
     .select("id")
     .single();
@@ -826,9 +856,13 @@ export async function amendBookingAction(quoteId: string, input: AmendBookingInp
       const payoutNote = hasSupplierAdjustment
         ? `Your payout has been adjusted by ${quote.currency} ${Number(input.supplierAdjustment!.amount).toFixed(2)}.`
         : "";
+      // Once they've committed to a job, an edit needs an explicit re-approve
+      // — not just an FYI — so it gets its own template and sends them
+      // straight to the allocation's own approve/reject buttons rather than
+      // the generic dashboard.
       const result = await renderAndSendTemplate(supabase, {
         tenantId: actor.tenant_id,
-        key: "job_amended",
+        key: requiresSupplierReapproval ? "job_reapproval_required" : "job_amended",
         to: supplier.email,
         variables: {
           supplier_name: supplier.name,
@@ -837,7 +871,7 @@ export async function amendBookingAction(quoteId: string, input: AmendBookingInp
           reason,
           changes_summary: changesSummary,
           payout_note: payoutNote,
-          link: `${process.env.NEXT_PUBLIC_APP_URL ?? ""}/supplier/dashboard`,
+          link: `${process.env.NEXT_PUBLIC_APP_URL ?? ""}/supplier/dashboard${allocationId ? `/${allocationId}` : ""}`,
         },
       });
       if (!result.error) {

@@ -32,7 +32,9 @@ export default async function DispatchJobDetailPage({ params }: { params: Promis
     hasPermission(actor, PERMISSIONS.BOOKINGS_AMEND),
     supabase
       .from("booking_amendments")
-      .select("id, reason, changes, customer_charge_amount, supplier_adjustment_amount, created_at, profiles(full_name)")
+      .select(
+        "id, reason, changes, customer_charge_amount, supplier_adjustment_amount, supplier_approval_status, supplier_responded_at, created_at, profiles(full_name)",
+      )
       .eq("job_id", id)
       .order("created_at", { ascending: false }),
   ]);
