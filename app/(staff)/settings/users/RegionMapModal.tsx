@@ -17,15 +17,10 @@ export interface AllocatedRegion {
   userName: string;
 }
 
-// One tenant is rarely more than a handful of staff — a small fixed palette,
-// hashed by user id, is enough for every marker/dot to read as "this person"
-// at a glance without maintaining a colour assignment anywhere.
+// One tenant is rarely more than a handful of staff — a small fixed palette
+// is enough for every marker/dot to read as "this person" at a glance
+// without maintaining a colour assignment anywhere in the database.
 const PALETTE = ["#f97316", "#2563eb", "#16a34a", "#a855f7", "#dc2626", "#0891b2", "#ca8a04", "#db2777", "#4f46e5", "#059669"];
-function colorForUser(userId: string) {
-  let hash = 0;
-  for (let i = 0; i < userId.length; i++) hash = (hash * 31 + userId.charCodeAt(i)) >>> 0;
-  return PALETTE[hash % PALETTE.length]!;
-}
 
 // Dubai — a reasonable default centre for this tenant's operating area when
 // no allocated region has coordinates yet to fit bounds to.
@@ -80,6 +75,20 @@ export function RegionMapModal({
   const [nameInput, setNameInput] = useState("");
   const [pendingCoords, setPendingCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [pending, startTransition] = useTransition();
+
+  // Hashing a user id straight into a palette index (the previous approach)
+  // collides constantly with only a handful of colours to pick from — with
+  // ~6-7 staff sharing a 10-colour palette, two people landing on the same
+  // hash bucket was common, not a rare edge case. Assigning colours by each
+  // distinct user's position in a stable, sorted list instead guarantees no
+  // two different people share a colour as long as there are ≤10 of them.
+  const userColors = useMemo(() => {
+    const ids = [...new Set(allRegions.map((r) => r.userId))].sort();
+    const map = new Map<string, string>();
+    ids.forEach((id, i) => map.set(id, PALETTE[i % PALETTE.length]!));
+    return map;
+  }, [allRegions]);
+  const colorForUser = (userId: string) => userColors.get(userId) ?? PALETTE[0]!;
 
   useEffect(() => {
     if (!open) return;
