@@ -204,7 +204,11 @@ export function RegionMapModal({
       private div: HTMLDivElement;
       private position: google.maps.LatLng;
 
-      constructor(position: google.maps.LatLng, label: string, color: string, onClick: () => void) {
+      // Shows the region name AND whose region it is right on the pin — the
+      // point of a default-view label is to answer "what's here, and whose
+      // is it" without a click, so leaving the owner out and requiring a
+      // click to find out defeats that.
+      constructor(position: google.maps.LatLng, regionLabel: string, userName: string, color: string, onClick: () => void) {
         super();
         this.position = position;
         const div = document.createElement("div");
@@ -213,18 +217,12 @@ export function RegionMapModal({
           transform: "translate(-50%, calc(-100% - 10px))",
           display: "flex",
           alignItems: "center",
-          gap: "5px",
-          maxWidth: "180px",
-          padding: "3px 9px 3px 6px",
-          borderRadius: "999px",
+          gap: "6px",
+          maxWidth: "210px",
+          padding: "4px 10px 4px 7px",
+          borderRadius: "12px",
           background: "#ffffff",
           boxShadow: "0 1px 4px rgba(15,23,42,0.35)",
-          fontSize: "11px",
-          fontWeight: "700",
-          color: "#1e293b",
-          whiteSpace: "nowrap",
-          overflow: "hidden",
-          textOverflow: "ellipsis",
           cursor: "pointer",
           userSelect: "none",
         } satisfies Partial<CSSStyleDeclaration>);
@@ -238,12 +236,38 @@ export function RegionMapModal({
           background: color,
         });
 
-        const text = document.createElement("span");
-        text.style.overflow = "hidden";
-        text.style.textOverflow = "ellipsis";
-        text.textContent = label;
+        const textCol = document.createElement("div");
+        Object.assign(textCol.style, {
+          display: "flex",
+          flexDirection: "column",
+          minWidth: "0",
+          lineHeight: "1.25",
+        } satisfies Partial<CSSStyleDeclaration>);
 
-        div.append(dot, text);
+        const regionLine = document.createElement("span");
+        Object.assign(regionLine.style, {
+          fontSize: "11px",
+          fontWeight: "700",
+          color: "#1e293b",
+          whiteSpace: "nowrap",
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+        } satisfies Partial<CSSStyleDeclaration>);
+        regionLine.textContent = regionLabel;
+
+        const userLine = document.createElement("span");
+        Object.assign(userLine.style, {
+          fontSize: "9.5px",
+          fontWeight: "600",
+          color: "#64748b",
+          whiteSpace: "nowrap",
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+        } satisfies Partial<CSSStyleDeclaration>);
+        userLine.textContent = userName;
+
+        textCol.append(regionLine, userLine);
+        div.append(dot, textCol);
         div.addEventListener("click", (e) => {
           e.stopPropagation();
           onClick();
@@ -339,7 +363,7 @@ export function RegionMapModal({
         marker.addListener("click", () => showInfo(marker));
         overlaysRef.current.push(marker);
 
-        const label = new RegionLabelOverlay(new google.maps.LatLng(coords), r.region, color, () => showInfo(marker));
+        const label = new RegionLabelOverlay(new google.maps.LatLng(coords), r.region, r.userName, color, () => showInfo(marker));
         label.setMap(map);
         overlaysRef.current.push(label);
 
@@ -503,9 +527,9 @@ export function RegionMapModal({
                 <div className="text-xs font-black uppercase tracking-wide text-slate-400">Allocated regions ({allRegions.length})</div>
                 <p className="mt-1 text-xs text-slate-400">
                   Each person's regions are shaded in their own colour, with a {(REGION_RADIUS_METERS / 1000).toFixed(0)}km circle
-                  marking the approximate area covered around each pin. The named label above each pin stays readable at any zoom
-                  level, even fully zoomed out — the circle itself only becomes visible once zoomed in close. Click a region below
-                  to zoom the map straight to it.
+                  marking the approximate area covered around each pin. The label above each pin shows the region and who covers
+                  it, without needing a click, and stays readable at any zoom level, even fully zoomed out — the circle itself only
+                  becomes visible once zoomed in close. Click a region below to zoom the map straight to it.
                 </p>
                 <div className="mt-3 space-y-4">
                   {groupedRegions.map((group) => (
