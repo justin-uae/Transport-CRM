@@ -66,7 +66,7 @@ interface QuoteDetailRow {
   viewed_at: string | null;
   decided_at: string | null;
   customers: { company_name: string | null; contact_name: string; phone: string | null; email: string | null } | null;
-  enquiries: { assigned_user_id: string | null; enquiry_legs: (JourneyLeg & { id: string })[] } | null;
+  enquiries: { id: string; assigned_user_id: string | null; enquiry_legs: (JourneyLeg & { id: string })[] } | null;
   quote_versions: VersionRow[];
   quote_events: { event: QuoteEventType; created_at: string }[];
   quote_decisions: { decision: QuoteDecisionType; reason: string | null; free_text: string | null; decided_at: string }[];
@@ -94,16 +94,17 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
   const { id } = await params;
   const actor = await requireProfile();
   const supabase = await createClient();
-  const [canCancel, canProcessRefunds, canAmendPermission] = await Promise.all([
+  const [canCancel, canProcessRefunds, canAmendPermission, canCreateQuote] = await Promise.all([
     hasPermission(actor, PERMISSIONS.QUOTES_CANCEL),
     hasPermission(actor, PERMISSIONS.FINANCE_PROCESS_REFUNDS),
     hasPermission(actor, PERMISSIONS.BOOKINGS_AMEND),
+    hasPermission(actor, PERMISSIONS.QUOTES_CREATE),
   ]);
 
   const { data: quoteRaw, error: quoteError } = await supabase
     .from("quotes")
     .select(
-      "id, quote_number, status, currency, expiry_at, invoice_number, invoiced_at, public_token, created_at, sent_at, viewed_at, decided_at, customers(company_name, contact_name, phone, email), enquiries(assigned_user_id, enquiry_legs(id, sequence, journey_type, pickup_address, destination_address, via_points, pickup_date, pickup_time, return_date, return_time, passenger_count, luggage_count, wheelchair_required, child_seats, special_requirements, vehicle_types(name))), quote_versions!quote_versions_quote_id_fkey(id, version_number, vehicle_description, supplier_estimated_cost, selling_price, currency, deposit_percentage, deposit_fixed_amount, customer_notes, terms_snapshot, created_at, quote_line_items(id, description, amount, category)), quote_events(event, created_at), quote_decisions(decision, reason, free_text, decided_at), customer_payments(id, amount, method, paid_at), quote_payment_milestones(id, sequence, label, amount, due_date)",
+      "id, quote_number, status, currency, expiry_at, invoice_number, invoiced_at, public_token, created_at, sent_at, viewed_at, decided_at, customers(company_name, contact_name, phone, email), enquiries(id, assigned_user_id, enquiry_legs(id, sequence, journey_type, pickup_address, destination_address, via_points, pickup_date, pickup_time, return_date, return_time, passenger_count, luggage_count, wheelchair_required, child_seats, special_requirements, vehicle_types(name))), quote_versions!quote_versions_quote_id_fkey(id, version_number, vehicle_description, supplier_estimated_cost, selling_price, currency, deposit_percentage, deposit_fixed_amount, customer_notes, terms_snapshot, created_at, quote_line_items(id, description, amount, category)), quote_events(event, created_at), quote_decisions(decision, reason, free_text, decided_at), customer_payments(id, amount, method, paid_at), quote_payment_milestones(id, sequence, label, amount, due_date)",
     )
     .eq("id", id)
     .single();
@@ -334,6 +335,8 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
                 canCancel={canCancel}
                 canProcessRefunds={canProcessRefunds}
                 canAmend={canAmend}
+                canCreateQuote={canCreateQuote}
+                enquiryId={quote.enquiries?.id ?? null}
                 legs={amendableLegs}
                 jobStatus={jobRow?.status ?? null}
                 refunds={(refunds ?? []) as Refund[]}

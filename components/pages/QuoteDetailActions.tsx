@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import Link from "next/link";
 import { useToast } from "@/components/ui/Toast";
 import { ConfirmDetailModal } from "@/components/ui/ConfirmDetailModal";
 import {
@@ -32,6 +33,10 @@ function money(amount: number | null, currency: string) {
 
 const EMAILABLE: QuoteStatus[] = ["sent", "viewed", "accepted", "partially_paid", "paid"];
 const CANCELLABLE: QuoteStatus[] = ["accepted", "partially_paid", "paid"];
+// Dead-end statuses — the quote itself can't go any further, but the
+// underlying enquiry is still perfectly requotable (e.g. rejected as "too
+// expensive" just needs a fresh, cheaper quote against the same journey).
+const REQUOTABLE: QuoteStatus[] = ["rejected", "expired", "cancelled"];
 
 /**
  * Marking a quote as paid now happens exclusively on the Customer Payments
@@ -45,6 +50,8 @@ export function QuoteDetailActions({
   canCancel,
   canProcessRefunds,
   canAmend,
+  canCreateQuote,
+  enquiryId,
   legs,
   jobStatus,
   refunds,
@@ -53,6 +60,8 @@ export function QuoteDetailActions({
   canCancel: boolean;
   canProcessRefunds: boolean;
   canAmend: boolean;
+  canCreateQuote: boolean;
+  enquiryId: string | null;
   legs: AmendableLeg[];
   jobStatus: JobStatus | null;
   refunds: Refund[];
@@ -106,6 +115,14 @@ export function QuoteDetailActions({
 
   return (
     <>
+      {canCreateQuote && enquiryId && REQUOTABLE.includes(quote.status) && (
+        <Link
+          href={`/quotes/new?enquiryId=${enquiryId}`}
+          className="block w-full rounded-xl bg-primary-500 px-4 py-2.5 text-center text-sm font-bold text-white"
+        >
+          Create New Quote
+        </Link>
+      )}
       {quote.status === "paid" && (
         <>
           <a
