@@ -31,6 +31,13 @@ function colorForUser(userId: string) {
 // no allocated region has coordinates yet to fit bounds to.
 const DEFAULT_CENTER = { lat: 25.2048, lng: 55.2708 };
 
+// The Maps JS API has no free way to fetch a place's real administrative
+// boundary (that's a separate, paid "boundaries" dataset) — so "the Kochi
+// region" is approximated as a coloured circle of this radius around its
+// pin, which reads as "roughly this area is covered" without pretending to
+// be an exact city outline.
+const REGION_RADIUS_METERS = 12000;
+
 /**
  * Region coverage map — opened from "+ Add region" on a user row. Shows
  * every colleague's allocated region as a coloured pin (so an admin can see
@@ -60,7 +67,7 @@ export function RegionMapModal({
   const panelRef = useRef<HTMLDivElement>(null);
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<google.maps.Map | null>(null);
-  const markersRef = useRef<google.maps.Marker[]>([]);
+  const overlaysRef = useRef<(google.maps.Marker | google.maps.Circle)[]>([]);
   const geocodeCache = useRef<Map<string, { lat: number; lng: number } | null>>(new Map());
 
   const [mapStatus, setMapStatus] = useState<"loading" | "ready" | "unavailable">("loading");
@@ -95,7 +102,7 @@ export function RegionMapModal({
   useEffect(() => {
     if (open) return;
     mapRef.current = null;
-    markersRef.current = [];
+    overlaysRef.current = [];
     setMapStatus("loading");
     setNameInput("");
     setPendingCoords(null);
@@ -163,8 +170,8 @@ export function RegionMapModal({
     const google = window.google;
     const map = mapRef.current;
 
-    markersRef.current.forEach((m) => m.setMap(null));
-    markersRef.current = [];
+    overlaysRef.current.forEach((o) => o.setMap(null));
+    overlaysRef.current = [];
 
     const infoWindow = new google.maps.InfoWindow();
     const bounds = new google.maps.LatLngBounds();
@@ -193,19 +200,9 @@ export function RegionMapModal({
         if (!coords) return;
         plotted += 1;
         bounds.extend(coords);
-        const marker = new google.maps.Marker({
-          position: coords,
-          map,
-          icon: {
-            path: google.maps.SymbolPath.CIRCLE,
-            scale: 9,
-            fillColor: colorForUser(r.userId),
-            fillOpacity: 0.9,
-            strokeColor: "#ffffff",
-            strokeWeight: 2,
-          },
-        });
-        marker.addListener("click", () => {
+        const color = colorForUser(r.userId);
+
+        const showInfo = (anchor: google.maps.MVCObject) => {
           const content = document.createElement("div");
           content.style.fontSize = "13px";
           content.style.lineHeight = "1.5";
@@ -213,9 +210,43 @@ export function RegionMapModal({
           strong.textContent = r.region;
           content.append(strong, document.createElement("br"), r.userName);
           infoWindow.setContent(content);
-          infoWindow.open({ map, anchor: marker });
+          infoWindow.open({ map, anchor });
+        };
+
+        // The circle IS the region marking (per-user coloured outline +
+        // light fill, per the "circle the covered area" request) — the dot
+        // marker on top just gives a precise, always-clickable point since
+        // a large circle's own click target can be awkward to hit exactly.
+        const circle = new google.maps.Circle({
+          center: coords,
+          radius: REGION_RADIUS_METERS,
+          map,
+          strokeColor: color,
+          strokeOpacity: 0.9,
+          strokeWeight: 2,
+          fillColor: color,
+          fillOpacity: 0.12,
+          clickable: true,
         });
-        markersRef.current.push(marker);
+        circle.addListener("click", () => showInfo(circle));
+        overlaysRef.current.push(circle);
+        const circleBounds = circle.getBounds();
+        if (circleBounds) bounds.union(circleBounds);
+
+        const marker = new google.maps.Marker({
+          position: coords,
+          map,
+          icon: {
+            path: google.maps.SymbolPath.CIRCLE,
+            scale: 6,
+            fillColor: color,
+            fillOpacity: 1,
+            strokeColor: "#ffffff",
+            strokeWeight: 2,
+          },
+        });
+        marker.addListener("click", () => showInfo(marker));
+        overlaysRef.current.push(marker);
       }),
     ).then(() => {
       if (plotted > 0) map.fitBounds(bounds, 64);
@@ -336,6 +367,10 @@ export function RegionMapModal({
 
               <div className="min-h-0 flex-1 p-4 md:overflow-y-auto">
                 <div className="text-xs font-black uppercase tracking-wide text-slate-400">Allocated regions ({allRegions.length})</div>
+                <p className="mt-1 text-xs text-slate-400">
+                  Each person's regions are shaded in their own colour on the map, with a {(REGION_RADIUS_METERS / 1000).toFixed(0)}km
+                  circle marking the approximate area covered around each pin.
+                </p>
                 <div className="mt-2 space-y-1">
                   {allRegions.map((r) => (
                     <div key={r.id} className="flex items-center justify-between gap-2 rounded-lg px-2 py-1.5 text-sm hover:bg-slate-50">
