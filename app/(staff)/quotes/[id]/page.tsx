@@ -66,7 +66,7 @@ interface QuoteDetailRow {
   viewed_at: string | null;
   decided_at: string | null;
   customers: { company_name: string | null; contact_name: string; phone: string | null; email: string | null } | null;
-  enquiries: { assigned_user_id: string | null; enquiry_legs: JourneyLeg[] } | null;
+  enquiries: { assigned_user_id: string | null; enquiry_legs: (JourneyLeg & { id: string })[] } | null;
   quote_versions: VersionRow[];
   quote_events: { event: QuoteEventType; created_at: string }[];
   quote_decisions: { decision: QuoteDecisionType; reason: string | null; free_text: string | null; decided_at: string }[];
@@ -103,7 +103,7 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
   const { data: quoteRaw, error: quoteError } = await supabase
     .from("quotes")
     .select(
-      "id, quote_number, status, currency, expiry_at, invoice_number, invoiced_at, public_token, created_at, sent_at, viewed_at, decided_at, customers(company_name, contact_name, phone, email), enquiries(assigned_user_id, enquiry_legs(sequence, journey_type, pickup_address, destination_address, via_points, pickup_date, pickup_time, return_date, return_time, passenger_count, luggage_count, wheelchair_required, child_seats, special_requirements, vehicle_types(name))), quote_versions!quote_versions_quote_id_fkey(id, version_number, vehicle_description, supplier_estimated_cost, selling_price, currency, deposit_percentage, deposit_fixed_amount, customer_notes, terms_snapshot, created_at, quote_line_items(id, description, amount, category)), quote_events(event, created_at), quote_decisions(decision, reason, free_text, decided_at), customer_payments(id, amount, method, paid_at), quote_payment_milestones(id, sequence, label, amount, due_date)",
+      "id, quote_number, status, currency, expiry_at, invoice_number, invoiced_at, public_token, created_at, sent_at, viewed_at, decided_at, customers(company_name, contact_name, phone, email), enquiries(assigned_user_id, enquiry_legs(id, sequence, journey_type, pickup_address, destination_address, via_points, pickup_date, pickup_time, return_date, return_time, passenger_count, luggage_count, wheelchair_required, child_seats, special_requirements, vehicle_types(name))), quote_versions!quote_versions_quote_id_fkey(id, version_number, vehicle_description, supplier_estimated_cost, selling_price, currency, deposit_percentage, deposit_fixed_amount, customer_notes, terms_snapshot, created_at, quote_line_items(id, description, amount, category)), quote_events(event, created_at), quote_decisions(decision, reason, free_text, decided_at), customer_payments(id, amount, method, paid_at), quote_payment_milestones(id, sequence, label, amount, due_date)",
     )
     .eq("id", id)
     .single();
@@ -128,17 +128,16 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
 
   const customer = quote.customers;
   const legs = [...(quote.enquiries?.enquiry_legs ?? [])].sort((a, b) => a.sequence - b.sequence);
-  const firstLeg = legs[0] ?? null;
-  const currentLeg: AmendableLeg | null = firstLeg
-    ? {
-        pickupAddress: firstLeg.pickup_address,
-        destinationAddress: firstLeg.destination_address,
-        pickupDate: firstLeg.pickup_date,
-        pickupTime: firstLeg.pickup_time,
-        passengerCount: firstLeg.passenger_count,
-        luggageCount: firstLeg.luggage_count,
-      }
-    : null;
+  const amendableLegs: AmendableLeg[] = legs.map((l) => ({
+    id: l.id,
+    sequence: l.sequence,
+    pickupAddress: l.pickup_address,
+    destinationAddress: l.destination_address,
+    pickupDate: l.pickup_date,
+    pickupTime: l.pickup_time,
+    passengerCount: l.passenger_count,
+    luggageCount: l.luggage_count,
+  }));
   const amendments = (amendmentsRaw ?? []) as unknown as BookingEditRecord[];
   const versions = [...(quote.quote_versions ?? [])].sort((a, b) => b.version_number - a.version_number);
   const currentVersion = versions[0] ?? null;
@@ -335,7 +334,7 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
                 canCancel={canCancel}
                 canProcessRefunds={canProcessRefunds}
                 canAmend={canAmend}
-                currentLeg={currentLeg}
+                legs={amendableLegs}
                 jobStatus={jobRow?.status ?? null}
                 refunds={(refunds ?? []) as Refund[]}
               />

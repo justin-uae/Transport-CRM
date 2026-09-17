@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { hasPermission, PERMISSIONS } from "@/lib/permissions";
-import { DispatchJobDetail, type JobDetailRow, type JobAllocationRow } from "@/components/pages/DispatchJobDetail";
+import { DispatchJobDetail, type JobDetailRow, type JobAllocationRow, type JobRejectionRecord } from "@/components/pages/DispatchJobDetail";
 import type { SupplierOption } from "@/components/pages/DispatchBoard";
 import type { BookingEditRecord } from "@/components/pages/BookingEditHistory";
 
@@ -11,7 +11,7 @@ export default async function DispatchJobDetailPage({ params }: { params: Promis
   const actor = await requireProfile();
   const supabase = await createClient();
 
-  const [{ data: job }, { data: allocations }, { data: suppliers }, canTransfer, canDispatchManual, canEditBookingPermission, { data: amendmentsRaw }] = await Promise.all([
+  const [{ data: job }, { data: allocations }, { data: suppliers }, canTransfer, canDispatchManual, canEditBookingPermission, { data: amendmentsRaw }, { data: rejectionsRaw }] = await Promise.all([
     supabase
       .from("jobs")
       .select(
@@ -37,6 +37,11 @@ export default async function DispatchJobDetailPage({ params }: { params: Promis
       )
       .eq("job_id", id)
       .order("created_at", { ascending: false }),
+    supabase
+      .from("job_rejection_log")
+      .select("id, job_allocation_id, context, reason, rejected_at, suppliers(name)")
+      .eq("job_id", id)
+      .order("rejected_at", { ascending: false }),
   ]);
 
   if (!job) notFound();
@@ -74,6 +79,7 @@ export default async function DispatchJobDetailPage({ params }: { params: Promis
       canDispatchJobs={canDispatchJobs}
       canEditBooking={canEditBooking}
       amendments={(amendmentsRaw ?? []) as unknown as BookingEditRecord[]}
+      rejections={(rejectionsRaw ?? []) as unknown as JobRejectionRecord[]}
     />
   );
 }

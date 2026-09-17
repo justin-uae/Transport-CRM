@@ -97,9 +97,12 @@ export async function acceptJobAllocationOfferAction(allocationId: string) {
   revalidatePath("/dispatch");
 }
 
-export async function rejectJobAllocationOfferAction(allocationId: string) {
+export async function rejectJobAllocationOfferAction(allocationId: string, reason: string) {
   const supplier = await requireSupplier();
   const supabase = await createClient();
+
+  const trimmedReason = reason.trim();
+  if (!trimmedReason) throw new Error("Enter a reason for rejecting this job.");
 
   const { data: offer, error } = await supabase.rpc("reject_job_allocation_offer", { p_allocation_id: allocationId });
   if (error || !offer) {
@@ -113,17 +116,26 @@ export async function rejectJobAllocationOfferAction(allocationId: string) {
     action: "job_allocation_rejected_by_supplier",
     entityType: "job_allocation",
     entityId: allocationId,
+    reason: trimmedReason,
   });
 
   const info = await loadAllocationJobInfo(admin(), allocationId);
   if (info) {
+    await admin().from("job_rejection_log").insert({
+      tenant_id: info.tenantId,
+      job_id: info.jobId,
+      job_allocation_id: allocationId,
+      supplier_id: supplier.id,
+      context: "initial_offer",
+      reason: trimmedReason,
+    });
     await notifyJobCreator(admin(), {
       tenantId: info.tenantId,
       jobId: info.jobId,
       createdBy: info.createdBy,
       quoteId: info.quoteId,
       key: "job_rejected_by_supplier",
-      extraVariables: { supplier_name: supplier.name },
+      extraVariables: { supplier_name: supplier.name, reason: trimmedReason },
     });
   }
 
@@ -182,9 +194,12 @@ export async function approveAmendedAllocationAction(allocationId: string) {
  * existing "re-offer a rejected allocation" flow on Dispatch picks it up
  * with no new staff-side UI needed.
  */
-export async function rejectAmendedAllocationAction(allocationId: string) {
+export async function rejectAmendedAllocationAction(allocationId: string, reason: string) {
   const supplier = await requireSupplier();
   const supabase = await createClient();
+
+  const trimmedReason = reason.trim();
+  if (!trimmedReason) throw new Error("Enter a reason for rejecting this job.");
 
   const { data: allocation } = await supabase
     .from("job_allocations")
@@ -246,11 +261,20 @@ export async function rejectAmendedAllocationAction(allocationId: string) {
     action: "job_allocation_amendment_rejected",
     entityType: "job_allocation",
     entityId: allocationId,
+    reason: trimmedReason,
     newValue: totalPaid > 0.01 ? { refund_owed: Math.round(totalPaid * 100) / 100 } : undefined,
   });
 
   const info = await loadAllocationJobInfo(admin(), allocationId);
   if (info) {
+    await admin().from("job_rejection_log").insert({
+      tenant_id: info.tenantId,
+      job_id: info.jobId,
+      job_allocation_id: allocationId,
+      supplier_id: supplier.id,
+      context: "post_edit_reapproval",
+      reason: trimmedReason,
+    });
     await notifyJobCreator(admin(), {
       tenantId: info.tenantId,
       jobId: info.jobId,
@@ -259,6 +283,7 @@ export async function rejectAmendedAllocationAction(allocationId: string) {
       key: "job_reapproval_rejected",
       extraVariables: {
         supplier_name: supplier.name,
+        reason: trimmedReason,
         refund_note:
           totalPaid > 0.01
             ? `A refund of ${totalPaid.toFixed(2)} is now owed back from ${supplier.name} — it's logged on Supplier Payments.`

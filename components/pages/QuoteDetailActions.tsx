@@ -45,7 +45,7 @@ export function QuoteDetailActions({
   canCancel,
   canProcessRefunds,
   canAmend,
-  currentLeg,
+  legs,
   jobStatus,
   refunds,
 }: {
@@ -53,7 +53,7 @@ export function QuoteDetailActions({
   canCancel: boolean;
   canProcessRefunds: boolean;
   canAmend: boolean;
-  currentLeg: AmendableLeg | null;
+  legs: AmendableLeg[];
   jobStatus: JobStatus | null;
   refunds: Refund[];
 }) {
@@ -150,7 +150,7 @@ export function QuoteDetailActions({
         jobStatus={jobStatus}
         currency={quote.currency}
         canEdit={canAmend}
-        currentLeg={currentLeg}
+        legs={legs}
       />
       {canCancel && CANCELLABLE.includes(quote.status) && (
         <button

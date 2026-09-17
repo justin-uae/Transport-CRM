@@ -71,10 +71,12 @@ export function SupplierJobDetail({
   const [pending, startTransition] = useTransition();
   const [modal, setModal] = useState<"accept" | "reject" | "confirm" | "complete" | "approveChanges" | "rejectChanges" | null>(null);
   const [modalError, setModalError] = useState<string | null>(null);
+  const [rejectReason, setRejectReason] = useState("");
 
   function closeModal() {
     setModal(null);
     setModalError(null);
+    setRejectReason("");
   }
 
   function accept() {
@@ -92,10 +94,14 @@ export function SupplierJobDetail({
   }
 
   function reject() {
+    if (!rejectReason.trim()) {
+      setModalError("Please give a reason for rejecting this job.");
+      return;
+    }
     setModalError(null);
     startTransition(async () => {
       try {
-        await rejectJobAllocationOfferAction(job.job_allocation_id);
+        await rejectJobAllocationOfferAction(job.job_allocation_id, rejectReason);
         closeModal();
         notify("Job rejected");
         router.refresh();
@@ -120,10 +126,14 @@ export function SupplierJobDetail({
   }
 
   function rejectChanges() {
+    if (!rejectReason.trim()) {
+      setModalError("Please give a reason for rejecting this job.");
+      return;
+    }
     setModalError(null);
     startTransition(async () => {
       try {
-        await rejectAmendedAllocationAction(job.job_allocation_id);
+        await rejectAmendedAllocationAction(job.job_allocation_id, rejectReason);
         closeModal();
         notify("Job rejected — it's been taken off your schedule");
         router.refresh();
@@ -193,7 +203,7 @@ export function SupplierJobDetail({
               <h3 className="font-black text-orange-900">This job has changed</h3>
               <p className="mt-1 text-sm text-orange-800">
                 You already accepted this job, but the office has since edited it. Review what changed below, then
-                approve to carry on as before, or reject to take it off your schedule — no explanation needed.
+                approve to carry on as before, or reject to take it off your schedule (you'll be asked for a reason).
               </p>
               {pendingAmendment && (
                 <div className="mt-3 rounded-xl bg-white/70 p-3 text-sm">
@@ -338,7 +348,19 @@ export function SupplierJobDetail({
         destructive
         confirmLabel="Reject offer"
         onConfirm={reject}
-      />
+      >
+        <label className="block text-xs font-bold uppercase text-slate-400" htmlFor="reject-reason">
+          Reason for rejecting
+        </label>
+        <textarea
+          id="reject-reason"
+          value={rejectReason}
+          onChange={(e) => setRejectReason(e.target.value)}
+          rows={3}
+          placeholder="e.g. Not available on this date, vehicle already booked…"
+          className="mt-1 w-full rounded-xl border border-slate-200 p-3 text-sm"
+        />
+      </ConfirmDetailModal>
 
       <ConfirmDetailModal
         open={modal === "confirm"}
@@ -380,14 +402,26 @@ export function SupplierJobDetail({
         open={modal === "rejectChanges"}
         onClose={closeModal}
         title="Reject this job?"
-        description="It's taken off your schedule entirely and goes back to the office to offer to another supplier — no explanation needed."
+        description="It's taken off your schedule entirely and goes back to the office to offer to another supplier."
         details={journeyDetails}
         pending={pending}
         error={modalError}
         destructive
         confirmLabel="Reject job"
         onConfirm={rejectChanges}
-      />
+      >
+        <label className="block text-xs font-bold uppercase text-slate-400" htmlFor="reject-changes-reason">
+          Reason for rejecting
+        </label>
+        <textarea
+          id="reject-changes-reason"
+          value={rejectReason}
+          onChange={(e) => setRejectReason(e.target.value)}
+          rows={3}
+          placeholder="e.g. Can no longer accommodate the new pickup time…"
+          className="mt-1 w-full rounded-xl border border-slate-200 p-3 text-sm"
+        />
+      </ConfirmDetailModal>
 
       {job.allocation_status === "completed" && (job.manual_invoice_note || job.manual_invoice_url) && (
         <div className="mt-5">

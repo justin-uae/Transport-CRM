@@ -7,6 +7,8 @@ import { amendBookingAction, type AmendBookingInput } from "@/app/(staff)/quotes
 import type { QuoteStatus, JobStatus } from "@/lib/supabase/database.types";
 
 export interface EditableLeg {
+  id: string;
+  sequence: number;
   pickupAddress: string;
   destinationAddress: string;
   pickupDate: string | null;
@@ -28,6 +30,14 @@ const UNEDITABLE_QUOTE_STATUSES: QuoteStatus[] = ["rejected", "expired", "cancel
  * adjust a supplier's payout on a lead/quote/booking at any stage, right up
  * until its job has been completed. Used from both the Quote detail page and
  * the Dispatch job detail page (see amendBookingAction).
+ *
+ * A booking can have more than one leg (return trip, multi-stop, or several
+ * separately-dispatched legs) — `legs` carries all of them, and staff pick
+ * which one they're actually editing via the selector below. The chosen
+ * leg's id is sent through as amendBookingAction's `legId`, which already
+ * targets whichever leg (and, in turn, whichever supplier's allocation
+ * covers it) is picked, defaulting to the first leg only when there's just
+ * one.
  */
 export function EditBookingButton({
   quoteId,
@@ -35,7 +45,7 @@ export function EditBookingButton({
   jobStatus,
   currency,
   canEdit,
-  currentLeg,
+  legs,
   className = "mt-2 w-full rounded-xl border px-4 py-2.5 text-sm font-bold",
 }: {
   quoteId: string;
@@ -43,18 +53,19 @@ export function EditBookingButton({
   jobStatus: JobStatus | null;
   currency: string;
   canEdit: boolean;
-  currentLeg: EditableLeg | null;
+  legs: EditableLeg[];
   className?: string;
 }) {
   const notify = useToast();
   const [open, setOpen] = useState(false);
   const [reason, setReason] = useState("");
-  const [pickupAddress, setPickupAddress] = useState(currentLeg?.pickupAddress ?? "");
-  const [destinationAddress, setDestinationAddress] = useState(currentLeg?.destinationAddress ?? "");
-  const [pickupDate, setPickupDate] = useState(currentLeg?.pickupDate ?? "");
-  const [pickupTime, setPickupTime] = useState(currentLeg?.pickupTime ?? "");
-  const [passengerCount, setPassengerCount] = useState(currentLeg?.passengerCount != null ? String(currentLeg.passengerCount) : "");
-  const [luggageCount, setLuggageCount] = useState(currentLeg?.luggageCount != null ? String(currentLeg.luggageCount) : "");
+  const [selectedLegId, setSelectedLegId] = useState(legs[0]?.id ?? "");
+  const [pickupAddress, setPickupAddress] = useState(legs[0]?.pickupAddress ?? "");
+  const [destinationAddress, setDestinationAddress] = useState(legs[0]?.destinationAddress ?? "");
+  const [pickupDate, setPickupDate] = useState(legs[0]?.pickupDate ?? "");
+  const [pickupTime, setPickupTime] = useState(legs[0]?.pickupTime ?? "");
+  const [passengerCount, setPassengerCount] = useState(legs[0]?.passengerCount != null ? String(legs[0].passengerCount) : "");
+  const [luggageCount, setLuggageCount] = useState(legs[0]?.luggageCount != null ? String(legs[0].luggageCount) : "");
   const [chargeAmount, setChargeAmount] = useState("");
   const [supplierAmount, setSupplierAmount] = useState("");
   const [supplierNote, setSupplierNote] = useState("");
@@ -62,6 +73,19 @@ export function EditBookingButton({
   const [pending, startTransition] = useTransition();
 
   if (!canEdit || UNEDITABLE_QUOTE_STATUSES.includes(quoteStatus) || jobStatus === "completed") return null;
+
+  const currentLeg = legs.find((l) => l.id === selectedLegId) ?? null;
+
+  function selectLeg(id: string) {
+    setSelectedLegId(id);
+    const leg = legs.find((l) => l.id === id);
+    setPickupAddress(leg?.pickupAddress ?? "");
+    setDestinationAddress(leg?.destinationAddress ?? "");
+    setPickupDate(leg?.pickupDate ?? "");
+    setPickupTime(leg?.pickupTime ?? "");
+    setPassengerCount(leg?.passengerCount != null ? String(leg.passengerCount) : "");
+    setLuggageCount(leg?.luggageCount != null ? String(leg.luggageCount) : "");
+  }
 
   function submit() {
     if (!reason.trim()) {
@@ -71,6 +95,7 @@ export function EditBookingButton({
     const input: AmendBookingInput = { reason };
 
     if (currentLeg) {
+      input.legId = currentLeg.id;
       const legChanges: NonNullable<AmendBookingInput["legChanges"]> = {};
       if (pickupAddress !== currentLeg.pickupAddress) legChanges.pickupAddress = pickupAddress;
       if (destinationAddress !== currentLeg.destinationAddress) legChanges.destinationAddress = destinationAddress;
@@ -117,6 +142,7 @@ export function EditBookingButton({
         type="button"
         onClick={() => {
           setError(null);
+          selectLeg(legs[0]?.id ?? "");
           setOpen(true);
         }}
         className={className}
@@ -146,9 +172,33 @@ export function EditBookingButton({
               />
             </label>
 
+            {legs.length > 1 && (
+              <div>
+                <div className="text-xs font-black uppercase tracking-wide text-slate-400">Which leg?</div>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {legs.map((l) => (
+                    <button
+                      key={l.id}
+                      type="button"
+                      onClick={() => selectLeg(l.id)}
+                      className={`rounded-lg border px-3 py-1.5 text-left text-xs font-bold ${
+                        l.id === selectedLegId
+                          ? "border-primary-500 bg-primary-50 text-primary-700"
+                          : "border-slate-200 text-slate-600"
+                      }`}
+                    >
+                      Leg {l.sequence}: {l.pickupAddress} → {l.destinationAddress}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {currentLeg && (
               <div>
-                <div className="text-xs font-black uppercase tracking-wide text-slate-400">Journey details</div>
+                <div className="text-xs font-black uppercase tracking-wide text-slate-400">
+                  Journey details {legs.length > 1 && `— Leg ${currentLeg.sequence}`}
+                </div>
                 <div className="mt-2 grid gap-3 sm:grid-cols-2">
                   <label className="block text-sm font-bold">
                     Pickup
@@ -205,7 +255,6 @@ export function EditBookingButton({
                     />
                   </label>
                 </div>
-                <p className="mt-1.5 text-xs text-slate-400">Only the first journey leg can be edited here.</p>
               </div>
             )}
 

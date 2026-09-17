@@ -23,6 +23,9 @@ import {
 import { JourneyLegDetail, type JourneyLeg } from "@/components/pages/JourneyLegDetail";
 import { EditBookingButton, type EditableLeg } from "@/components/pages/EditBookingButton";
 import { BookingEditHistory, type BookingEditRecord } from "@/components/pages/BookingEditHistory";
+import { RejectionHistory, type JobRejectionRecord } from "@/components/pages/RejectionHistory";
+
+export type { JobRejectionRecord };
 import { formatDateTime, formatDateAndTime } from "@/lib/formatDate";
 import type { JobOfferStatus, JobStatus, JobSupplierInvoice, SupplierPaymentStatus, QuoteStatus } from "@/lib/supabase/database.types";
 import type { SupplierOption } from "@/components/pages/DispatchBoard";
@@ -583,6 +586,7 @@ export function DispatchJobDetail({
   canDispatchJobs,
   canEditBooking,
   amendments,
+  rejections,
 }: {
   job: JobDetailRow;
   allocations: JobAllocationRow[];
@@ -592,6 +596,7 @@ export function DispatchJobDetail({
   canDispatchJobs: boolean;
   canEditBooking: boolean;
   amendments: BookingEditRecord[];
+  rejections: JobRejectionRecord[];
 }) {
   const router = useRouter();
   const notify = useToast();
@@ -614,17 +619,16 @@ export function DispatchJobDetail({
   const customer = job.quotes?.customers;
   const currency = job.quotes?.currency ?? "EUR";
 
-  const firstLeg = legs[0] ?? null;
-  const currentLeg: EditableLeg | null = firstLeg
-    ? {
-        pickupAddress: firstLeg.pickup_address,
-        destinationAddress: firstLeg.destination_address,
-        pickupDate: firstLeg.pickup_date,
-        pickupTime: firstLeg.pickup_time,
-        passengerCount: firstLeg.passenger_count,
-        luggageCount: firstLeg.luggage_count,
-      }
-    : null;
+  const editableLegs: EditableLeg[] = legs.map((l) => ({
+    id: l.id,
+    sequence: l.sequence,
+    pickupAddress: l.pickup_address,
+    destinationAddress: l.destination_address,
+    pickupDate: l.pickup_date,
+    pickupTime: l.pickup_time,
+    passengerCount: l.passenger_count,
+    luggageCount: l.luggage_count,
+  }));
 
   const claimedLegIds = useMemo(
     () => new Set(allocations.flatMap((a) => a.job_allocation_legs.map((l) => l.enquiry_leg_id))),
@@ -678,7 +682,7 @@ export function DispatchJobDetail({
                   jobStatus={job.status}
                   currency={currency}
                   canEdit={canEditBooking}
-                  currentLeg={currentLeg}
+                  legs={editableLegs}
                   className="shrink-0 rounded-xl border px-3 py-1.5 text-xs font-bold"
                 />
               )}
@@ -763,6 +767,8 @@ export function DispatchJobDetail({
           </Panel>
 
           <BookingEditHistory amendments={amendments} currency={currency} />
+
+          <RejectionHistory rejections={rejections} />
 
           <Panel>
             <SectionTitle

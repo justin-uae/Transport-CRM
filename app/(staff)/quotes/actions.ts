@@ -538,18 +538,66 @@ export async function amendBookingAction(quoteId: string, input: AmendBookingInp
     return { error: "This job has been completed and can no longer be edited." };
   }
 
+  // ---- Resolve which leg is being edited, if any -------------------------
+  let targetLeg: {
+    id: string;
+    pickup_address: string;
+    destination_address: string;
+    pickup_date: string | null;
+    pickup_time: string | null;
+    passenger_count: number | null;
+    luggage_count: number | null;
+  } | null = null;
+  if (hasLegChange) {
+    const legQuery = supabase
+      .from("enquiry_legs")
+      .select("id, pickup_address, destination_address, pickup_date, pickup_time, passenger_count, luggage_count")
+      .eq("enquiry_id", quote.enquiry_id);
+    const { data: leg } = input.legId ? await legQuery.eq("id", input.legId).maybeSingle() : await legQuery.eq("sequence", 1).maybeSingle();
+    if (!leg) return { error: "Journey leg not found." };
+    targetLeg = leg;
+  }
+
   let allocationId: string | null = null;
   let supplierId: string | null = null;
   let allocationStatus: string | null = null;
   if (job && (hasLegChange || hasSupplierAdjustment)) {
-    const { data: allocation } = await supabase
-      .from("job_allocations")
-      .select("id, assigned_supplier_id, status")
-      .eq("job_id", job.id)
-      .not("status", "in", "(cancelled)")
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
+    // A multi-leg booking can be split across suppliers — one allocation per
+    // supplier, each covering a distinct subset of legs — so when a specific
+    // leg is being edited, the allocation that needs re-approval (and whose
+    // supplier gets notified) is the one actually covering THAT leg, not
+    // simply whichever allocation happens to have been created most
+    // recently. Falls back to "most recent live allocation on the job" when
+    // there's no leg in play (a supplier-payout-only edit) or that leg isn't
+    // covered by any live allocation yet.
+    let allocation: { id: string; assigned_supplier_id: string | null; status: string } | null = null;
+    if (targetLeg) {
+      const { data: links } = await supabase.from("job_allocation_legs").select("job_allocation_id").eq("enquiry_leg_id", targetLeg.id);
+      const coveringIds = (links ?? []).map((l) => l.job_allocation_id);
+      if (coveringIds.length > 0) {
+        const { data } = await supabase
+          .from("job_allocations")
+          .select("id, assigned_supplier_id, status")
+          .eq("job_id", job.id)
+          .in("id", coveringIds)
+          .not("status", "in", "(cancelled)")
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        allocation = data;
+      }
+    }
+    if (!allocation) {
+      const { data } = await supabase
+        .from("job_allocations")
+        .select("id, assigned_supplier_id, status")
+        .eq("job_id", job.id)
+        .not("status", "in", "(cancelled)")
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      allocation = data;
+    }
     allocationId = allocation?.id ?? null;
     supplierId = allocation?.assigned_supplier_id ?? null;
     allocationStatus = allocation?.status ?? null;
@@ -572,13 +620,7 @@ export async function amendBookingAction(quoteId: string, input: AmendBookingInp
   const changes: Record<string, { from: unknown; to: unknown }> = {};
 
   if (hasLegChange) {
-    const legQuery = supabase
-      .from("enquiry_legs")
-      .select("id, pickup_address, destination_address, pickup_date, pickup_time, passenger_count, luggage_count")
-      .eq("enquiry_id", quote.enquiry_id);
-    const { data: leg } = input.legId ? await legQuery.eq("id", input.legId).maybeSingle() : await legQuery.eq("sequence", 1).maybeSingle();
-    if (!leg) return { error: "Journey leg not found." };
-
+    const leg = targetLeg!;
     const legUpdate: Record<string, unknown> = {};
     const lc = input.legChanges!;
     if (lc.pickupAddress !== undefined && lc.pickupAddress !== leg.pickup_address) {

@@ -653,6 +653,18 @@ export interface SupplierPayment {
   created_at: string;
 }
 
+/** Why a supplier turned a job down — a fresh offer they never accepted, or an already-accepted job pulled back for re-approval after an edit (see 0074_job_rejection_log.sql). */
+export interface JobRejectionLog {
+  id: string;
+  tenant_id: string;
+  job_id: string;
+  job_allocation_id: string;
+  supplier_id: string | null;
+  context: "initial_offer" | "post_edit_reapproval";
+  reason: string;
+  rejected_at: string;
+}
+
 /** Money actually received back from a supplier — the reverse of SupplierPayment, kept as its own table rather than a negative payment since it's a genuinely different event (see 0073_supplier_refunds.sql). */
 export interface SupplierRefund {
   id: string;
@@ -1119,6 +1131,7 @@ export interface Database {
       job_supplier_invoices: Table<JobSupplierInvoice>;
       supplier_payments: Table<SupplierPayment>;
       supplier_refunds: Table<SupplierRefund>;
+      job_rejection_log: Table<JobRejectionLog>;
       customer_payments: Table<CustomerPayment>;
       email_templates: Table<EmailTemplate>;
       email_accounts: Table<EmailAccount>;
