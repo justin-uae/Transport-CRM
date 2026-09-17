@@ -19,8 +19,6 @@ import {
   TrendingUp,
   Users,
   Bus,
-  Download,
-  Sparkles,
   MapPin,
   ShieldAlert,
 } from "lucide-react";
@@ -28,7 +26,6 @@ import { Panel } from "@/components/ui/Panel";
 import { Kpi } from "@/components/ui/Kpi";
 import { SectionTitle } from "@/components/ui/SectionTitle";
 import { Alert } from "@/components/ui/Alert";
-import { useToast } from "@/components/ui/Toast";
 import { LiveOperationsMap, type CountryLeadCluster } from "@/components/pages/LiveOperationsMap";
 import { formatDateTime } from "@/lib/formatDate";
 import type { ControlCentreSummary } from "@/lib/controlCentreSummary";
@@ -65,7 +62,6 @@ export function ControlCentre({
   leadClusters: CountryLeadCluster[];
   summary: ControlCentreSummary;
 }) {
-  const notify = useToast();
   const { kpis, trend, channelMix, team, openPool, alerts } = summary;
 
   return (
@@ -81,22 +77,6 @@ export function ControlCentre({
           <p className="mt-2 text-slate-500">
             Live operations, finance and sales intelligence across every brand.
           </p>
-        </div>
-        <div className="flex gap-2">
-          <button
-            onClick={() => notify("Executive report exported")}
-            className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold"
-          >
-            <Download size={17} />
-            Export
-          </button>
-          <Link
-            href="/ai-optimisation"
-            className="flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-bold text-white"
-          >
-            <Sparkles size={17} />
-            Ask AI
-          </Link>
         </div>
       </div>
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useRef, useState, useTransition } from "react";
+import { useEffect, useId, useMemo, useRef, useState, useTransition } from "react";
 import { createPortal } from "react-dom";
 import { MapPin, X } from "lucide-react";
 import { loadGoogleMaps } from "@/lib/googleMaps";
@@ -67,8 +67,14 @@ export function RegionMapModal({
   const panelRef = useRef<HTMLDivElement>(null);
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<google.maps.Map | null>(null);
-  const overlaysRef = useRef<(google.maps.Marker | google.maps.Circle)[]>([]);
+  const overlaysRef = useRef<{ setMap(map: google.maps.Map | null): void }[]>([]);
   const geocodeCache = useRef<Map<string, { lat: number; lng: number } | null>>(new Map());
+  // Keyed by region row id — lets a click in the "Allocated regions" list
+  // jump the map straight to that region, reusing the same coords/bounds/
+  // info-popup the marker itself would show, without re-geocoding anything.
+  const regionLookupRef = useRef<
+    Map<string, { coords: { lat: number; lng: number }; bounds: google.maps.LatLngBounds; open: () => void }>
+  >(new Map());
 
   const [mapStatus, setMapStatus] = useState<"loading" | "ready" | "unavailable">("loading");
   const [nameInput, setNameInput] = useState("");
@@ -121,9 +127,10 @@ export function RegionMapModal({
       const map = new maps.maps.Map(mapContainerRef.current, {
         center: DEFAULT_CENTER,
         zoom: 10,
-        mapTypeId: maps.maps.MapTypeId.ROADMAP,
+        mapTypeId: maps.maps.MapTypeId.SATELLITE,
         streetViewControl: false,
-        mapTypeControl: false,
+        mapTypeControl: true,
+        mapTypeControlOptions: { style: maps.maps.MapTypeControlStyle.DROPDOWN_MENU },
         fullscreenControl: false,
       });
       mapRef.current = map;
@@ -172,10 +179,85 @@ export function RegionMapModal({
 
     overlaysRef.current.forEach((o) => o.setMap(null));
     overlaysRef.current = [];
+    regionLookupRef.current = new Map();
 
     const infoWindow = new google.maps.InfoWindow();
     const bounds = new google.maps.LatLngBounds();
     let plotted = 0;
+
+    // The circle is sized to a real-world radius, so it visually shrinks to
+    // nothing once zoomed out past a certain point — exactly the "can't see
+    // the region unless zoomed in" problem. This label is a plain DOM chip
+    // positioned via OverlayView, so unlike the circle it never scales with
+    // zoom: the region name + colour dot stay exactly as legible zoomed all
+    // the way out as zoomed all the way in.
+    class RegionLabelOverlay extends google.maps.OverlayView {
+      private div: HTMLDivElement;
+      private position: google.maps.LatLng;
+
+      constructor(position: google.maps.LatLng, label: string, color: string, onClick: () => void) {
+        super();
+        this.position = position;
+        const div = document.createElement("div");
+        Object.assign(div.style, {
+          position: "absolute",
+          transform: "translate(-50%, calc(-100% - 10px))",
+          display: "flex",
+          alignItems: "center",
+          gap: "5px",
+          maxWidth: "180px",
+          padding: "3px 9px 3px 6px",
+          borderRadius: "999px",
+          background: "#ffffff",
+          boxShadow: "0 1px 4px rgba(15,23,42,0.35)",
+          fontSize: "11px",
+          fontWeight: "700",
+          color: "#1e293b",
+          whiteSpace: "nowrap",
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          cursor: "pointer",
+          userSelect: "none",
+        } satisfies Partial<CSSStyleDeclaration>);
+
+        const dot = document.createElement("span");
+        Object.assign(dot.style, {
+          width: "8px",
+          height: "8px",
+          minWidth: "8px",
+          borderRadius: "50%",
+          background: color,
+        });
+
+        const text = document.createElement("span");
+        text.style.overflow = "hidden";
+        text.style.textOverflow = "ellipsis";
+        text.textContent = label;
+
+        div.append(dot, text);
+        div.addEventListener("click", (e) => {
+          e.stopPropagation();
+          onClick();
+        });
+        this.div = div;
+      }
+
+      onAdd() {
+        this.getPanes()?.floatPane.appendChild(this.div);
+      }
+
+      draw() {
+        const point = this.getProjection()?.fromLatLngToDivPixel(this.position);
+        if (point) {
+          this.div.style.left = `${point.x}px`;
+          this.div.style.top = `${point.y}px`;
+        }
+      }
+
+      onRemove() {
+        this.div.parentNode?.removeChild(this.div);
+      }
+    }
 
     async function resolveCoords(r: AllocatedRegion): Promise<{ lat: number; lng: number } | null> {
       if (r.lat != null && r.lng != null) return { lat: r.lat, lng: r.lng };
@@ -247,11 +329,54 @@ export function RegionMapModal({
         });
         marker.addListener("click", () => showInfo(marker));
         overlaysRef.current.push(marker);
+
+        const label = new RegionLabelOverlay(new google.maps.LatLng(coords), r.region, color, () => showInfo(marker));
+        label.setMap(map);
+        overlaysRef.current.push(label);
+
+        // circleBounds is only null if the browser's Geometry library failed
+        // to compute it — falls back to a tight bounds around just the pin
+        // so flyToRegion still has something reasonable to fit to.
+        regionLookupRef.current.set(r.id, {
+          coords,
+          bounds: circleBounds ?? new google.maps.LatLngBounds(coords, coords),
+          open: () => showInfo(marker),
+        });
       }),
     ).then(() => {
       if (plotted > 0) map.fitBounds(bounds, 64);
     });
   }, [allRegions, mapStatus]);
+
+  // One person can have several regions — grouped under their name (rather
+  // than a flat list repeating "· Alex Munyam" on every row) so the list
+  // reads as "who covers what" instead of a jumble sorted by whenever each
+  // region happened to be added.
+  const groupedRegions = useMemo(() => {
+    const groups = new Map<string, { userId: string; userName: string; regions: AllocatedRegion[] }>();
+    for (const r of allRegions) {
+      if (!groups.has(r.userId)) groups.set(r.userId, { userId: r.userId, userName: r.userName, regions: [] });
+      groups.get(r.userId)!.regions.push(r);
+    }
+    return [...groups.values()].sort((a, b) => a.userName.localeCompare(b.userName));
+  }, [allRegions]);
+
+  // Clicking a region in the list pans/zooms the map to it (and, on a
+  // narrow screen where the list can be scrolled below the map, brings the
+  // map back into view) — otherwise finding a specific person's region among
+  // many overlapping pins means hunting around the map by eye.
+  function flyToRegion(regionId: string) {
+    const entry = regionLookupRef.current.get(regionId);
+    const map = mapRef.current;
+    if (!entry || !map) return;
+    // Fits to the circle's own bounds rather than a fixed zoom level — a
+    // fixed zoom clipped the circle's edges on a narrower map panel (or
+    // showed it too small on a wider one); fitBounds always frames the
+    // whole 12km circle regardless of the map container's size.
+    map.fitBounds(entry.bounds, 40);
+    entry.open();
+    mapContainerRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }
 
   function confirmAdd() {
     const name = nameInput.trim();
@@ -368,28 +493,48 @@ export function RegionMapModal({
               <div className="min-h-0 flex-1 p-4 md:overflow-y-auto">
                 <div className="text-xs font-black uppercase tracking-wide text-slate-400">Allocated regions ({allRegions.length})</div>
                 <p className="mt-1 text-xs text-slate-400">
-                  Each person's regions are shaded in their own colour on the map, with a {(REGION_RADIUS_METERS / 1000).toFixed(0)}km
-                  circle marking the approximate area covered around each pin.
+                  Each person's regions are shaded in their own colour, with a {(REGION_RADIUS_METERS / 1000).toFixed(0)}km circle
+                  marking the approximate area covered around each pin. The named label above each pin stays readable at any zoom
+                  level, even fully zoomed out — the circle itself only becomes visible once zoomed in close. Click a region below
+                  to zoom the map straight to it.
                 </p>
-                <div className="mt-2 space-y-1">
-                  {allRegions.map((r) => (
-                    <div key={r.id} className="flex items-center justify-between gap-2 rounded-lg px-2 py-1.5 text-sm hover:bg-slate-50">
-                      <div className="flex min-w-0 items-center gap-2">
-                        <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: colorForUser(r.userId) }} />
-                        <span className="truncate font-semibold">{r.region}</span>
-                        <span className="shrink-0 text-xs text-slate-400">· {r.userName}</span>
+                <div className="mt-3 space-y-4">
+                  {groupedRegions.map((group) => (
+                    <div key={group.userId}>
+                      <div className="flex items-center gap-2 px-2 text-xs font-black uppercase tracking-wide text-slate-500">
+                        <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: colorForUser(group.userId) }} />
+                        <span className="truncate">{group.userName}</span>
+                        <span className="shrink-0 font-normal normal-case text-slate-400">({group.regions.length})</span>
                       </div>
-                      {canManage && r.userId === targetUserId && (
-                        <button
-                          type="button"
-                          disabled={pending}
-                          onClick={() => handleRemove(r.id)}
-                          aria-label={`Remove ${r.region}`}
-                          className="shrink-0 rounded-full p-1 text-slate-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-60"
-                        >
-                          <X size={12} />
-                        </button>
-                      )}
+                      <div className="mt-1 space-y-1">
+                        {group.regions.map((r) => (
+                          <div
+                            key={r.id}
+                            className="flex items-center justify-between gap-2 rounded-lg py-1.5 pl-7 pr-2 text-sm hover:bg-slate-50"
+                          >
+                            <button
+                              type="button"
+                              onClick={() => flyToRegion(r.id)}
+                              disabled={mapStatus !== "ready"}
+                              title="Zoom the map to this region"
+                              className="min-w-0 flex-1 truncate text-left font-semibold disabled:cursor-default"
+                            >
+                              {r.region}
+                            </button>
+                            {canManage && r.userId === targetUserId && (
+                              <button
+                                type="button"
+                                disabled={pending}
+                                onClick={() => handleRemove(r.id)}
+                                aria-label={`Remove ${r.region}`}
+                                className="shrink-0 rounded-full p-1 text-slate-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-60"
+                              >
+                                <X size={12} />
+                              </button>
+                            )}
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   ))}
                   {allRegions.length === 0 && <p className="py-4 text-center text-sm text-slate-400">No regions allocated yet.</p>}
