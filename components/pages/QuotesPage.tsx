@@ -26,6 +26,7 @@ export interface QuoteRow {
   customers: { company_name: string | null; contact_name: string } | null;
   enquiries: { enquiry_legs: { pickup_address: string; destination_address: string }[] } | null;
   quote_versions: { selling_price: number } | null;
+  profiles: { full_name: string } | null;
 }
 
 
@@ -173,6 +174,9 @@ export function QuotesPage({
                 <JourneyCell pickup={journeyOf(q)?.pickup_address} destination={journeyOf(q)?.destination_address} maxWidth="100%" />
               </div>
               <div className="mt-2 font-black">{money(q.quote_versions?.selling_price, q.currency)}</div>
+              <div className="mt-1 text-xs text-slate-400">
+                Sales rep: {q.profiles?.full_name || "—"}
+              </div>
               <div className="mt-3 flex flex-wrap gap-2">
                 <Link
                   href={`/quotes/${q.id}`}
@@ -192,12 +196,13 @@ export function QuotesPage({
         </div>
 
         <div className="hidden overflow-x-auto sm:block">
-          <table className="w-full min-w-[880px] text-left text-sm">
+          <table className="w-full min-w-[980px] text-left text-sm">
             <thead>
               <tr className="border-b text-slate-500">
                 <th className="px-3 py-4">Quote</th>
                 <th className="px-3 py-4">Customer</th>
                 <th className="px-3 py-4">Journey</th>
+                <th className="px-3 py-4">Sales Rep</th>
                 <th className="px-3 py-4">Value</th>
                 <th className="px-3 py-4">Status</th>
                 <th className="px-3 py-4"></th>
@@ -216,6 +221,7 @@ export function QuotesPage({
                   <td className="px-3 py-4 text-slate-600">
                     <JourneyCell pickup={journeyOf(q)?.pickup_address} destination={journeyOf(q)?.destination_address} />
                   </td>
+                  <td className="whitespace-nowrap px-3 py-4 text-slate-600">{q.profiles?.full_name || "—"}</td>
                   <td className="whitespace-nowrap px-3 py-4 font-black">{money(q.quote_versions?.selling_price, q.currency)}</td>
                   <td className="whitespace-nowrap px-3 py-4">
                     <span className={"rounded-full px-2.5 py-1 text-xs font-bold " + QUOTE_STATUS_STYLE[q.status]}>
@@ -244,7 +250,7 @@ export function QuotesPage({
               ))}
               {quotes.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="py-8 text-center text-sm text-slate-500">
+                  <td colSpan={7} className="py-8 text-center text-sm text-slate-500">
                     No quotes yet — build one from an enquiry.
                   </td>
                 </tr>

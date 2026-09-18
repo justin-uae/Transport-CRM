@@ -4,6 +4,7 @@ import { BookingsConfirmedPage, type ConfirmedBookingJob } from "@/components/pa
 
 const legsSelect = "enquiries(enquiry_legs(pickup_address, destination_address, pickup_date))";
 const versionSelect = "quote_versions!quotes_current_version_id_fkey(selling_price)";
+const salesRepSelect = "profiles!quotes_created_by_fkey(full_name)";
 
 export default async function Page() {
   await requireProfile();
@@ -23,7 +24,7 @@ export default async function Page() {
   const { data: jobs } = await supabase
     .from("jobs")
     .select(
-      `id, status, region, created_at, quotes(quote_number, currency, customers(company_name, contact_name), ${legsSelect}, ${versionSelect}), job_allocations(status, suppliers(name))`,
+      `id, status, region, created_at, quotes(quote_number, currency, customers(company_name, contact_name), ${legsSelect}, ${versionSelect}, ${salesRepSelect}), job_allocations(status, suppliers(name))`,
     )
     .in("status", ["unassigned", "offered", "accepted_by_supplier", "confirmed", "rejected_by_supplier", "pending_reapproval"])
     .order("created_at", { ascending: false });

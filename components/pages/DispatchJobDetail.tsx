@@ -49,6 +49,7 @@ export interface JobDetailRow {
     customers: { company_name: string | null; contact_name: string; phone: string | null; email: string | null } | null;
     enquiries: { assigned_user_id: string | null; enquiry_legs: DispatchLeg[] } | null;
     quote_versions: { selling_price: number; supplier_estimated_cost: number | null } | null;
+    profiles: { full_name: string } | null;
   } | null;
 }
 
@@ -774,6 +775,10 @@ export function DispatchJobDetail({
               <div>
                 <dt className="text-xs font-bold uppercase text-slate-400">Customer contact</dt>
                 <dd className="mt-0.5 font-semibold">{customer?.phone || customer?.email || "—"}</dd>
+              </div>
+              <div>
+                <dt className="text-xs font-bold uppercase text-slate-400">Sales rep</dt>
+                <dd className="mt-0.5 font-semibold">{job.quotes?.profiles?.full_name || "—"}</dd>
               </div>
             </dl>
 

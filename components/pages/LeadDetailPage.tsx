@@ -13,6 +13,7 @@ import { ConfirmDetailModal } from "@/components/ui/ConfirmDetailModal";
 import { JourneyLegDetail, type JourneyLeg } from "@/components/pages/JourneyLegDetail";
 import { LeadEditHistory, type LeadEditRecord } from "@/components/pages/LeadEditHistory";
 import { claimLeadAction, createEnquiryFromLeadAction, releaseLeadAction, editLeadAction, type EditLeadInput } from "@/app/(staff)/leads/actions";
+import { updateCustomerAction } from "@/app/(staff)/customers/actions";
 import { formatDate, formatTimeOnly } from "@/lib/formatDate";
 import { SOURCE_LABEL } from "@/lib/leadSource";
 import type { LeadSource, LeadStatus } from "@/lib/supabase/database.types";
@@ -102,6 +103,7 @@ export function LeadDetailPage({
   canAddEnquiry,
   canClaim,
   canRelease,
+  canEditCustomer,
 }: {
   lead: LeadDetail;
   legs: JourneyLeg[];
@@ -113,6 +115,7 @@ export function LeadDetailPage({
   canAddEnquiry: boolean;
   canClaim: boolean;
   canRelease: boolean;
+  canEditCustomer: boolean;
 }) {
   const notify = useToast();
   const router = useRouter();
@@ -132,9 +135,15 @@ export function LeadDetailPage({
   const [luggageCount, setLuggageCount] = useState(lead.luggage_count != null ? String(lead.luggage_count) : "");
   const [vehicleRequested, setVehicleRequested] = useState(lead.vehicle_requested ?? "");
   const [notesInput, setNotesInput] = useState(lead.notes ?? "");
+  const [customerContactName, setCustomerContactName] = useState(lead.customers?.contact_name ?? "");
+  const [customerCompanyName, setCustomerCompanyName] = useState(lead.customers?.company_name ?? "");
+  const [customerEmail, setCustomerEmail] = useState(lead.customers?.email ?? "");
+  const [customerPhone, setCustomerPhone] = useState(lead.customers?.phone ?? "");
+
+  const isOwnActiveLead = lead.assigned_user_id === currentUserId && lead.status !== "converted" && lead.status !== "closed";
+  const showCustomerFields = (canEditCustomer || isOwnActiveLead) && !!lead.customers;
 
   const isGeneralEnquiry = !lead.pickup_text && !lead.destination_text;
-  const isOwnActiveLead = lead.assigned_user_id === currentUserId && lead.status !== "converted" && lead.status !== "closed";
 
   function claim() {
     setError(null);
@@ -181,13 +190,44 @@ export function LeadDetailPage({
     if (vehicleRequested !== (lead.vehicle_requested ?? "")) input.vehicleRequested = vehicleRequested || null;
     if (notesInput !== (lead.notes ?? "")) input.notes = notesInput || null;
 
+    const customerInput: { reason: string; contactName?: string; companyName?: string | null; email?: string | null; phone?: string | null } = {
+      reason: editReason,
+    };
+    if (showCustomerFields) {
+      if (!customerContactName.trim()) {
+        setEditError("Customer contact name can't be empty.");
+        return;
+      }
+      if (customerContactName !== (lead.customers?.contact_name ?? "")) customerInput.contactName = customerContactName;
+      if (customerCompanyName !== (lead.customers?.company_name ?? "")) customerInput.companyName = customerCompanyName || null;
+      if (customerEmail !== (lead.customers?.email ?? "")) customerInput.email = customerEmail || null;
+      if (customerPhone !== (lead.customers?.phone ?? "")) customerInput.phone = customerPhone || null;
+    }
+    const hasLeadChanges = Object.keys(input).length > 1;
+    const hasCustomerChanges = Object.keys(customerInput).length > 1;
+
+    if (!hasLeadChanges && !hasCustomerChanges) {
+      setEditError("Change at least one field.");
+      return;
+    }
+
     setEditError(null);
     startTransition(async () => {
-      const result = await editLeadAction(lead.id, input);
-      if (result?.error) {
-        setEditError(result.error);
-        notify(result.error);
-        return;
+      if (hasLeadChanges) {
+        const result = await editLeadAction(lead.id, input);
+        if (result?.error) {
+          setEditError(result.error);
+          notify(result.error);
+          return;
+        }
+      }
+      if (hasCustomerChanges && lead.customers) {
+        const result = await updateCustomerAction(lead.customers.id, customerInput, lead.id);
+        if (result?.error) {
+          setEditError(result.error);
+          notify(result.error);
+          return;
+        }
       }
       notify("Lead updated");
       setEditOpen(false);
@@ -381,7 +421,11 @@ export function LeadDetailPage({
           open
           onClose={() => !pending && setEditOpen(false)}
           title="Edit this lead"
-          description="Correct the journey/intake details captured on this lead — every change here is logged with the reason below."
+          description={
+            showCustomerFields
+              ? "Correct the journey/intake details or the linked customer's name/contact info — every change here is logged with the reason below."
+              : "Correct the journey/intake details captured on this lead — every change here is logged with the reason below."
+          }
           pending={pending}
           error={editError}
           confirmLabel="Save Changes"
@@ -397,6 +441,47 @@ export function LeadDetailPage({
                 placeholder="Why is this lead being edited?"
               />
             </label>
+
+            {showCustomerFields && (
+              <div className="rounded-xl border border-dashed p-3">
+                <div className="text-xs font-black uppercase tracking-wide text-slate-400">Customer details</div>
+                <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                  <label className="block text-sm font-bold">
+                    Contact name
+                    <input
+                      value={customerContactName}
+                      onChange={(e) => setCustomerContactName(e.target.value)}
+                      className="mt-1 w-full rounded-lg border px-3 py-2 text-sm font-normal"
+                    />
+                  </label>
+                  <label className="block text-sm font-bold">
+                    Company name
+                    <input
+                      value={customerCompanyName}
+                      onChange={(e) => setCustomerCompanyName(e.target.value)}
+                      className="mt-1 w-full rounded-lg border px-3 py-2 text-sm font-normal"
+                    />
+                  </label>
+                  <label className="block text-sm font-bold">
+                    Email
+                    <input
+                      type="email"
+                      value={customerEmail}
+                      onChange={(e) => setCustomerEmail(e.target.value)}
+                      className="mt-1 w-full rounded-lg border px-3 py-2 text-sm font-normal"
+                    />
+                  </label>
+                  <label className="block text-sm font-bold">
+                    Phone
+                    <input
+                      value={customerPhone}
+                      onChange={(e) => setCustomerPhone(e.target.value)}
+                      className="mt-1 w-full rounded-lg border px-3 py-2 text-sm font-normal"
+                    />
+                  </label>
+                </div>
+              </div>
+            )}
 
             <div className="grid gap-3 sm:grid-cols-2">
               <label className="block text-sm font-bold">

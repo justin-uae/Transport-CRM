@@ -15,7 +15,7 @@ export default async function DispatchJobDetailPage({ params }: { params: Promis
     supabase
       .from("jobs")
       .select(
-        "id, status, region, created_at, created_by, quotes(id, status, quote_number, currency, customers(company_name, contact_name, phone, email), enquiries(assigned_user_id, enquiry_legs(id, sequence, journey_type, pickup_address, destination_address, via_points, pickup_date, pickup_time, return_date, return_time, passenger_count, luggage_count, wheelchair_required, child_seats, special_requirements, vehicle_types(name))), quote_versions!quotes_current_version_id_fkey(selling_price, supplier_estimated_cost))",
+        "id, status, region, created_at, created_by, quotes(id, status, quote_number, currency, customers(company_name, contact_name, phone, email), enquiries(assigned_user_id, enquiry_legs(id, sequence, journey_type, pickup_address, destination_address, via_points, pickup_date, pickup_time, return_date, return_time, passenger_count, luggage_count, wheelchair_required, child_seats, special_requirements, vehicle_types(name))), quote_versions!quotes_current_version_id_fkey(selling_price, supplier_estimated_cost), profiles!quotes_created_by_fkey(full_name))",
       )
       .eq("id", id)
       .single(),

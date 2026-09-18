@@ -20,6 +20,7 @@ export interface ConfirmedBookingJob {
     customers: CustomerRef;
     enquiries: LegsRef;
     quote_versions: VersionRef;
+    profiles: { full_name: string } | null;
   } | null;
   job_allocations: { status: JobStatus; suppliers: { name: string } | null }[];
 }
@@ -86,7 +87,7 @@ export function BookingsConfirmedPage({ jobs }: { jobs: ConfirmedBookingJob[] })
                   <div>
                     <b>{customer?.company_name || customer?.contact_name || "Customer"}</b>
                     <div className="text-xs text-slate-500">
-                      {job.quotes?.quote_number} · {job.region ?? "No region"}
+                      {job.quotes?.quote_number} · {job.region ?? "No region"} · Sales rep: {job.quotes?.profiles?.full_name || "—"}
                     </div>
                   </div>
                   <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${JOB_STATUS_STYLE[job.status]}`}>

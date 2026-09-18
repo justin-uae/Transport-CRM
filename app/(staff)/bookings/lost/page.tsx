@@ -12,7 +12,7 @@ export default async function Page() {
   const { data: quotes } = await supabase
     .from("quotes")
     .select(
-      "id, quote_number, currency, status, decided_at, expiry_at, customers(company_name, contact_name), enquiries(enquiry_legs(pickup_address, destination_address, pickup_date)), quote_versions!quotes_current_version_id_fkey(selling_price), quote_decisions(decision, reason, free_text)",
+      "id, quote_number, currency, status, decided_at, expiry_at, customers(company_name, contact_name), enquiries(enquiry_legs(pickup_address, destination_address, pickup_date)), quote_versions!quotes_current_version_id_fkey(selling_price), quote_decisions(decision, reason, free_text), profiles!quotes_created_by_fkey(full_name)",
     )
     .in("status", ["rejected", "expired", "cancelled"])
     .order("decided_at", { ascending: false, nullsFirst: false });

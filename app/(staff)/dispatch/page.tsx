@@ -16,7 +16,7 @@ export default async function DispatchPage({ searchParams }: { searchParams: Pro
   const { data: jobs, count } = await supabase
     .from("jobs")
     .select(
-      "id, status, region, quotes(quote_number, customers(company_name, contact_name)), job_allocations(id, status, suppliers(name))",
+      "id, status, region, quotes(quote_number, customers(company_name, contact_name), profiles!quotes_created_by_fkey(full_name)), job_allocations(id, status, suppliers(name))",
       { count: "exact" },
     )
     .order("created_at", { ascending: false })

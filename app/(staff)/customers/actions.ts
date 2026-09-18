@@ -62,3 +62,82 @@ export async function createCustomerAction(
   revalidatePath("/customers");
   return { error: null };
 }
+
+export interface UpdateCustomerInput {
+  reason: string;
+  contactName?: string;
+  companyName?: string | null;
+  email?: string | null;
+  phone?: string | null;
+}
+
+/**
+ * Corrects a customer's identity/contact fields — separate from
+ * createCustomerAction because it touches an existing shared record (the
+ * same customer can be linked to many leads/quotes). Gated by enquiries.edit
+ * OR ownership of the lead this edit came from (pass `leadId` when calling
+ * from the Lead detail page) — mirrors the customers_update RLS policy in
+ * 0078_customer_edit_by_lead_owner.sql, which carries the same two paths so
+ * a Sales User can fix a typo'd name/email on their own lead's customer
+ * without needing the blanket permission.
+ */
+export async function updateCustomerAction(customerId: string, input: UpdateCustomerInput, leadId?: string) {
+  const actor = await requireProfile();
+  const reason = input.reason.trim();
+  if (!reason) return { error: "A reason is required to edit a customer." };
+
+  const supabase = await createClient();
+
+  let allowed = await hasPermission(actor, PERMISSIONS.ENQUIRIES_EDIT);
+  if (!allowed && leadId) {
+    const { data: lead } = await supabase
+      .from("leads")
+      .select("assigned_user_id")
+      .eq("id", leadId)
+      .eq("customer_id", customerId)
+      .maybeSingle();
+    allowed = lead?.assigned_user_id === actor.id;
+  }
+  if (!allowed) return { error: "You do not have permission to edit customer details." };
+
+  const { data: customer } = await supabase.from("customers").select("*").eq("id", customerId).single();
+  if (!customer) return { error: "Customer not found." };
+
+  const update: Record<string, unknown> = {};
+  const changes: Record<string, { from: unknown; to: unknown }> = {};
+  const fields: { key: keyof UpdateCustomerInput; column: string }[] = [
+    { key: "contactName", column: "contact_name" },
+    { key: "companyName", column: "company_name" },
+    { key: "email", column: "email" },
+    { key: "phone", column: "phone" },
+  ];
+  for (const { key, column } of fields) {
+    if (!(key in input)) continue;
+    const newValue = input[key];
+    const oldValue = (customer as Record<string, unknown>)[column];
+    if (newValue === oldValue) continue;
+    update[column] = newValue;
+    changes[column] = { from: oldValue, to: newValue };
+  }
+
+  if (Object.keys(update).length === 0) {
+    return { error: "Change at least one field." };
+  }
+
+  const { error: updateError } = await supabase.from("customers").update(update).eq("id", customerId);
+  if (updateError) return { error: updateError.message };
+
+  await recordAudit({
+    tenantId: actor.tenant_id,
+    actorId: actor.id,
+    action: "customer_updated",
+    entityType: "customer",
+    entityId: customerId,
+    reason,
+    newValue: changes,
+  });
+
+  revalidatePath("/customers");
+  revalidatePath(`/customers/${customerId}`);
+  return { error: null };
+}

@@ -58,10 +58,11 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
     }
   }
 
-  const [canAddEnquiry, canClaim, canRelease, { data: editsRaw }] = await Promise.all([
+  const [canAddEnquiry, canClaim, canRelease, canEditCustomer, { data: editsRaw }] = await Promise.all([
     hasPermission(profile, PERMISSIONS.ENQUIRIES_ADD),
     hasPermission(profile, PERMISSIONS.ENQUIRIES_CLAIM_OPEN_LEADS),
     hasPermission(profile, PERMISSIONS.ENQUIRIES_RETURN_TO_POOL),
+    hasPermission(profile, PERMISSIONS.ENQUIRIES_EDIT),
     supabase.from("lead_edits").select("id, reason, changes, created_at, profiles(full_name)").eq("lead_id", id).order("created_at", { ascending: false }),
   ]);
 
@@ -77,6 +78,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
       canAddEnquiry={canAddEnquiry}
       canClaim={canClaim}
       canRelease={canRelease}
+      canEditCustomer={canEditCustomer}
     />
   );
 }

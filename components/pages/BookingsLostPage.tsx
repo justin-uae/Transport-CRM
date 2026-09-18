@@ -16,6 +16,7 @@ export interface LostBookingQuote {
   enquiries: { enquiry_legs: { pickup_address: string; destination_address: string; pickup_date: string | null }[] } | null;
   quote_versions: { selling_price: number } | null;
   quote_decisions: { decision: string; reason: string | null; free_text: string | null }[];
+  profiles: { full_name: string } | null;
 }
 
 function money(amount: number | undefined | null, currency: string) {
@@ -52,7 +53,9 @@ export function BookingsLostPage({ quotes }: { quotes: LostBookingQuote[] }) {
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div>
                     <b>{customer?.company_name || customer?.contact_name || "Customer"}</b>
-                    <div className="text-xs text-slate-500">{q.quote_number}</div>
+                    <div className="text-xs text-slate-500">
+                      {q.quote_number} · Sales rep: {q.profiles?.full_name || "—"}
+                    </div>
                   </div>
                   <span className={"rounded-full px-2.5 py-1 text-xs font-bold " + badgeStyle}>{badgeLabel}</span>
                 </div>

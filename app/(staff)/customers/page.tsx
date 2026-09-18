@@ -93,14 +93,16 @@ export default async function CustomersPage({
             <tbody>
               {(customers ?? []).map((c) => (
                 <tr key={c.id} className="cursor-pointer border-t hover:bg-orange-50/30">
-                  <td className="whitespace-nowrap py-4">
-                    <Link href={`/customers/${c.id}`} className="block">
-                      <div className="font-bold">{c.company_name || c.contact_name}</div>
-                      {c.company_name && <div className="text-xs text-slate-500">{c.contact_name}</div>}
+                  <td className="max-w-[220px] py-4">
+                    <Link href={`/customers/${c.id}`} className="block" title={c.company_name || c.contact_name || undefined}>
+                      <div className="truncate font-bold">{c.company_name || c.contact_name}</div>
+                      {c.company_name && <div className="truncate text-xs text-slate-500">{c.contact_name}</div>}
                     </Link>
                   </td>
-                  <td className="whitespace-nowrap">
-                    <Link href={`/customers/${c.id}`} className="block">{c.email ?? "—"}</Link>
+                  <td className="max-w-[200px]">
+                    <Link href={`/customers/${c.id}`} className="block truncate" title={c.email ?? undefined}>
+                      {c.email ?? "—"}
+                    </Link>
                   </td>
                   <td className="whitespace-nowrap">
                     <Link href={`/customers/${c.id}`} className="block">{c.phone ?? "—"}</Link>

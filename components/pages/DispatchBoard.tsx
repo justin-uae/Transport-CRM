@@ -12,7 +12,11 @@ export interface JobRow {
   id: string;
   status: JobStatus;
   region: string | null;
-  quotes: { quote_number: string; customers: { company_name: string | null; contact_name: string } | null } | null;
+  quotes: {
+    quote_number: string;
+    customers: { company_name: string | null; contact_name: string } | null;
+    profiles: { full_name: string } | null;
+  } | null;
   job_allocations: { id: string; status: JobStatus; suppliers: { name: string } | null }[];
 }
 
@@ -51,7 +55,7 @@ function JobCard({ job }: { job: JobRow }) {
         <div>
           <b>{job.quotes?.customers?.company_name || job.quotes?.customers?.contact_name || "Customer"}</b>
           <div className="text-xs text-slate-500">
-            {job.quotes?.quote_number} · {job.region ?? "No region"}
+            {job.quotes?.quote_number} · {job.region ?? "No region"} · Sales rep: {job.quotes?.profiles?.full_name || "—"}
           </div>
         </div>
         <div className="flex items-center gap-2">
