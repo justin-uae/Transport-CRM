@@ -9,10 +9,10 @@ import { CustomerPaymentsDiagram } from "@/components/ui/guide-diagrams/Customer
 import { useToast } from "@/components/ui/Toast";
 import { ConfirmDetailModal } from "@/components/ui/ConfirmDetailModal";
 import { createClient } from "@/lib/supabase/client";
-import { recordCustomerPaymentAction, verifyBankTransferAction } from "@/app/(staff)/quotes/actions";
+import { recordCustomerPaymentAction, verifyBankTransferAction, processRefundAction } from "@/app/(staff)/quotes/actions";
 import { amountDueNow } from "@/lib/quoteMoney";
 import { formatDateTime } from "@/lib/formatDate";
-import type { QuoteStatus, CustomerPaymentMethod } from "@/lib/supabase/database.types";
+import type { QuoteStatus, CustomerPaymentMethod, RefundStatus } from "@/lib/supabase/database.types";
 
 export interface PaymentRow {
   id: string;
@@ -21,6 +21,20 @@ export interface PaymentRow {
   paid_at: string;
   proof_storage_path: string | null;
   verification_status: "pending" | "verified";
+}
+
+export interface CustomerRefundRow {
+  id: string;
+  quote_id: string;
+  amount: number;
+  currency: string;
+  reason: string | null;
+  status: RefundStatus;
+  created_at: string;
+  processed_at: string | null;
+  quotes: { quote_number: string; customers: { company_name: string | null; contact_name: string } | null } | null;
+  requested_by_profile: { full_name: string } | null;
+  processed_by_profile: { full_name: string } | null;
 }
 
 export interface AcceptedQuoteRow {
@@ -44,20 +58,26 @@ function money(amount: number | undefined, currency: string) {
 
 export function CustomerPaymentsPage({
   quotes,
+  refunds,
   proofUrls,
   currentUserId,
   canVerify,
+  canProcessRefunds,
 }: {
   quotes: AcceptedQuoteRow[];
+  refunds: CustomerRefundRow[];
   proofUrls: Record<string, string | null>;
   currentUserId: string;
   canVerify: boolean;
+  canProcessRefunds: boolean;
 }) {
   const router = useRouter();
   const notify = useToast();
   const [pending, startTransition] = useTransition();
   const [verifyingId, setVerifyingId] = useState<string | null>(null);
-  const [tab, setTab] = useState<"awaiting" | "verify" | "paid">("awaiting");
+  const [refundPending, startRefundTransition] = useTransition();
+  const [processingRefundId, setProcessingRefundId] = useState<string | null>(null);
+  const [tab, setTab] = useState<"awaiting" | "verify" | "paid" | "refunds">("awaiting");
   const [target, setTarget] = useState<AcceptedQuoteRow | null>(null);
   const [amount, setAmount] = useState("");
   const [proofFile, setProofFile] = useState<File | null>(null);
@@ -76,6 +96,22 @@ export function CustomerPaymentsPage({
     [quotes],
   );
   const visible = tab === "awaiting" ? awaiting : tab === "paid" ? paid : [];
+  const pendingRefunds = useMemo(() => refunds.filter((r) => r.status === "pending"), [refunds]);
+
+  function processRefund(refundId: string) {
+    setProcessingRefundId(refundId);
+    startRefundTransition(async () => {
+      const result = await processRefundAction(refundId);
+      if (result?.error) {
+        notify(result.error);
+        setProcessingRefundId(null);
+        return;
+      }
+      notify("Refund marked as processed");
+      setProcessingRefundId(null);
+      router.refresh();
+    });
+  }
 
   function verifiedAmount(q: AcceptedQuoteRow) {
     return (q.customer_payments ?? [])
@@ -210,6 +246,7 @@ export function CustomerPaymentsPage({
                   "Awaiting Payment — accepted quotes with a balance still outstanding.",
                   "Pending Verification — bank transfers a rep has logged that a Finance role still needs to verify before they count toward the balance.",
                   "Paid — quotes fully settled.",
+                  "Refunds — every refund owed back to a customer from a cancelled booking, tenant-wide. Mark processed once the money has actually gone out.",
                 ],
               },
               {
@@ -223,7 +260,7 @@ export function CustomerPaymentsPage({
         }
       />
       <div className="mb-4 flex flex-wrap gap-2">
-        {(["awaiting", "verify", "paid"] as const).map((t) => (
+        {(["awaiting", "verify", "paid", "refunds"] as const).map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
@@ -236,11 +273,61 @@ export function CustomerPaymentsPage({
               ? `Awaiting Payment (${awaiting.length})`
               : t === "verify"
                 ? `Pending Verification (${pendingPayments.length})`
-                : `Paid (${paid.length})`}
+                : t === "paid"
+                  ? `Paid (${paid.length})`
+                  : `Refunds (${pendingRefunds.length})`}
           </button>
         ))}
       </div>
-      {tab === "verify" ? (
+      {tab === "refunds" ? (
+        <Panel>
+          <div className="space-y-3">
+            {refunds.map((r) => (
+              <div key={r.id} className="rounded-2xl border p-4 text-sm">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <b className="text-primary-600">{r.quotes?.quote_number ?? "—"}</b>
+                    <div className="font-semibold">
+                      {r.quotes?.customers?.company_name || r.quotes?.customers?.contact_name || "—"}
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className="font-black">{money(r.amount, r.currency)}</div>
+                    <span
+                      className={`rounded-full px-2.5 py-1 text-xs font-bold capitalize ${
+                        r.status === "processed" ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"
+                      }`}
+                    >
+                      {r.status}
+                    </span>
+                  </div>
+                </div>
+                {r.reason && <p className="mt-2 text-slate-600">{r.reason}</p>}
+                <p className="mt-2 text-xs text-slate-400">
+                  Requested by {r.requested_by_profile?.full_name ?? "Staff"} · {formatDateTime(r.created_at)}
+                </p>
+                {r.status === "processed" && r.processed_at && (
+                  <p className="mt-0.5 text-xs text-slate-400">
+                    Marked processed by {r.processed_by_profile?.full_name ?? "Finance"} · {formatDateTime(r.processed_at)}
+                  </p>
+                )}
+                <div className="mt-3 flex items-center gap-3">
+                  {r.status === "pending" && canProcessRefunds && (
+                    <button
+                      disabled={refundPending && processingRefundId === r.id}
+                      onClick={() => processRefund(r.id)}
+                      className="ml-auto rounded-lg bg-primary-500 px-3 py-2 text-xs font-bold text-white disabled:opacity-60"
+                    >
+                      {refundPending && processingRefundId === r.id ? "Marking…" : "Mark processed"}
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))}
+            {refunds.length === 0 && <p className="py-8 text-center text-sm text-slate-500">No customer refunds recorded yet.</p>}
+          </div>
+        </Panel>
+      ) : tab === "verify" ? (
         <Panel>
           <div className="space-y-3">
             {pendingPayments.map(({ quote: q, payment: p }) => (

@@ -11,7 +11,18 @@ import {
   processRefundAction,
 } from "@/app/(staff)/quotes/actions";
 import { EditBookingButton, type EditableLeg } from "@/components/pages/EditBookingButton";
+import { formatDateTime } from "@/lib/formatDate";
 import type { QuoteStatus, JobStatus, Refund } from "@/lib/supabase/database.types";
+
+export interface QuoteRefund extends Refund {
+  requested_by_profile: { full_name: string } | null;
+  processed_by_profile: { full_name: string } | null;
+}
+
+const REFUND_STATUS_STYLE: Record<Refund["status"], string> = {
+  pending: "bg-amber-50 text-amber-700",
+  processed: "bg-emerald-50 text-emerald-700",
+};
 
 interface QuoteSummary {
   id: string;
@@ -64,7 +75,7 @@ export function QuoteDetailActions({
   enquiryId: string | null;
   legs: AmendableLeg[];
   jobStatus: JobStatus | null;
-  refunds: Refund[];
+  refunds: QuoteRefund[];
 }) {
   const notify = useToast();
   const [resendOpen, setResendOpen] = useState(false);
@@ -179,19 +190,30 @@ export function QuoteDetailActions({
       )}
 
       {refunds.length > 0 && (
-        <div className="mt-4 space-y-2 rounded-xl border p-3">
+        <div className="mt-4 space-y-3 rounded-xl border p-3">
           <div className="text-xs font-black uppercase tracking-wide text-slate-400">Refunds</div>
           {refunds.map((r) => (
-            <div key={r.id} className="flex flex-wrap items-center justify-between gap-2 text-sm">
-              <div>
-                <div className="font-bold">{money(r.amount, r.currency)}</div>
-                <div className="text-xs capitalize text-slate-500">{r.status}</div>
+            <div key={r.id} className="rounded-lg border p-3 text-sm">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="font-bold">{money(r.amount, r.currency)}</span>
+                <span className={`rounded-full px-2.5 py-1 text-xs font-bold capitalize ${REFUND_STATUS_STYLE[r.status]}`}>
+                  {r.status}
+                </span>
               </div>
+              {r.reason && <p className="mt-1 text-xs text-slate-600">{r.reason}</p>}
+              <p className="mt-1 text-xs text-slate-400">
+                Requested by {r.requested_by_profile?.full_name ?? "Staff"} · {formatDateTime(r.created_at)}
+              </p>
+              {r.status === "processed" && r.processed_at && (
+                <p className="mt-0.5 text-xs text-slate-400">
+                  Marked processed by {r.processed_by_profile?.full_name ?? "Finance"} · {formatDateTime(r.processed_at)}
+                </p>
+              )}
               {r.status === "pending" && canProcessRefunds && (
                 <button
                   onClick={() => processRefund(r.id)}
                   disabled={refundPending}
-                  className="rounded-lg bg-primary-500 px-3 py-1.5 text-xs font-bold text-white disabled:opacity-60"
+                  className="mt-2 w-full rounded-lg bg-primary-500 px-3 py-1.5 text-xs font-bold text-white disabled:opacity-60"
                 >
                   Mark processed
                 </button>

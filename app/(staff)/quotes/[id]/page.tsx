@@ -8,11 +8,11 @@ import { PageHead } from "@/components/ui/PageHead";
 import { Breadcrumb } from "@/components/ui/Breadcrumb";
 import { BackLink } from "@/components/ui/BackLink";
 import { SectionTitle } from "@/components/ui/SectionTitle";
-import { QuoteDetailActions, type AmendableLeg } from "@/components/pages/QuoteDetailActions";
+import { QuoteDetailActions, type AmendableLeg, type QuoteRefund } from "@/components/pages/QuoteDetailActions";
 import { BookingEditHistory, type BookingEditRecord } from "@/components/pages/BookingEditHistory";
 import { JourneyLegDetail, type JourneyLeg } from "@/components/pages/JourneyLegDetail";
 import { formatDateTime, formatDate } from "@/lib/formatDate";
-import type { QuoteStatus, QuoteEventType, QuoteDecisionType, CustomerPaymentMethod, Refund, JobStatus } from "@/lib/supabase/database.types";
+import type { QuoteStatus, QuoteEventType, QuoteDecisionType, CustomerPaymentMethod, JobStatus } from "@/lib/supabase/database.types";
 import { QUOTE_STATUS_LABEL, QUOTE_STATUS_STYLE } from "@/lib/quoteStatus";
 
 interface LineItemRow {
@@ -65,6 +65,9 @@ interface QuoteDetailRow {
   sent_at: string | null;
   viewed_at: string | null;
   decided_at: string | null;
+  cancellation_reason: string | null;
+  cancelled_by: string | null;
+  cancelled_by_profile: { full_name: string } | null;
   customers: { company_name: string | null; contact_name: string; phone: string | null; email: string | null } | null;
   enquiries: { id: string; assigned_user_id: string | null; enquiry_legs: (JourneyLeg & { id: string })[] } | null;
   quote_versions: VersionRow[];
@@ -94,7 +97,7 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
   const { id } = await params;
   const actor = await requireProfile();
   const supabase = await createClient();
-  const [canCancel, canProcessRefunds, canAmendPermission, canCreateQuote] = await Promise.all([
+  const [canCancelPermission, canProcessRefunds, canAmendPermission, canCreateQuote] = await Promise.all([
     hasPermission(actor, PERMISSIONS.QUOTES_CANCEL),
     hasPermission(actor, PERMISSIONS.FINANCE_PROCESS_REFUNDS),
     hasPermission(actor, PERMISSIONS.BOOKINGS_AMEND),
@@ -104,7 +107,7 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
   const { data: quoteRaw, error: quoteError } = await supabase
     .from("quotes")
     .select(
-      "id, quote_number, status, currency, expiry_at, invoice_number, invoiced_at, public_token, created_at, sent_at, viewed_at, decided_at, customers(company_name, contact_name, phone, email), enquiries(id, assigned_user_id, enquiry_legs(id, sequence, journey_type, pickup_address, destination_address, via_points, pickup_date, pickup_time, return_date, return_time, passenger_count, luggage_count, wheelchair_required, child_seats, special_requirements, vehicle_types(name))), quote_versions!quote_versions_quote_id_fkey(id, version_number, vehicle_description, supplier_estimated_cost, selling_price, currency, deposit_percentage, deposit_fixed_amount, customer_notes, terms_snapshot, created_at, quote_line_items(id, description, amount, category)), quote_events(event, created_at), quote_decisions(decision, reason, free_text, decided_at), customer_payments(id, amount, method, paid_at), quote_payment_milestones(id, sequence, label, amount, due_date)",
+      "id, quote_number, status, currency, expiry_at, invoice_number, invoiced_at, public_token, created_at, sent_at, viewed_at, decided_at, cancellation_reason, cancelled_by, cancelled_by_profile:profiles!quotes_cancelled_by_fkey(full_name), customers(company_name, contact_name, phone, email), enquiries(id, assigned_user_id, enquiry_legs(id, sequence, journey_type, pickup_address, destination_address, via_points, pickup_date, pickup_time, return_date, return_time, passenger_count, luggage_count, wheelchair_required, child_seats, special_requirements, vehicle_types(name))), quote_versions!quote_versions_quote_id_fkey(id, version_number, vehicle_description, supplier_estimated_cost, selling_price, currency, deposit_percentage, deposit_fixed_amount, customer_notes, terms_snapshot, created_at, quote_line_items(id, description, amount, category)), quote_events(event, created_at), quote_decisions(decision, reason, free_text, decided_at), customer_payments(id, amount, method, paid_at), quote_payment_milestones(id, sequence, label, amount, due_date)",
     )
     .eq("id", id)
     .single();
@@ -112,10 +115,17 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
   if (quoteError) console.error("quote detail fetch failed:", quoteError.message);
   if (!quoteRaw) notFound();
   const quote = quoteRaw as unknown as QuoteDetailRow;
+  const canCancel = actor.is_master_admin || (canCancelPermission && quote.enquiries?.assigned_user_id === actor.id);
 
   const [{ data: job }, { data: refunds }, { data: amendmentsRaw }] = await Promise.all([
     supabase.from("jobs").select("id, status, suppliers(name)").eq("quote_id", id).maybeSingle(),
-    supabase.from("refunds").select("*").eq("quote_id", id).order("created_at", { ascending: false }),
+    supabase
+      .from("refunds")
+      .select(
+        "id, quote_id, amount, currency, reason, status, created_at, processed_at, requested_by_profile:profiles!refunds_requested_by_fkey(full_name), processed_by_profile:profiles!refunds_processed_by_fkey(full_name)",
+      )
+      .eq("quote_id", id)
+      .order("created_at", { ascending: false }),
     supabase
       .from("booking_amendments")
       .select(
@@ -276,6 +286,16 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
                 <p className="mt-1 text-xs text-slate-400">{formatDateTime(decision.decided_at)}</p>
               </div>
             )}
+            {quote.status === "cancelled" && (
+              <div className="mt-4 rounded-xl bg-red-50 p-4 text-sm">
+                <div className="font-bold text-red-700">Booking cancelled</div>
+                {quote.cancellation_reason && <p className="mt-1 text-slate-600">Reason: {quote.cancellation_reason}</p>}
+                <p className="mt-1 text-xs text-slate-400">
+                  {quote.cancelled_by_profile?.full_name ?? "Staff"}
+                  {quote.decided_at && ` · ${formatDateTime(quote.decided_at)}`}
+                </p>
+              </div>
+            )}
           </Panel>
 
           <BookingEditHistory amendments={amendments} currency={quote.currency} />
@@ -339,7 +359,7 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
                 enquiryId={quote.enquiries?.id ?? null}
                 legs={amendableLegs}
                 jobStatus={jobRow?.status ?? null}
-                refunds={(refunds ?? []) as Refund[]}
+                refunds={(refunds ?? []) as unknown as QuoteRefund[]}
               />
             </div>
           </Panel>

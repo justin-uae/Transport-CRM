@@ -397,6 +397,9 @@ export interface Quote {
   payment_proof_storage_path: string | null;
   payment_proof_file_name: string | null;
   payment_method_chosen: CustomerPaymentMethod | null;
+  /** Why and by whom this booking was cancelled — set by cancelBookingAction, see 0077_quote_cancellation_history.sql. */
+  cancellation_reason: string | null;
+  cancelled_by: string | null;
   created_at: string;
   updated_at: string;
 }

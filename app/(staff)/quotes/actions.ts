@@ -340,29 +340,45 @@ const CANCELLABLE_STATUSES = ["accepted", "partially_paid", "paid"];
  * quote_status and job_status enums. Any money already collected doesn't get
  * touched in customer_payments (append-only ledger) — it becomes a pending
  * `refunds` row for Finance to action separately via processRefundAction.
+ *
+ * Restricted to the enquiry's assigned owner or a Master Admin (mirrors
+ * amendBookingAction's canAmend gate) — quotes.cancel alone used to let any
+ * role holding that permission cancel any tenant's booking, not just their
+ * own.
  */
 export async function cancelBookingAction(quoteId: string, reason: string) {
   const actor = await requireProfile();
-  const allowed = await hasPermission(actor, PERMISSIONS.QUOTES_CANCEL);
-  if (!allowed) return { error: "You do not have permission to cancel a booking." };
-  if (!reason.trim()) return { error: "A reason is required to cancel a booking." };
+  const trimmedReason = reason.trim();
+  if (!trimmedReason) return { error: "A reason is required to cancel a booking." };
 
   const supabase = await createClient();
   const { data: quote } = await supabase
     .from("quotes")
-    .select("id, tenant_id, status, currency, customer_payments(amount, verification_status)")
+    .select("id, tenant_id, status, currency, enquiries(assigned_user_id), customer_payments(amount, verification_status)")
     .eq("id", quoteId)
     .single();
   if (!quote) return { error: "Quote not found." };
+
+  const isOwner = (quote.enquiries as unknown as { assigned_user_id: string | null } | null)?.assigned_user_id === actor.id;
+  const allowed = actor.is_master_admin || ((await hasPermission(actor, PERMISSIONS.QUOTES_CANCEL)) && isOwner);
+  if (!allowed) return { error: "Only a Master Admin or this booking's owner can cancel it." };
+
   if (!CANCELLABLE_STATUSES.includes(quote.status)) {
     return { error: "Only an accepted, partially paid, or paid booking can be cancelled." };
   }
 
   const { error: updateError } = await supabase
     .from("quotes")
-    .update({ status: "cancelled", decided_at: new Date().toISOString() })
+    .update({
+      status: "cancelled",
+      decided_at: new Date().toISOString(),
+      cancellation_reason: trimmedReason,
+      cancelled_by: actor.id,
+    })
     .eq("id", quoteId);
   if (updateError) return { error: updateError.message };
+
+  await supabase.from("quote_events").insert({ quote_id: quoteId, event: "cancelled" });
 
   const { data: job } = await supabase.from("jobs").select("id").eq("quote_id", quoteId).maybeSingle();
   if (job) {
@@ -392,7 +408,7 @@ export async function cancelBookingAction(quoteId: string, reason: string) {
       quote_id: quoteId,
       amount: verifiedPaid,
       currency: quote.currency,
-      reason: reason.trim(),
+      reason: trimmedReason,
       requested_by: actor.id,
     });
   }
@@ -405,7 +421,7 @@ export async function cancelBookingAction(quoteId: string, reason: string) {
     entityId: quoteId,
     previousValue: { status: quote.status },
     newValue: { status: "cancelled" },
-    reason: reason.trim(),
+    reason: trimmedReason,
   });
 
   revalidatePath("/quotes");
