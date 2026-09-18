@@ -294,7 +294,7 @@ export function LeadsPage({
           {leads.map((l) => (
             <div key={l.id} onClick={() => viewLead(l)} className="cursor-pointer rounded-2xl border p-4 hover:bg-orange-50/30">
               <div className="flex items-center justify-between gap-2">
-                <b>
+                <b className="min-w-0 truncate" title={l.customers?.company_name || l.customers?.contact_name || undefined}>
                   {l.customers?.company_name || l.customers?.contact_name || "Unassigned enquiry"}
                   {l.priority === "high" && (
                     <span className="ml-2 rounded-full bg-red-50 px-2 py-0.5 text-[10px] font-bold text-red-600">HIGH</span>
@@ -363,11 +363,18 @@ export function LeadsPage({
                   onClick={() => viewLead(l)}
                   className="cursor-pointer border-t hover:bg-orange-50/30"
                 >
-                  <td className="whitespace-nowrap py-4 font-bold">
-                    {l.customers?.company_name || l.customers?.contact_name || "Unassigned enquiry"}
-                    {l.priority === "high" && (
-                      <span className="ml-2 rounded-full bg-red-50 px-2 py-0.5 text-[10px] font-bold text-red-600">HIGH</span>
-                    )}
+                  <td className="max-w-[220px] py-4 font-bold">
+                    <div className="flex items-center gap-2">
+                      <span
+                        className="min-w-0 truncate"
+                        title={l.customers?.company_name || l.customers?.contact_name || undefined}
+                      >
+                        {l.customers?.company_name || l.customers?.contact_name || "Unassigned enquiry"}
+                      </span>
+                      {l.priority === "high" && (
+                        <span className="shrink-0 rounded-full bg-red-50 px-2 py-0.5 text-[10px] font-bold text-red-600">HIGH</span>
+                      )}
+                    </div>
                   </td>
                   <td>
                     {isGeneralEnquiry(l) ? (
