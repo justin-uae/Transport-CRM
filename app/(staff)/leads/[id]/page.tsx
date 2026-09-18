@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { hasPermission, PERMISSIONS } from "@/lib/permissions";
 import { LeadDetailPage, type LeadDetail, type LeadDetailQuote, type LeadSourceDocument } from "@/components/pages/LeadDetailPage";
 import type { JourneyLeg } from "@/components/pages/JourneyLegDetail";
+import type { LeadEditRecord } from "@/components/pages/LeadEditHistory";
 
 export default async function Page({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -57,10 +58,11 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
     }
   }
 
-  const [canAddEnquiry, canClaim, canRelease] = await Promise.all([
+  const [canAddEnquiry, canClaim, canRelease, { data: editsRaw }] = await Promise.all([
     hasPermission(profile, PERMISSIONS.ENQUIRIES_ADD),
     hasPermission(profile, PERMISSIONS.ENQUIRIES_CLAIM_OPEN_LEADS),
     hasPermission(profile, PERMISSIONS.ENQUIRIES_RETURN_TO_POOL),
+    supabase.from("lead_edits").select("id, reason, changes, created_at, profiles(full_name)").eq("lead_id", id).order("created_at", { ascending: false }),
   ]);
 
   return (
@@ -70,6 +72,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
       enquiryId={enquiry?.id ?? null}
       quote={quote}
       sourceDocument={sourceDocument}
+      edits={(editsRaw ?? []) as unknown as LeadEditRecord[]}
       currentUserId={profile.id}
       canAddEnquiry={canAddEnquiry}
       canClaim={canClaim}

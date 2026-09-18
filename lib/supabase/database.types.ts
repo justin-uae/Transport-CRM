@@ -322,6 +322,17 @@ export interface Lead {
   updated_at: string;
 }
 
+/** Every past edit to a lead's journey/intake details, with who made it and why — see 0076_lead_edits.sql. */
+export interface LeadEdit {
+  id: string;
+  tenant_id: string;
+  lead_id: string;
+  edited_by: string | null;
+  reason: string;
+  changes: Record<string, { from: unknown; to: unknown }>;
+  created_at: string;
+}
+
 export interface Enquiry {
   id: string;
   tenant_id: string;
@@ -1113,6 +1124,7 @@ export interface Database {
       customers: Table<Customer>;
       vehicle_types: Table<VehicleType>;
       leads: Table<Lead>;
+      lead_edits: Table<LeadEdit>;
       enquiries: Table<Enquiry>;
       enquiry_legs: Table<EnquiryLeg>;
       quotes: Table<Quote>;

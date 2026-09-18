@@ -59,6 +59,98 @@ export async function releaseLeadAction(leadId: string) {
   return { error: null };
 }
 
+export interface EditLeadInput {
+  reason: string;
+  pickupText?: string | null;
+  destinationText?: string | null;
+  travelDate?: string | null;
+  pickupTime?: string | null;
+  returnTrip?: boolean;
+  returnDate?: string | null;
+  returnTime?: string | null;
+  passengerCount?: number | null;
+  luggageCount?: number | null;
+  vehicleRequested?: string | null;
+  notes?: string | null;
+}
+
+const EDITABLE_FIELDS: { key: keyof EditLeadInput; column: string }[] = [
+  { key: "pickupText", column: "pickup_text" },
+  { key: "destinationText", column: "destination_text" },
+  { key: "travelDate", column: "travel_date" },
+  { key: "pickupTime", column: "pickup_time" },
+  { key: "returnTrip", column: "return_trip" },
+  { key: "returnDate", column: "return_date" },
+  { key: "returnTime", column: "return_time" },
+  { key: "passengerCount", column: "passenger_count" },
+  { key: "luggageCount", column: "luggage_count" },
+  { key: "vehicleRequested", column: "vehicle_requested" },
+  { key: "notes", column: "notes" },
+];
+
+/**
+ * Lets a lead's assigned owner correct its journey/intake details after
+ * capture — required reason, logged append-only to lead_edits (see
+ * 0076_lead_edits.sql) so the lead detail page can show a proper history.
+ * No customer/supplier notification: a lead is pre-quote and internal-only,
+ * unlike amendBookingAction's post-payment edits which have to tell people
+ * who already committed to something.
+ */
+export async function editLeadAction(leadId: string, input: EditLeadInput) {
+  const actor = await requireProfile();
+  const reason = input.reason.trim();
+  if (!reason) return { error: "A reason is required to edit a lead." };
+
+  const supabase = await createClient();
+
+  const { data: lead } = await supabase.from("leads").select("*").eq("id", leadId).single();
+  if (!lead) return { error: "Lead not found." };
+  if (lead.assigned_user_id !== actor.id) {
+    return { error: "Only this lead's assigned owner can edit it." };
+  }
+
+  const update: Record<string, unknown> = {};
+  const changes: Record<string, { from: unknown; to: unknown }> = {};
+  for (const { key, column } of EDITABLE_FIELDS) {
+    if (!(key in input)) continue;
+    const newValue = input[key];
+    const oldValue = (lead as Record<string, unknown>)[column];
+    if (newValue === oldValue) continue;
+    update[column] = newValue;
+    changes[column] = { from: oldValue, to: newValue };
+  }
+
+  if (Object.keys(update).length === 0) {
+    return { error: "Change at least one field." };
+  }
+
+  const { error: updateError } = await supabase.from("leads").update(update).eq("id", leadId);
+  if (updateError) return { error: updateError.message };
+
+  const { error: editError } = await supabase.from("lead_edits").insert({
+    tenant_id: actor.tenant_id,
+    lead_id: leadId,
+    edited_by: actor.id,
+    reason,
+    changes,
+  });
+  if (editError) return { error: editError.message };
+
+  await recordAudit({
+    tenantId: actor.tenant_id,
+    actorId: actor.id,
+    action: "lead_edited",
+    entityType: "lead",
+    entityId: leadId,
+    reason,
+    newValue: changes,
+  });
+
+  revalidatePath("/leads");
+  revalidatePath(`/leads/${leadId}`);
+  return { error: null };
+}
+
 /**
  * Fast path from an already-assigned lead straight into the quote builder —
  * creates the enquiry + first journey leg pre-filled from the lead's

@@ -2,14 +2,17 @@
 
 import { useState, useTransition } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { PageHead } from "@/components/ui/PageHead";
 import { Breadcrumb } from "@/components/ui/Breadcrumb";
 import { BackLink } from "@/components/ui/BackLink";
 import { Panel } from "@/components/ui/Panel";
 import { SectionTitle } from "@/components/ui/SectionTitle";
 import { useToast } from "@/components/ui/Toast";
+import { ConfirmDetailModal } from "@/components/ui/ConfirmDetailModal";
 import { JourneyLegDetail, type JourneyLeg } from "@/components/pages/JourneyLegDetail";
-import { claimLeadAction, createEnquiryFromLeadAction, releaseLeadAction } from "@/app/(staff)/leads/actions";
+import { LeadEditHistory, type LeadEditRecord } from "@/components/pages/LeadEditHistory";
+import { claimLeadAction, createEnquiryFromLeadAction, releaseLeadAction, editLeadAction, type EditLeadInput } from "@/app/(staff)/leads/actions";
 import { formatDate, formatTimeOnly } from "@/lib/formatDate";
 import { SOURCE_LABEL } from "@/lib/leadSource";
 import type { LeadSource, LeadStatus } from "@/lib/supabase/database.types";
@@ -94,6 +97,7 @@ export function LeadDetailPage({
   enquiryId,
   quote,
   sourceDocument,
+  edits,
   currentUserId,
   canAddEnquiry,
   canClaim,
@@ -104,14 +108,30 @@ export function LeadDetailPage({
   enquiryId: string | null;
   quote: LeadDetailQuote | null;
   sourceDocument: LeadSourceDocument | null;
+  edits: LeadEditRecord[];
   currentUserId: string;
   canAddEnquiry: boolean;
   canClaim: boolean;
   canRelease: boolean;
 }) {
   const notify = useToast();
+  const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  const [editOpen, setEditOpen] = useState(false);
+  const [editReason, setEditReason] = useState("");
+  const [editError, setEditError] = useState<string | null>(null);
+  const [pickupText, setPickupText] = useState(lead.pickup_text ?? "");
+  const [destinationText, setDestinationText] = useState(lead.destination_text ?? "");
+  const [travelDate, setTravelDate] = useState(lead.travel_date ?? "");
+  const [pickupTime, setPickupTime] = useState(lead.pickup_time ?? "");
+  const [returnTrip, setReturnTrip] = useState(lead.return_trip);
+  const [returnDate, setReturnDate] = useState(lead.return_date ?? "");
+  const [returnTime, setReturnTime] = useState(lead.return_time ?? "");
+  const [passengerCount, setPassengerCount] = useState(lead.passenger_count != null ? String(lead.passenger_count) : "");
+  const [luggageCount, setLuggageCount] = useState(lead.luggage_count != null ? String(lead.luggage_count) : "");
+  const [vehicleRequested, setVehicleRequested] = useState(lead.vehicle_requested ?? "");
+  const [notesInput, setNotesInput] = useState(lead.notes ?? "");
 
   const isGeneralEnquiry = !lead.pickup_text && !lead.destination_text;
   const isOwnActiveLead = lead.assigned_user_id === currentUserId && lead.status !== "converted" && lead.status !== "closed";
@@ -138,6 +158,41 @@ export function LeadDetailPage({
         notify(result.error);
       }
       // On success this redirects into /quotes/new.
+    });
+  }
+
+  function saveEdit() {
+    if (!editReason.trim()) {
+      setEditError("A reason is required.");
+      return;
+    }
+    const input: EditLeadInput = { reason: editReason };
+    if (pickupText !== (lead.pickup_text ?? "")) input.pickupText = pickupText || null;
+    if (destinationText !== (lead.destination_text ?? "")) input.destinationText = destinationText || null;
+    if (travelDate !== (lead.travel_date ?? "")) input.travelDate = travelDate || null;
+    if (pickupTime !== (lead.pickup_time ?? "")) input.pickupTime = pickupTime || null;
+    if (returnTrip !== lead.return_trip) input.returnTrip = returnTrip;
+    if (returnDate !== (lead.return_date ?? "")) input.returnDate = returnDate || null;
+    if (returnTime !== (lead.return_time ?? "")) input.returnTime = returnTime || null;
+    const passengerNum = passengerCount === "" ? null : Number(passengerCount);
+    if (passengerNum !== lead.passenger_count) input.passengerCount = passengerNum;
+    const luggageNum = luggageCount === "" ? null : Number(luggageCount);
+    if (luggageNum !== lead.luggage_count) input.luggageCount = luggageNum;
+    if (vehicleRequested !== (lead.vehicle_requested ?? "")) input.vehicleRequested = vehicleRequested || null;
+    if (notesInput !== (lead.notes ?? "")) input.notes = notesInput || null;
+
+    setEditError(null);
+    startTransition(async () => {
+      const result = await editLeadAction(lead.id, input);
+      if (result?.error) {
+        setEditError(result.error);
+        notify(result.error);
+        return;
+      }
+      notify("Lead updated");
+      setEditOpen(false);
+      setEditReason("");
+      router.refresh();
     });
   }
 
@@ -244,6 +299,19 @@ export function LeadDetailPage({
                 {pending ? "Please wait…" : quote ? "Continue to Quote" : "Create Quote"}
               </button>
             )}
+            {isOwnActiveLead && (
+              <button
+                type="button"
+                disabled={pending}
+                onClick={() => {
+                  setEditError(null);
+                  setEditOpen(true);
+                }}
+                className="rounded-xl border px-5 py-2.5 text-sm font-bold disabled:opacity-60"
+              >
+                Edit Lead
+              </button>
+            )}
             {isOwnActiveLead && canRelease && (
               <button
                 type="button"
@@ -255,6 +323,8 @@ export function LeadDetailPage({
               </button>
             )}
           </div>
+
+          <LeadEditHistory edits={edits} />
         </div>
 
         <div className="space-y-5">
@@ -305,6 +375,133 @@ export function LeadDetailPage({
           )}
         </div>
       </div>
+
+      {editOpen && (
+        <ConfirmDetailModal
+          open
+          onClose={() => !pending && setEditOpen(false)}
+          title="Edit this lead"
+          description="Correct the journey/intake details captured on this lead — every change here is logged with the reason below."
+          pending={pending}
+          error={editError}
+          confirmLabel="Save Changes"
+          onConfirm={saveEdit}
+        >
+          <div className="space-y-4">
+            <label className="block text-sm font-bold">
+              Reason (required)
+              <textarea
+                value={editReason}
+                onChange={(e) => setEditReason(e.target.value)}
+                className="mt-1 min-h-16 w-full rounded-xl border px-3 py-2 font-normal"
+                placeholder="Why is this lead being edited?"
+              />
+            </label>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="block text-sm font-bold">
+                Pickup
+                <input
+                  value={pickupText}
+                  onChange={(e) => setPickupText(e.target.value)}
+                  className="mt-1 w-full rounded-lg border px-3 py-2 text-sm font-normal"
+                />
+              </label>
+              <label className="block text-sm font-bold">
+                Destination
+                <input
+                  value={destinationText}
+                  onChange={(e) => setDestinationText(e.target.value)}
+                  className="mt-1 w-full rounded-lg border px-3 py-2 text-sm font-normal"
+                />
+              </label>
+              <label className="block text-sm font-bold">
+                Travel date
+                <input
+                  type="date"
+                  value={travelDate}
+                  onChange={(e) => setTravelDate(e.target.value)}
+                  className="mt-1 w-full rounded-lg border px-3 py-2 text-sm font-normal"
+                />
+              </label>
+              <label className="block text-sm font-bold">
+                Pickup time
+                <input
+                  type="time"
+                  value={pickupTime}
+                  onChange={(e) => setPickupTime(e.target.value)}
+                  className="mt-1 w-full rounded-lg border px-3 py-2 text-sm font-normal"
+                />
+              </label>
+              <label className="block text-sm font-bold">
+                Passengers
+                <input
+                  type="number"
+                  min={0}
+                  value={passengerCount}
+                  onChange={(e) => setPassengerCount(e.target.value)}
+                  className="mt-1 w-full rounded-lg border px-3 py-2 text-sm font-normal"
+                />
+              </label>
+              <label className="block text-sm font-bold">
+                Luggage
+                <input
+                  type="number"
+                  min={0}
+                  value={luggageCount}
+                  onChange={(e) => setLuggageCount(e.target.value)}
+                  className="mt-1 w-full rounded-lg border px-3 py-2 text-sm font-normal"
+                />
+              </label>
+              <label className="block text-sm font-bold sm:col-span-2">
+                Vehicle requested
+                <input
+                  value={vehicleRequested}
+                  onChange={(e) => setVehicleRequested(e.target.value)}
+                  className="mt-1 w-full rounded-lg border px-3 py-2 text-sm font-normal"
+                />
+              </label>
+            </div>
+
+            <label className="flex items-center gap-2 text-sm font-bold">
+              <input type="checkbox" checked={returnTrip} onChange={(e) => setReturnTrip(e.target.checked)} />
+              Return trip
+            </label>
+
+            {returnTrip && (
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="block text-sm font-bold">
+                  Return date
+                  <input
+                    type="date"
+                    value={returnDate}
+                    onChange={(e) => setReturnDate(e.target.value)}
+                    className="mt-1 w-full rounded-lg border px-3 py-2 text-sm font-normal"
+                  />
+                </label>
+                <label className="block text-sm font-bold">
+                  Return time
+                  <input
+                    type="time"
+                    value={returnTime}
+                    onChange={(e) => setReturnTime(e.target.value)}
+                    className="mt-1 w-full rounded-lg border px-3 py-2 text-sm font-normal"
+                  />
+                </label>
+              </div>
+            )}
+
+            <label className="block text-sm font-bold">
+              {isGeneralEnquiry ? "Message" : "Notes"}
+              <textarea
+                value={notesInput}
+                onChange={(e) => setNotesInput(e.target.value)}
+                className="mt-1 min-h-16 w-full rounded-xl border px-3 py-2 font-normal"
+              />
+            </label>
+          </div>
+        </ConfirmDetailModal>
+      )}
     </div>
   );
 }
