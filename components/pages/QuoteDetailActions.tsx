@@ -81,6 +81,7 @@ export function QuoteDetailActions({
   const [resendOpen, setResendOpen] = useState(false);
   const [cancelOpen, setCancelOpen] = useState(false);
   const [cancelReason, setCancelReason] = useState("");
+  const [confirmRefund, setConfirmRefund] = useState<QuoteRefund | null>(null);
   const [pending, startTransition] = useTransition();
   const [refundPending, startRefundTransition] = useTransition();
 
@@ -117,10 +118,16 @@ export function QuoteDetailActions({
     });
   }
 
-  function processRefund(refundId: string) {
+  function processRefund() {
+    if (!confirmRefund) return;
     startRefundTransition(async () => {
-      const result = await processRefundAction(refundId);
-      notify(result?.error ?? "Refund marked as processed");
+      const result = await processRefundAction(confirmRefund.id);
+      if (result?.error) {
+        notify(result.error);
+        return;
+      }
+      notify("Refund marked as processed");
+      setConfirmRefund(null);
     });
   }
 
@@ -211,7 +218,7 @@ export function QuoteDetailActions({
               )}
               {r.status === "pending" && canProcessRefunds && (
                 <button
-                  onClick={() => processRefund(r.id)}
+                  onClick={() => setConfirmRefund(r)}
                   disabled={refundPending}
                   className="mt-2 w-full rounded-lg bg-primary-500 px-3 py-1.5 text-xs font-bold text-white disabled:opacity-60"
                 >
@@ -249,6 +256,22 @@ export function QuoteDetailActions({
             />
           </label>
         </ConfirmDetailModal>
+      )}
+
+      {confirmRefund && (
+        <ConfirmDetailModal
+          open
+          onClose={() => !refundPending && setConfirmRefund(null)}
+          title="Mark this refund as processed?"
+          description="Confirms the money has actually been sent back to the customer — this cannot be undone."
+          details={[
+            { label: "Amount", value: money(confirmRefund.amount, confirmRefund.currency) },
+            { label: "Reason", value: confirmRefund.reason ?? "—" },
+          ]}
+          pending={refundPending}
+          confirmLabel="Mark processed"
+          onConfirm={processRefund}
+        />
       )}
 
       {resendOpen && (

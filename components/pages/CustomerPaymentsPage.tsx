@@ -77,6 +77,7 @@ export function CustomerPaymentsPage({
   const [verifyingId, setVerifyingId] = useState<string | null>(null);
   const [refundPending, startRefundTransition] = useTransition();
   const [processingRefundId, setProcessingRefundId] = useState<string | null>(null);
+  const [confirmRefund, setConfirmRefund] = useState<CustomerRefundRow | null>(null);
   const [tab, setTab] = useState<"awaiting" | "verify" | "paid" | "refunds">("awaiting");
   const [target, setTarget] = useState<AcceptedQuoteRow | null>(null);
   const [amount, setAmount] = useState("");
@@ -98,10 +99,11 @@ export function CustomerPaymentsPage({
   const visible = tab === "awaiting" ? awaiting : tab === "paid" ? paid : [];
   const pendingRefunds = useMemo(() => refunds.filter((r) => r.status === "pending"), [refunds]);
 
-  function processRefund(refundId: string) {
-    setProcessingRefundId(refundId);
+  function processRefund() {
+    if (!confirmRefund) return;
+    setProcessingRefundId(confirmRefund.id);
     startRefundTransition(async () => {
-      const result = await processRefundAction(refundId);
+      const result = await processRefundAction(confirmRefund.id);
       if (result?.error) {
         notify(result.error);
         setProcessingRefundId(null);
@@ -109,6 +111,7 @@ export function CustomerPaymentsPage({
       }
       notify("Refund marked as processed");
       setProcessingRefundId(null);
+      setConfirmRefund(null);
       router.refresh();
     });
   }
@@ -315,7 +318,7 @@ export function CustomerPaymentsPage({
                   {r.status === "pending" && canProcessRefunds && (
                     <button
                       disabled={refundPending && processingRefundId === r.id}
-                      onClick={() => processRefund(r.id)}
+                      onClick={() => setConfirmRefund(r)}
                       className="ml-auto rounded-lg bg-primary-500 px-3 py-2 text-xs font-bold text-white disabled:opacity-60"
                     >
                       {refundPending && processingRefundId === r.id ? "Marking…" : "Mark processed"}
@@ -477,6 +480,27 @@ export function CustomerPaymentsPage({
             />
           </label>
         </ConfirmDetailModal>
+      )}
+
+      {confirmRefund && (
+        <ConfirmDetailModal
+          open
+          onClose={() => !refundPending && setConfirmRefund(null)}
+          title="Mark this refund as processed?"
+          description="Confirms the money has actually been sent back to the customer — this cannot be undone."
+          details={[
+            { label: "Quote", value: confirmRefund.quotes?.quote_number ?? "—" },
+            {
+              label: "Customer",
+              value: confirmRefund.quotes?.customers?.company_name || confirmRefund.quotes?.customers?.contact_name || "—",
+            },
+            { label: "Amount", value: money(confirmRefund.amount, confirmRefund.currency) },
+            { label: "Reason", value: confirmRefund.reason ?? "—" },
+          ]}
+          pending={refundPending}
+          confirmLabel="Mark processed"
+          onConfirm={processRefund}
+        />
       )}
     </div>
   );
