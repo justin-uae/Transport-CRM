@@ -11,7 +11,7 @@ export default async function DispatchJobDetailPage({ params }: { params: Promis
   const actor = await requireProfile();
   const supabase = await createClient();
 
-  const [{ data: job }, { data: allocations }, { data: suppliers }, canTransfer, canDispatchManual, canEditBookingPermission, { data: amendmentsRaw }, { data: rejectionsRaw }] = await Promise.all([
+  const [{ data: job }, { data: allocations }, { data: suppliers }, canTransfer, canDispatchManual, canEditBookingPermission, canCancelPermission, { data: amendmentsRaw }, { data: rejectionsRaw }] = await Promise.all([
     supabase
       .from("jobs")
       .select(
@@ -30,6 +30,7 @@ export default async function DispatchJobDetailPage({ params }: { params: Promis
     hasPermission(actor, PERMISSIONS.DISPATCH_TRANSFER_SUPPLIER_INVOICE),
     hasPermission(actor, PERMISSIONS.DISPATCH_SEND_MANUAL),
     hasPermission(actor, PERMISSIONS.BOOKINGS_AMEND),
+    hasPermission(actor, PERMISSIONS.QUOTES_CANCEL),
     supabase
       .from("booking_amendments")
       .select(
@@ -56,6 +57,10 @@ export default async function DispatchJobDetailPage({ params }: { params: Promis
   // enquiry's assigned owner with bookings.amend.
   const canEditBooking =
     actor.is_master_admin || (canEditBookingPermission && jobRow.quotes?.enquiries?.assigned_user_id === actor.id);
+  // Same gate as the Quote detail page's Cancel Booking button — owner or
+  // Master Admin only, not just anyone holding quotes.cancel.
+  const canCancel =
+    actor.is_master_admin || (canCancelPermission && jobRow.quotes?.enquiries?.assigned_user_id === actor.id);
 
   const allocationRows = (allocations ?? []) as unknown as JobAllocationRow[];
   const invoiceUrls: Record<string, string | null> = {};
@@ -78,6 +83,7 @@ export default async function DispatchJobDetailPage({ params }: { params: Promis
       canTransferInvoice={canTransfer}
       canDispatchJobs={canDispatchJobs}
       canEditBooking={canEditBooking}
+      canCancel={canCancel}
       amendments={(amendmentsRaw ?? []) as unknown as BookingEditRecord[]}
       rejections={(rejectionsRaw ?? []) as unknown as JobRejectionRecord[]}
     />

@@ -20,17 +20,21 @@ import {
   transferSupplierInvoiceToAccountingAction,
   updateAllocationTermsAction,
 } from "@/app/(staff)/dispatch/actions";
+import { cancelBookingAction } from "@/app/(staff)/quotes/actions";
 import { JourneyLegDetail, type JourneyLeg } from "@/components/pages/JourneyLegDetail";
 import { EditBookingButton, type EditableLeg } from "@/components/pages/EditBookingButton";
 import { BookingEditHistory, type BookingEditRecord } from "@/components/pages/BookingEditHistory";
 import { RejectionHistory, type JobRejectionRecord } from "@/components/pages/RejectionHistory";
 
 export type { JobRejectionRecord };
+
 import { formatDateTime, formatDateAndTime } from "@/lib/formatDate";
 import type { JobOfferStatus, JobStatus, JobSupplierInvoice, SupplierPaymentStatus, QuoteStatus } from "@/lib/supabase/database.types";
 import type { SupplierOption } from "@/components/pages/DispatchBoard";
 
 type DispatchLeg = JourneyLeg & { id: string };
+
+const CANCELLABLE_STATUSES: QuoteStatus[] = ["accepted", "partially_paid", "paid"];
 
 export interface JobDetailRow {
   id: string;
@@ -585,6 +589,7 @@ export function DispatchJobDetail({
   canTransferInvoice,
   canDispatchJobs,
   canEditBooking,
+  canCancel,
   amendments,
   rejections,
 }: {
@@ -595,6 +600,7 @@ export function DispatchJobDetail({
   canTransferInvoice: boolean;
   canDispatchJobs: boolean;
   canEditBooking: boolean;
+  canCancel: boolean;
   amendments: BookingEditRecord[];
   rejections: JobRejectionRecord[];
 }) {
@@ -602,6 +608,10 @@ export function DispatchJobDetail({
   const notify = useToast();
   const [pending, startTransition] = useTransition();
   const [createError, setCreateError] = useState<string | null>(null);
+  const [cancelOpen, setCancelOpen] = useState(false);
+  const [cancelReason, setCancelReason] = useState("");
+  const [cancelError, setCancelError] = useState<string | null>(null);
+  const [cancelPending, startCancelTransition] = useTransition();
   const [selectedLegIds, setSelectedLegIds] = useState<string[]>([]);
   const [vehicleNotes, setVehicleNotes] = useState("");
   // Pre-filled from the quote's own supplier estimated cost so the figure
@@ -635,6 +645,28 @@ export function DispatchJobDetail({
     [allocations],
   );
   const legsById = useMemo(() => new Map(legs.map((l) => [l.id, l])), [legs]);
+
+  function cancelBooking() {
+    if (!job.quotes) return;
+    const quoteId = job.quotes.id;
+    if (!cancelReason.trim()) {
+      setCancelError("A reason is required to cancel a booking.");
+      return;
+    }
+    setCancelError(null);
+    startCancelTransition(async () => {
+      const result = await cancelBookingAction(quoteId, cancelReason);
+      if (result?.error) {
+        setCancelError(result.error);
+        notify(result.error);
+        return;
+      }
+      notify("Booking cancelled");
+      setCancelOpen(false);
+      setCancelReason("");
+      router.refresh();
+    });
+  }
 
   function toggleLeg(legId: string) {
     setSelectedLegIds((prev) => (prev.includes(legId) ? prev.filter((id) => id !== legId) : [...prev, legId]));
@@ -675,18 +707,37 @@ export function DispatchJobDetail({
           <Panel>
             <div className="flex flex-wrap items-start justify-between gap-2">
               <SectionTitle title="Journey" sub={legs.length > 1 ? `${legs.length} legs` : "Pickup, destination and passenger details"} />
-              {job.quotes && (
-                <EditBookingButton
-                  quoteId={job.quotes.id}
-                  quoteStatus={job.quotes.status}
-                  jobStatus={job.status}
-                  currency={currency}
-                  canEdit={canEditBooking}
-                  legs={editableLegs}
-                  className="shrink-0 rounded-xl border px-3 py-1.5 text-xs font-bold"
-                />
-              )}
+              <div className="flex shrink-0 flex-wrap gap-2">
+                {job.quotes && (
+                  <EditBookingButton
+                    quoteId={job.quotes.id}
+                    quoteStatus={job.quotes.status}
+                    jobStatus={job.status}
+                    currency={currency}
+                    canEdit={canEditBooking}
+                    legs={editableLegs}
+                    className="rounded-xl border px-3 py-1.5 text-xs font-bold"
+                  />
+                )}
+                {job.quotes && canCancel && CANCELLABLE_STATUSES.includes(job.quotes.status) && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCancelError(null);
+                      setCancelOpen(true);
+                    }}
+                    className="rounded-xl border border-red-200 px-3 py-1.5 text-xs font-bold text-red-600 hover:bg-red-50"
+                  >
+                    Cancel Booking
+                  </button>
+                )}
+              </div>
             </div>
+            {job.quotes?.status === "cancelled" && (
+              <div className="mt-3 rounded-xl bg-red-50 px-4 py-3 text-sm font-bold text-red-700">
+                This booking has been cancelled — see the quote page for the reason and any refund status.
+              </div>
+            )}
             <div className="mt-4">
               {legs.map((leg, i) => {
                 const claimed = claimedLegIds.has(leg.id);
@@ -800,6 +851,34 @@ export function DispatchJobDetail({
           </Panel>
         </div>
       </div>
+
+      {cancelOpen && job.quotes && (
+        <ConfirmDetailModal
+          open
+          onClose={() => !cancelPending && setCancelOpen(false)}
+          title="Cancel this booking?"
+          description="The quote and this job will be marked cancelled, and any pending supplier offers withdrawn. If money has already been collected, a pending refund will be recorded for Finance."
+          details={[
+            { label: "Quote", value: job.quotes.quote_number },
+            { label: "Customer", value: customer?.company_name || customer?.contact_name || "—" },
+          ]}
+          pending={cancelPending}
+          error={cancelError}
+          destructive
+          confirmLabel="Cancel booking"
+          onConfirm={cancelBooking}
+        >
+          <label className="block text-sm font-bold">
+            Reason
+            <textarea
+              value={cancelReason}
+              onChange={(e) => setCancelReason(e.target.value)}
+              className="mt-2 min-h-20 w-full rounded-xl border px-3 py-2 font-normal"
+              placeholder="Why is this booking being cancelled?"
+            />
+          </label>
+        </ConfirmDetailModal>
+      )}
     </div>
   );
 }
