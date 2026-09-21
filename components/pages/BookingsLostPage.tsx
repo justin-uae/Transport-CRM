@@ -19,23 +19,62 @@ export interface LostBookingQuote {
   profiles: { full_name: string } | null;
 }
 
+export interface ExpiredLead {
+  id: string;
+  pickup_text: string | null;
+  destination_text: string | null;
+  travel_date: string | null;
+  pickup_time: string | null;
+  passenger_count: number | null;
+  notes: string | null;
+  created_at: string;
+  customers: { company_name: string | null; contact_name: string } | null;
+  profiles: { full_name: string } | null;
+}
+
 function money(amount: number | undefined | null, currency: string) {
   if (amount === undefined || amount === null) return "—";
   return new Intl.NumberFormat("en-GB", { style: "currency", currency, maximumFractionDigits: 0 }).format(amount);
 }
 
-export function BookingsLostPage({ quotes }: { quotes: LostBookingQuote[] }) {
+export function BookingsLostPage({ quotes, expiredLeads }: { quotes: LostBookingQuote[]; expiredLeads: ExpiredLead[] }) {
   return (
     <div>
       <PageHead
         eyebrow="Bookings"
         title="Lost Booking"
-        text="Quotes the customer rejected, that expired unanswered, or a booking staff cancelled."
+        text="Quotes the customer rejected, that expired unanswered, a booking staff cancelled, or pool leads nobody claimed before the pickup date."
         action={<BookingsGuideButton active="lost" />}
       />
       <BookingTabs active="lost" />
       <Panel>
         <div className="space-y-3">
+          {expiredLeads.map((l) => (
+            <div key={l.id} className="rounded-2xl border p-4">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="min-w-0">
+                  <b className="block truncate">{l.customers?.company_name || l.customers?.contact_name || "Unassigned enquiry"}</b>
+                  <div className="text-xs text-slate-500">Lead · not quoted</div>
+                </div>
+                <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-600">Expired lead</span>
+              </div>
+              <div className="mt-2 text-sm text-slate-600">
+                {l.pickup_text || l.destination_text
+                  ? `${l.pickup_text ?? "—"} → ${l.destination_text ?? "—"}`
+                  : l.notes || "General enquiry"}
+              </div>
+              <p className="mt-2 text-xs text-slate-500">
+                Expired — no one claimed this lead before its pickup date
+                {l.travel_date ? ` (${formatDate(l.travel_date)})` : ""} passed.
+              </p>
+              <Link
+                href={`/leads/${l.id}`}
+                className="mt-3 inline-block rounded-lg border border-primary-300 px-3 py-2 text-xs font-bold text-primary-700"
+              >
+                View lead
+              </Link>
+            </div>
+          ))}
           {quotes.map((q) => {
             const customer = q.customers;
             const leg = q.enquiries?.enquiry_legs?.[0];
@@ -88,7 +127,7 @@ export function BookingsLostPage({ quotes }: { quotes: LostBookingQuote[] }) {
               </div>
             );
           })}
-          {quotes.length === 0 && <p className="py-8 text-center text-sm text-slate-500">No lost bookings yet.</p>}
+          {quotes.length === 0 && expiredLeads.length === 0 && <p className="py-8 text-center text-sm text-slate-500">No lost bookings yet.</p>}
         </div>
       </Panel>
     </div>

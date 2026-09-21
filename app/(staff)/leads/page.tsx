@@ -1,6 +1,7 @@
 import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { hasPermission, PERMISSIONS } from "@/lib/permissions";
+import { healExpiredLeads } from "@/lib/leadExpiry";
 import { LeadsPage, type LeadRow, type LeadTab } from "@/components/pages/LeadsPage";
 
 const PAGE_SIZE = 25;
@@ -13,6 +14,8 @@ export default async function Page({
   const params = await searchParams;
   const profile = await requireProfile();
   const supabase = await createClient();
+
+  await healExpiredLeads(supabase);
 
   const tab: LeadTab = params.tab === "pool" || params.tab === "all" ? params.tab : "mine";
   const q = params.q?.trim() || "";

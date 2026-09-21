@@ -5,6 +5,7 @@ import { Sidebar } from "./Sidebar";
 import { Header } from "./Header";
 import { ToastProvider } from "../ui/Toast";
 import { AttendanceProvider } from "../ui/AttendanceState";
+import { ClockInGate } from "./ClockInGate";
 import type { Brand } from "@/lib/supabase/database.types";
 import type { AttendanceState } from "@/lib/attendanceState";
 
@@ -18,6 +19,7 @@ export function StaffShell({
   canCreateQuote,
   canAddLead,
   initialAttendance,
+  locked,
   children,
 }: {
   userName: string;
@@ -29,6 +31,7 @@ export function StaffShell({
   canCreateQuote: boolean;
   canAddLead: boolean;
   initialAttendance: AttendanceState;
+  locked: boolean;
   children: React.ReactNode;
 }) {
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -37,14 +40,16 @@ export function StaffShell({
     <ToastProvider>
       <AttendanceProvider initialState={initialAttendance}>
         <div className="min-h-screen bg-appbg text-slate-800">
-          <Sidebar
-            mobileOpen={mobileOpen}
-            onCloseMobile={() => setMobileOpen(false)}
-            userName={userName}
-            roleName={roleName}
-            visibleHrefs={visibleHrefs}
-            canSeeSettings={canSeeSettings}
-          />
+          <div inert={locked} className={locked ? "opacity-40" : undefined}>
+            <Sidebar
+              mobileOpen={mobileOpen}
+              onCloseMobile={() => setMobileOpen(false)}
+              userName={userName}
+              roleName={roleName}
+              visibleHrefs={visibleHrefs}
+              canSeeSettings={canSeeSettings}
+            />
+          </div>
           <main className="lg:pl-72">
             <Header
               onOpenMobile={() => setMobileOpen(true)}
@@ -52,8 +57,12 @@ export function StaffShell({
               activeBrandId={activeBrandId}
               canCreateQuote={canCreateQuote}
               canAddLead={canAddLead}
+              locked={locked}
             />
-            <div className="p-4 md:p-6 xl:p-8">{children}</div>
+            {locked && <ClockInGate />}
+            <div inert={locked} className={"p-4 md:p-6 xl:p-8" + (locked ? " select-none opacity-40" : "")}>
+              {children}
+            </div>
           </main>
         </div>
       </AttendanceProvider>

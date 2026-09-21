@@ -22,7 +22,7 @@ const BOOKINGS_GUIDE_SECTIONS = [
     bullets: true,
     body: [
       "Confirmed Booking — paid and waiting on the supplier, from unassigned through to the job being done.",
-      "Lost Booking — the quote was rejected, expired unanswered, or a booking was cancelled by staff before payment.",
+      "Lost Booking — the quote was rejected, expired unanswered, or a booking was cancelled by staff before payment. Open-pool leads nobody claimed before their pickup date passed also land here, marked Expired lead.",
       "Completed Booking — the supplier has marked the job done. This is history only, nothing left to action.",
     ],
   },

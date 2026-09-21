@@ -222,7 +222,8 @@ export type LeadStatus =
   | "converted"
   | "closed"
   | "spam"
-  | "duplicate";
+  | "duplicate"
+  | "expired";
 
 export type LeadPriority = "high" | "normal";
 

@@ -27,6 +27,7 @@ const STATUS_LABEL: Record<LeadStatus, string> = {
   closed: "Closed",
   spam: "Spam",
   duplicate: "Duplicate",
+  expired: "Expired",
 };
 
 const TIME_RE = /^\d{2}:\d{2}(:\d{2})?$/;
@@ -264,6 +265,16 @@ export function LeadDetailPage({
         action={<BackLink fallbackHref="/leads" label="Back to Leads" />}
       />
 
+      {lead.status === "expired" && (
+        <div className="mb-4 rounded-xl border border-red-200 border-l-4 border-l-red-500 bg-red-100/70 px-4 py-3 text-sm text-red-800">
+          <div className="font-bold">This lead has expired</div>
+          <p className="mt-0.5">
+            No one claimed it from the open pool before its pickup date
+            {lead.travel_date ? ` (${formatDate(lead.travel_date)})` : ""} passed, so it was moved to Lost Booking and can no longer be claimed.
+          </p>
+        </div>
+      )}
+
       {error && <div className="mb-4 rounded-xl bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">{error}</div>}
 
       <div className="grid gap-5 lg:grid-cols-2">
@@ -295,7 +306,7 @@ export function LeadDetailPage({
               <Row label="Priority" value={lead.priority === "high" ? "High" : "Normal"} />
               <Row
                 label="Owner"
-                value={lead.profiles?.full_name || <span className="font-bold text-primary-600">Open pool</span>}
+                value={lead.profiles?.full_name || (lead.status === "expired" ? <span className="font-bold text-red-600">Unclaimed</span> : <span className="font-bold text-primary-600">Open pool</span>)}
               />
               <Row label={isGeneralEnquiry ? "Message" : "Notes"} value={lead.notes} />
             </div>

@@ -55,6 +55,7 @@ const STATUS_LABEL: Record<LeadStatus, string> = {
   closed: "Closed",
   spam: "Spam",
   duplicate: "Duplicate",
+  expired: "Expired",
 };
 
 /** A lead with no pickup/destination came in through a general enquiry (e.g. a Contact Us form) rather than a journey-specific quote request — nothing to show in the Journey column, and the journey-only detail rows would just be a wall of "—". */
@@ -292,7 +293,7 @@ export function LeadsPage({
         </div>
         <div className="space-y-3 py-4 sm:hidden">
           {leads.map((l) => (
-            <div key={l.id} onClick={() => viewLead(l)} className="cursor-pointer rounded-2xl border p-4 hover:bg-orange-50/30">
+            <div key={l.id} onClick={() => viewLead(l)} className={"cursor-pointer rounded-2xl border p-4 hover:bg-orange-50/30" + (l.status === "expired" ? " border-l-4 border-red-300 border-l-red-500 bg-red-100/70" : "")}>
               <div className="flex items-center justify-between gap-2">
                 <b className="min-w-0 truncate" title={l.customers?.company_name || l.customers?.contact_name || undefined}>
                   {l.customers?.company_name || l.customers?.contact_name || "Unassigned enquiry"}
@@ -322,7 +323,7 @@ export function LeadsPage({
                 <span>
                   {STATUS_LABEL[l.status]} · {timeAgo(l.created_at)}
                 </span>
-                <span>{l.profiles?.full_name || <span className="font-bold text-primary-600">Open pool</span>}</span>
+                <span>{l.profiles?.full_name || (l.status === "expired" ? <span className="font-bold text-red-600">Unclaimed</span> : <span className="font-bold text-primary-600">Open pool</span>)}</span>
               </div>
               {((l.status === "open_pool" && canClaim) || isOwnActiveLead(l)) && (
                 <button
@@ -361,9 +362,9 @@ export function LeadsPage({
                 <tr
                   key={l.id}
                   onClick={() => viewLead(l)}
-                  className="cursor-pointer border-t hover:bg-orange-50/30"
+                  className={"cursor-pointer border-t hover:bg-orange-50/30" + (l.status === "expired" ? " bg-red-100/70" : "")}
                 >
-                  <td className="max-w-[220px] py-4 font-bold">
+                  <td className={"max-w-[220px] py-4 font-bold" + (l.status === "expired" ? " border-l-4 border-l-red-500 pl-3" : "")}>
                     <div className="flex items-center gap-2">
                       <span
                         className="min-w-0 truncate"
@@ -397,7 +398,7 @@ export function LeadsPage({
                   </td>
                   <td className="whitespace-nowrap">{STATUS_LABEL[l.status]}</td>
                   <td className="whitespace-nowrap">{timeAgo(l.created_at)}</td>
-                  <td className="whitespace-nowrap">{l.profiles?.full_name || <span className="font-bold text-primary-600">Open pool</span>}</td>
+                  <td className="whitespace-nowrap">{l.profiles?.full_name || (l.status === "expired" ? <span className="font-bold text-red-600">Unclaimed</span> : <span className="font-bold text-primary-600">Open pool</span>)}</td>
                   <td className="whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                     {l.status === "open_pool" && canClaim ? (
                       <button

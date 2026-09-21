@@ -33,6 +33,11 @@ export default async function StaffLayout({
   const canCreateQuote = granted.has(PERMISSIONS.QUOTES_CREATE);
   const canAddLead = granted.has(PERMISSIONS.ENQUIRIES_ADD);
   const initialAttendance = deriveAttendanceState(todaysAttendanceEvents);
+  // Sales Users must be clocked in to use the system; being on a break still counts as clocked in.
+  const requiresClockIn =
+    !profile.is_master_admin &&
+    role?.name === "Sales User" &&
+    (initialAttendance.status === "not_clocked_in" || initialAttendance.status === "clocked_out");
 
   return (
     <StaffShell
@@ -45,6 +50,7 @@ export default async function StaffLayout({
       canCreateQuote={canCreateQuote}
       canAddLead={canAddLead}
       initialAttendance={initialAttendance}
+      locked={requiresClockIn}
     >
       {children}
     </StaffShell>

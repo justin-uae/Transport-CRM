@@ -16,12 +16,14 @@ export function Header({
   activeBrandId,
   canCreateQuote,
   canAddLead,
+  locked = false,
 }: {
   onOpenMobile: () => void;
   brands: Brand[];
   activeBrandId: string | null;
   canCreateQuote: boolean;
   canAddLead: boolean;
+  locked?: boolean;
 }) {
   const { status, elapsedLabel, pending, clockIn, startBreak, endBreak } = useAttendance();
 
@@ -43,8 +45,10 @@ export function Header({
         <Menu />
       </button>
       <div className="ml-auto flex items-center gap-2">
-        <GlobalSearch />
-        <BrandSwitcher brands={brands} activeBrandId={activeBrandId} />
+        <div inert={locked} className={clsx("flex items-center gap-2", locked && "opacity-40")}>
+          <GlobalSearch />
+          <BrandSwitcher brands={brands} activeBrandId={activeBrandId} />
+        </div>
         <button
           onClick={nextAction}
           disabled={pending}
@@ -62,16 +66,18 @@ export function Header({
           {statusLabel}
           {elapsedLabel && <span className="font-normal text-inherit opacity-70">· {elapsedLabel}</span>}
         </button>
-        {canCreateQuote && (
-          <Link
-            href="/quotes/new"
-            className="hidden items-center gap-2 rounded-xl border border-primary-200 bg-primary-50 px-4 py-2.5 text-sm font-bold text-primary-700 hover:bg-primary-100 md:flex"
-          >
-            <FileText size={18} />
-            New Quote
-          </Link>
-        )}
-        {canAddLead && <NewLeadMenu label="New Lead" labelClassName="hidden sm:inline" />}
+        <div inert={locked} className={clsx("flex items-center gap-2", locked && "opacity-40")}>
+          {canCreateQuote && (
+            <Link
+              href="/quotes/new"
+              className="hidden items-center gap-2 rounded-xl border border-primary-200 bg-primary-50 px-4 py-2.5 text-sm font-bold text-primary-700 hover:bg-primary-100 md:flex"
+            >
+              <FileText size={18} />
+              New Quote
+            </Link>
+          )}
+          {canAddLead && <NewLeadMenu label="New Lead" labelClassName="hidden sm:inline" />}
+        </div>
         <form action={signOut}>
           <button
             className="rounded-xl border border-slate-200 p-2.5 text-slate-500 hover:bg-slate-50"
