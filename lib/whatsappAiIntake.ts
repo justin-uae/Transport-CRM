@@ -62,7 +62,11 @@ const TURN_SCHEMA = {
         pickup: { type: ["string", "null"], description: "Pickup location, in the customer's own words" },
         destination: { type: ["string", "null"], description: "Destination, in the customer's own words" },
         passenger_count: { type: ["integer", "null"] },
-        travel_date: { type: ["string", "null"], description: "The travel date as the customer described it — keep their own wording if it isn't a clean date" },
+        travel_date: {
+          type: ["string", "null"],
+          description:
+            "The travel date, resolved to an explicit calendar date (e.g. \"2026-10-06\") whenever you can work it out from what the customer said plus today's date given in your instructions — including relative phrases like \"next Friday\" or \"6th of next month\". Only fall back to their raw wording if it's genuinely too vague to resolve to a specific date (e.g. \"sometime in the new year\").",
+        },
       },
       required: ["name", "email", "pickup", "destination", "passenger_count", "travel_date"],
       additionalProperties: false,
@@ -71,26 +75,27 @@ const TURN_SCHEMA = {
     },
     ready: {
       type: "boolean",
-      description: "True only once name, pickup, destination and travel_date are all known well enough to create a booking lead.",
+      description: "True only once name, email, pickup, destination and travel_date are all known well enough to create a booking lead. Passenger count doesn't need to be known.",
     },
   },
   required: ["reply", "collected", "ready"],
   additionalProperties: false,
 } as const;
 
-function systemPrompt(brandName: string): string {
+function systemPrompt(brandName: string, todayIso: string): string {
   return (
     `You are the WhatsApp booking assistant for ${brandName}, a coach and transport hire company. You are chatting ` +
-    `directly with a customer to understand what trip they need.\n\n` +
+    `directly with a customer to understand what trip they need. Today's date is ${todayIso}.\n\n` +
     `Goals:\n` +
     `- Have a natural, warm, concise WhatsApp conversation — short messages, no markdown, no long paragraphs.\n` +
-    `- Collect: the customer's name, email address, pickup location, destination, travel date, and number of passengers.\n` +
+    `- Collect ALL of these before finishing: the customer's name, email address, pickup location, destination, travel date, and number of passengers. Passenger count is the only one you may skip if the customer doesn't have a number yet — the other five are all required, including email.\n` +
     `- Ask about one or two missing things at a time — never demand everything in a single message.\n` +
     `- Never invent or guess a value the customer hasn't actually told you. Leave a field null until they say it.\n` +
+    `- When the customer gives a travel date, work out the actual calendar date yourself using today's date above — resolve relative phrases like "next Friday" or "6th of next month" into an explicit date rather than leaving them as vague wording.\n` +
     `- If the customer shares a location pin, it will already be described to you as text (e.g. "Shared location: ...") — treat it as their answer for whichever question you just asked.\n` +
     `- If the customer asks something unrelated to booking a trip, answer briefly and helpfully if you can, then steer the conversation back to finishing their request.\n` +
-    `- Once you have name, pickup, destination and travel date (email and passenger count are nice to have but never block), set ready to true and make your reply a warm confirmation summarizing what you've got and letting them know the team will follow up shortly.\n` +
-    `- Never set ready to true until you genuinely have those fields — don't rush the customer.`
+    `- Once you have name, email, pickup, destination and travel date (passenger count only if they gave you one), set ready to true and make your reply a warm confirmation summarizing what you've got and letting them know the team will follow up shortly.\n` +
+    `- Never set ready to true until you genuinely have those fields — don't rush the customer, and don't skip asking for email just because you have everything else.`
   );
 }
 
@@ -104,10 +109,11 @@ export async function runIntakeTurn(
   latestUserText: string,
 ): Promise<AiTurnResult> {
   const client = getOpenAIClient();
+  const todayIso = new Date().toISOString().slice(0, 10);
   const response = await client.responses.create(
     {
       model: "gpt-4o-mini",
-      instructions: `${systemPrompt(brandName)}\n\nData already collected (do not drop a value unless the customer corrects it): ${JSON.stringify(
+      instructions: `${systemPrompt(brandName, todayIso)}\n\nData already collected (do not drop a value unless the customer corrects it): ${JSON.stringify(
         collectedSoFar,
       )}`,
       input: [...history.map((m) => ({ role: m.role, content: m.content })), { role: "user" as const, content: latestUserText }],
@@ -133,7 +139,15 @@ export async function runIntakeTurn(
 /** The deterministic gate the webhook actually trusts — the model's `ready`
     flag is a signal, not the decision, so a hallucinated true (or a false
     despite everything being present) can't create a broken lead or stall a
-    finished one. */
+    finished one. Passenger count is deliberately excluded — it's the one
+    field the system prompt allows skipping if the customer has no number
+    yet — everything else here is required. */
 export function hasRequiredTripFields(collected: CollectedTrip): boolean {
-  return Boolean(collected.name?.trim() && collected.pickup?.trim() && collected.destination?.trim() && collected.travel_date?.trim());
+  return Boolean(
+    collected.name?.trim() &&
+      collected.email?.trim() &&
+      collected.pickup?.trim() &&
+      collected.destination?.trim() &&
+      collected.travel_date?.trim(),
+  );
 }
