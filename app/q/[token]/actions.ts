@@ -7,6 +7,36 @@ import { recordAudit } from "@/lib/audit";
 import { getStripeClient, toStripeAmount } from "@/lib/stripe";
 import { amountDueNow } from "@/lib/quotePayments";
 import { sendTemplatedEmail } from "@/lib/emailTemplates";
+import { formatDateAndTime } from "@/lib/formatDate";
+
+interface PayableLeg {
+  sequence: number;
+  pickup_address: string;
+  destination_address: string;
+  pickup_date: string | null;
+  pickup_time: string | null;
+  passenger_count: number | null;
+}
+
+/**
+ * One line per leg — "Leg 1: A → B (date/time, N pax)" — so the full job
+ * shows up wherever Stripe surfaces it (Dashboard payment detail, receipts),
+ * instead of just a bare "Quote payment" line item. Stripe caps metadata
+ * values at 500 characters, hence the truncation.
+ */
+function formatItinerarySummary(legs: PayableLeg[]): string {
+  if (legs.length === 0) return "No itinerary on file";
+  const summary = [...legs]
+    .sort((a, b) => a.sequence - b.sequence)
+    .map((leg) => {
+      const prefix = legs.length > 1 ? `Leg ${leg.sequence}: ` : "";
+      const when = leg.pickup_date ? formatDateAndTime(leg.pickup_date, leg.pickup_time) : "date TBC";
+      const pax = leg.passenger_count != null ? `, ${leg.passenger_count} pax` : "";
+      return `${prefix}${leg.pickup_address} → ${leg.destination_address} (${when}${pax})`;
+    })
+    .join(" | ");
+  return summary.length > 500 ? `${summary.slice(0, 497)}...` : summary;
+}
 
 async function loadDecidableQuote(admin: ReturnType<typeof createAdminClient>, token: string) {
   const { data: quote } = await admin
@@ -33,7 +63,7 @@ async function loadPayableQuote(admin: ReturnType<typeof createAdminClient>, tok
   const { data: quote } = await admin
     .from("quotes")
     .select(
-      "id, tenant_id, status, currency, quote_versions!quotes_current_version_id_fkey(selling_price, deposit_percentage, deposit_fixed_amount, payment_methods), customer_payments(amount), quote_payment_milestones(sequence, amount)",
+      "id, tenant_id, status, currency, quote_number, created_by_profile:profiles!quotes_created_by_fkey(full_name), customers(company_name, contact_name), enquiries(enquiry_legs(sequence, pickup_address, destination_address, pickup_date, pickup_time, passenger_count)), quote_versions!quotes_current_version_id_fkey(selling_price, deposit_percentage, deposit_fixed_amount, payment_methods), customer_payments(amount), quote_payment_milestones(sequence, amount)",
     )
     .eq("public_token", token)
     .single();
@@ -78,6 +108,35 @@ export async function createStripeCheckoutAction(token: string) {
 
   await admin.from("quotes").update({ payment_method_chosen: "stripe" }).eq("id", quote.id);
 
+  const customer = quote.customers as unknown as { company_name: string | null; contact_name: string } | null;
+  const salesRep = (quote.created_by_profile as unknown as { full_name: string } | null)?.full_name ?? "Unassigned";
+  const legs = (quote.enquiries as unknown as { enquiry_legs: PayableLeg[] } | null)?.enquiry_legs ?? [];
+  const itinerary = formatItinerarySummary(legs);
+  const paymentLabel =
+    milestones.length > 0
+      ? "instalment"
+      : version.deposit_fixed_amount
+        ? "deposit"
+        : version.deposit_percentage
+          ? `${version.deposit_percentage}% deposit`
+          : "payment";
+
+  // Set on both the Session and the underlying PaymentIntent: Session
+  // metadata is what the webhook reads (see app/api/stripe/webhook/route.ts)
+  // and what shows on the Checkout Session in the Dashboard; PaymentIntent
+  // description/metadata is what actually shows front-and-centre on the
+  // Payment itself (Dashboard → Payments, and on receipts) — previously
+  // neither was set beyond a bare quoteId, so a payment showed almost no
+  // context about which job it was for.
+  const stripeMetadata = {
+    quoteId: quote.id,
+    quote_number: quote.quote_number,
+    sales_rep: salesRep,
+    customer_name: customer?.company_name || customer?.contact_name || "—",
+    itinerary,
+  };
+  const description = `Quote ${quote.quote_number} — Sales rep: ${salesRep} — ${itinerary}`.slice(0, 1000);
+
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "";
   try {
     const stripe = getStripeClient();
@@ -96,15 +155,8 @@ export async function createStripeCheckoutAction(token: string) {
             currency: quote.currency,
             unit_amount: toStripeAmount(due, quote.currency),
             product_data: {
-              name: `Quote payment${
-                milestones.length > 0
-                  ? " (instalment)"
-                  : version.deposit_fixed_amount
-                    ? " (deposit)"
-                    : version.deposit_percentage
-                      ? ` (${version.deposit_percentage}% deposit)`
-                      : ""
-              }`,
+              name: `Quote ${quote.quote_number} — ${paymentLabel}`,
+              description: itinerary,
             },
           },
           quantity: 1,
@@ -112,7 +164,8 @@ export async function createStripeCheckoutAction(token: string) {
       ],
       success_url: `${appUrl}/q/${token}?payment=success`,
       cancel_url: `${appUrl}/q/${token}?payment=cancelled`,
-      metadata: { quoteId: quote.id },
+      metadata: stripeMetadata,
+      payment_intent_data: { description, metadata: stripeMetadata },
     });
     return { error: null, url: session.url };
   } catch (err) {
