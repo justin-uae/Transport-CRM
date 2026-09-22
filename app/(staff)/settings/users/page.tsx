@@ -19,6 +19,7 @@ export default async function UsersPage({ searchParams }: { searchParams: Promis
   const profile = await requireProfile();
   const supabase = await createClient();
   const canManage = await hasPermission(profile, PERMISSIONS.ADMIN_MANAGE_USERS);
+  const isMasterAdmin = profile.is_master_admin;
 
   const q = params.q?.trim() || "";
   const page = Math.max(1, Number(params.page) || 1);
@@ -28,7 +29,7 @@ export default async function UsersPage({ searchParams }: { searchParams: Promis
   let usersQuery = supabase
     .from("profiles")
     .select(
-      "id, full_name, email, job_title, status, role_id, is_master_admin, brands:default_brand_id(name), user_regions(id, region, lat, lng)",
+      "id, full_name, email, job_title, status, role_id, is_master_admin, phone, whatsapp_number, signature_switchboard, signature_emergency_email, signature_website, signature_logo_url, user_regions(id, region, lat, lng)",
       { count: "exact" },
     );
   if (q) {
@@ -115,41 +116,44 @@ export default async function UsersPage({ searchParams }: { searchParams: Promis
         <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center">
           <SearchInput placeholder="Search users by name or email…" />
         </div>
-        <div className="space-y-3 sm:hidden">
+        <div className="space-y-3 lg:hidden">
           {users.map((user) => (
             <UserCard
               key={user.id}
               user={user}
               roles={roles ?? []}
               canManage={canManage}
+              isMasterAdmin={isMasterAdmin}
               mailbox={mailboxByUserId.get(user.id) ?? null}
               allRegions={allRegions}
             />
           ))}
           {users.length === 0 && <p className="py-8 text-center text-sm text-slate-500">No users yet.</p>}
         </div>
-        <div className="hidden overflow-x-auto sm:block">
-          <table className="w-full min-w-[1180px] table-fixed text-left text-sm">
+        {/* Table only kicks in at `lg:` — below that, a wide `<table>` either
+            has to shrink columns to the point of being unreadable or force a
+            horizontal scrollbar, so the card list above is used instead of
+            trying to cram 8 columns into a narrow viewport. Column widths
+            are percentages (not px) so the table always fills its container
+            and never overflows it, at any width `lg:` and up. */}
+        <div className="hidden lg:block">
+          <table className="w-full table-fixed text-left text-sm">
             <colgroup>
-              <col className="w-[230px]" />
-              <col className="hidden w-[130px] md:table-column" />
-              <col className="w-[190px]" />
-              <col className="w-[160px]" />
-              <col className="w-[170px]" />
-              <col className="w-[100px]" />
-              <col className="hidden w-[140px] md:table-column" />
-              <col className="w-[190px]" />
+              <col className="w-[23%]" />
+              <col className="hidden w-[12%] xl:table-column" />
+              <col className="w-[26%]" />
+              <col className="w-[9%]" />
+              <col className="hidden w-[13%] xl:table-column" />
+              <col className="w-[17%]" />
             </colgroup>
             <thead className="border-b text-xs font-bold uppercase tracking-wide text-slate-400">
               <tr>
-                <th className="px-3 pb-3">User</th>
-                <th className="hidden px-3 pb-3 md:table-cell">Job title</th>
-                <th className="px-3 pb-3">Brand</th>
-                <th className="px-3 pb-3">Region</th>
-                <th className="px-3 pb-3">Role</th>
-                <th className="px-3 pb-3">Status</th>
-                <th className="hidden px-3 pb-3 md:table-cell">Mailbox</th>
-                <th className="px-3 pb-3 text-right">Actions</th>
+                <th className="whitespace-nowrap px-3 pb-3">User</th>
+                <th className="hidden whitespace-nowrap px-3 pb-3 xl:table-cell">Job title</th>
+                <th className="whitespace-nowrap px-3 pb-3">Region</th>
+                <th className="whitespace-nowrap px-3 pb-3">Status</th>
+                <th className="hidden whitespace-nowrap px-3 pb-3 xl:table-cell">Mailbox</th>
+                <th className="whitespace-nowrap px-3 pb-3 text-right">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -159,6 +163,7 @@ export default async function UsersPage({ searchParams }: { searchParams: Promis
                   user={user}
                   roles={roles ?? []}
                   canManage={canManage}
+                  isMasterAdmin={isMasterAdmin}
                   mailbox={mailboxByUserId.get(user.id) ?? null}
                   allRegions={allRegions}
                 />

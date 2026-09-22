@@ -3,14 +3,10 @@
 import { useState, useTransition } from "react";
 import { X, Plus } from "lucide-react";
 import { useToast } from "@/components/ui/Toast";
-import {
-  updateUserStatusAction,
-  updateUserRoleAction,
-  removeUserRegionAction,
-  resendUserInviteAction,
-} from "./actions";
+import { removeUserRegionAction, resendUserInviteAction } from "./actions";
 import { RegionMapModal, type AllocatedRegion } from "./RegionMapModal";
 import { MailboxBadge, type EmailAccountStatus } from "./EmailAccountForm";
+import { EditUserButton } from "./EditUserModal";
 import type { ProfileStatus } from "@/lib/supabase/database.types";
 
 const STATUS_STYLES: Record<ProfileStatus, string> = {
@@ -42,7 +38,12 @@ export interface UserListRow {
   status: ProfileStatus;
   role_id: string | null;
   is_master_admin: boolean;
-  brands: { name: string } | null;
+  phone: string | null;
+  whatsapp_number: string | null;
+  signature_switchboard: string | null;
+  signature_emergency_email: string | null;
+  signature_website: string | null;
+  signature_logo_url: string | null;
   user_regions: { id: string; region: string; lat: number | null; lng: number | null }[];
 }
 
@@ -67,17 +68,6 @@ function useUserRowActions(user: UserListRow) {
     });
   }
 
-  function changeStatus(status: ProfileStatus) {
-    startTransition(async () => {
-      try {
-        await updateUserStatusAction(user.id, status);
-        notify(`${user.full_name} is now ${status}`);
-      } catch (err) {
-        notify(err instanceof Error ? err.message : "Could not update status");
-      }
-    });
-  }
-
   function resendInvite() {
     startTransition(async () => {
       const result = await resendUserInviteAction(user.id);
@@ -89,28 +79,17 @@ function useUserRowActions(user: UserListRow) {
     });
   }
 
-  function changeRole(roleId: string) {
-    startTransition(async () => {
-      try {
-        await updateUserRoleAction(user.id, roleId);
-        notify(`Role updated for ${user.full_name}`);
-      } catch (err) {
-        notify(err instanceof Error ? err.message : "Could not update role");
-      }
-    });
-  }
-
-  return { pending, regionModalOpen, setRegionModalOpen, removeRegion, changeStatus, changeRole, resendInvite };
+  return { pending, regionModalOpen, setRegionModalOpen, removeRegion, resendInvite };
 }
 
 /**
- * Region pills + inline add/remove — pulled out so the desktop table cell
- * and the mobile card render the exact same (fixed) markup instead of two
- * copies that could drift out of sync. `min-w-0` on both the cell wrapper
- * and the flex row is what actually makes the pills wrap instead of
- * overflowing past the column and overlapping the next one — flex items
- * (and table cells) default to `min-width: auto`, which refuses to shrink
- * below the content's natural width unless told otherwise.
+ * One region per line (name + remove, own row) rather than pills wrapping
+ * inline — with several regions, wrapped pills broke onto an unpredictable
+ * number of lines and made rows of the table look ragged against each
+ * other; a fixed vertical list reads as one clean column no matter how many
+ * regions a person has. Pulled out so the desktop table cell and the mobile
+ * card render the exact same markup instead of two copies that could drift
+ * out of sync.
  */
 function RegionEditor({
   user,
@@ -130,38 +109,44 @@ function RegionEditor({
   allRegions: AllocatedRegion[];
 }) {
   return (
-    <div className="flex min-w-0 flex-wrap items-center gap-1">
-      {user.user_regions.map((r) => (
-        <span
-          key={r.id}
-          className="flex max-w-full items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-bold text-slate-600"
-        >
-          <span className="truncate">{r.region}</span>
-          {canManage && (
-            <button
-              type="button"
-              disabled={pending}
-              onClick={() => removeRegion(r.id)}
-              className="shrink-0 rounded-full hover:bg-slate-200 disabled:opacity-60"
-              aria-label={`Remove ${r.region}`}
-            >
-              <X size={10} />
-            </button>
-          )}
-        </span>
-      ))}
-      {/* Empty-state dash only shown read-only — when canManage, the Add button below already signals "none yet". */}
-      {user.user_regions.length === 0 && !canManage && <span className="text-slate-300">—</span>}
+    <div className="min-w-0">
+      {user.user_regions.length > 0 ? (
+        <ul className="flex flex-col gap-1">
+          {user.user_regions.map((r) => (
+            <li key={r.id} className="flex min-w-0 items-center gap-1.5">
+              <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-slate-300" />
+              <span className="min-w-0 flex-1 truncate text-sm text-slate-600" title={r.region}>
+                {r.region}
+              </span>
+              {canManage && (
+                <button
+                  type="button"
+                  disabled={pending}
+                  onClick={() => {
+                    if (window.confirm(`Remove "${r.region}" from ${user.full_name}'s regions?`)) removeRegion(r.id);
+                  }}
+                  className="shrink-0 rounded-full p-0.5 text-slate-300 hover:bg-slate-100 hover:text-slate-500 disabled:opacity-60"
+                  aria-label={`Remove ${r.region}`}
+                >
+                  <X size={11} />
+                </button>
+              )}
+            </li>
+          ))}
+        </ul>
+      ) : (
+        !canManage && <span className="text-slate-300">—</span>
+      )}
       {canManage && (
         <button
           type="button"
           disabled={pending}
           onClick={() => setRegionModalOpen(true)}
-          className="flex shrink-0 items-center gap-0.5 rounded-full border border-dashed border-slate-300 px-1.5 py-0.5 text-[10px] font-bold text-slate-400 hover:border-slate-400 hover:text-slate-600 disabled:opacity-60"
+          className={`flex items-center gap-1 rounded-full border border-dashed border-slate-300 px-1.5 py-0.5 text-[10px] font-bold text-slate-400 hover:border-slate-400 hover:text-slate-600 disabled:opacity-60 ${user.user_regions.length > 0 ? "mt-1.5" : ""}`}
           aria-label="Add region"
         >
           <Plus size={10} />
-          {user.user_regions.length === 0 && "Add"}
+          Add region
         </button>
       )}
       <RegionMapModal
@@ -176,25 +161,27 @@ function RegionEditor({
   );
 }
 
-/** Desktop table row — shown at `sm:` and above (see UsersPage). */
+/** Desktop table row — shown at `lg:` and above (see UsersPage). */
 export function UserRow({
   user,
   roles,
   canManage,
+  isMasterAdmin,
   mailbox,
   allRegions,
 }: {
   user: UserListRow;
   roles: { id: string; name: string }[];
   canManage: boolean;
+  isMasterAdmin: boolean;
   mailbox: EmailAccountStatus | null;
   allRegions: AllocatedRegion[];
 }) {
   const a = useUserRowActions(user);
 
   return (
-    <tr className="border-t border-slate-100 hover:bg-slate-50/70">
-      <td className="px-3 py-3">
+    <tr className="border-t border-slate-100 align-middle hover:bg-slate-50/70">
+      <td className="px-3 py-3 align-middle">
         <div className="flex items-center gap-3">
           <Avatar name={user.full_name} />
           <div className="min-w-0">
@@ -203,66 +190,32 @@ export function UserRow({
           </div>
         </div>
       </td>
-      <td className="hidden truncate px-3 py-3 text-sm text-slate-600 md:table-cell" title={user.job_title ?? undefined}>
+      <td className="hidden truncate px-3 py-3 align-middle text-sm text-slate-600 xl:table-cell" title={user.job_title ?? undefined}>
         {user.job_title ?? <span className="text-slate-300">—</span>}
       </td>
-      <td className="truncate px-3 py-3 text-sm" title={user.brands?.name ?? undefined}>
-        {user.brands?.name ?? <span className="font-semibold text-red-500">No brand</span>}
-      </td>
-      <td className="min-w-0 px-3 py-3 text-sm text-slate-600">
+      <td className="min-w-0 px-3 py-3 align-middle text-sm text-slate-600">
         <RegionEditor user={user} canManage={canManage} allRegions={allRegions} {...a} />
       </td>
-      <td className="px-3 py-3">
-        {user.is_master_admin ? (
-          <span className="text-sm font-bold">Master Admin</span>
-        ) : (
-          <select
-            value={user.role_id ?? ""}
-            disabled={!canManage || a.pending}
-            onChange={(e) => a.changeRole(e.target.value)}
-            className="h-9 w-full rounded-lg border border-slate-200 px-2 text-sm disabled:bg-slate-50 disabled:text-slate-400"
-          >
-            {roles.map((r) => (
-              <option key={r.id} value={r.id}>
-                {r.name}
-              </option>
-            ))}
-          </select>
-        )}
-      </td>
-      <td className="px-3 py-3">
-        <span className={`inline-block rounded-full px-2.5 py-1 text-xs font-bold ${STATUS_STYLES[user.status]}`}>
+      <td className="px-3 py-3 align-middle">
+        <span className={`inline-block whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-bold ${STATUS_STYLES[user.status]}`}>
           {user.status}
         </span>
       </td>
-      <td className="hidden px-3 py-3 md:table-cell">
+      <td className="hidden px-3 py-3 align-middle xl:table-cell">
         <MailboxBadge userId={user.id} userName={user.full_name} account={mailbox} canManage={canManage} />
       </td>
-      <td className="px-3 py-3 text-right">
+      <td className="px-3 py-3 align-middle text-right">
         <div className="flex flex-col items-end gap-1.5">
+          {isMasterAdmin && <EditUserButton user={user} roles={roles} compact />}
           {canManage && user.status === "invited" && (
             <button
               type="button"
               disabled={a.pending}
               onClick={a.resendInvite}
-              className="h-9 w-full rounded-lg border border-slate-200 px-2 text-xs font-bold hover:bg-slate-50 disabled:opacity-60"
+              className="h-9 w-full whitespace-nowrap rounded-lg border border-slate-200 px-2 text-xs font-bold hover:bg-slate-50 disabled:opacity-60"
             >
               Resend invite
             </button>
-          )}
-          {canManage && !user.is_master_admin && (
-            <select
-              disabled={a.pending}
-              value=""
-              onChange={(e) => e.target.value && a.changeStatus(e.target.value as ProfileStatus)}
-              className="h-9 w-full rounded-lg border border-slate-200 px-2 text-xs font-bold"
-            >
-              <option value="">Change status…</option>
-              <option value="active">Activate</option>
-              <option value="suspended">Suspend</option>
-              <option value="disabled">Disable</option>
-              <option value="archived">Archive</option>
-            </select>
           )}
         </div>
       </td>
@@ -270,17 +223,19 @@ export function UserRow({
   );
 }
 
-/** Mobile card — shown below `sm:` instead of the table (see UsersPage). */
+/** Mobile card — shown below `lg:` instead of the table (see UsersPage). */
 export function UserCard({
   user,
   roles,
   canManage,
+  isMasterAdmin,
   mailbox,
   allRegions,
 }: {
   user: UserListRow;
   roles: { id: string; name: string }[];
   canManage: boolean;
+  isMasterAdmin: boolean;
   mailbox: EmailAccountStatus | null;
   allRegions: AllocatedRegion[];
 }) {
@@ -301,15 +256,9 @@ export function UserCard({
         </span>
       </div>
 
-      <div className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 text-xs text-slate-500">
-        <div>
-          <div className="font-bold uppercase tracking-wide text-slate-400">Job title</div>
-          <div className="mt-0.5 text-slate-700">{user.job_title ?? "—"}</div>
-        </div>
-        <div>
-          <div className="font-bold uppercase tracking-wide text-slate-400">Brand</div>
-          <div className="mt-0.5 text-slate-700">{user.brands?.name ?? <span className="text-red-500">No brand</span>}</div>
-        </div>
+      <div className="mt-3 text-xs text-slate-500">
+        <div className="font-bold uppercase tracking-wide text-slate-400">Job title</div>
+        <div className="mt-0.5 text-slate-700">{user.job_title ?? "—"}</div>
       </div>
 
       <div className="mt-3">
@@ -320,37 +269,16 @@ export function UserCard({
       </div>
 
       <div className="mt-3">
-        <div className="text-xs font-bold uppercase tracking-wide text-slate-400">Role</div>
-        <div className="mt-1">
-          {user.is_master_admin ? (
-            <span className="text-sm font-bold">Master Admin</span>
-          ) : (
-            <select
-              value={user.role_id ?? ""}
-              disabled={!canManage || a.pending}
-              onChange={(e) => a.changeRole(e.target.value)}
-              className="w-full rounded-lg border px-2 py-1.5 text-xs"
-            >
-              {roles.map((r) => (
-                <option key={r.id} value={r.id}>
-                  {r.name}
-                </option>
-              ))}
-            </select>
-          )}
-        </div>
-      </div>
-
-      <div className="mt-3">
         <div className="text-xs font-bold uppercase tracking-wide text-slate-400">Mailbox</div>
         <div className="mt-1">
           <MailboxBadge userId={user.id} userName={user.full_name} account={mailbox} canManage={canManage} />
         </div>
       </div>
 
-      {canManage && (user.status === "invited" || !user.is_master_admin) && (
+      {(isMasterAdmin || (canManage && user.status === "invited")) && (
         <div className="mt-3 flex flex-col gap-2 border-t pt-3">
-          {user.status === "invited" && (
+          {isMasterAdmin && <EditUserButton user={user} roles={roles} />}
+          {canManage && user.status === "invited" && (
             <button
               type="button"
               disabled={a.pending}
@@ -359,20 +287,6 @@ export function UserCard({
             >
               Resend invite
             </button>
-          )}
-          {!user.is_master_admin && (
-            <select
-              disabled={a.pending}
-              value=""
-              onChange={(e) => e.target.value && a.changeStatus(e.target.value as ProfileStatus)}
-              className="w-full rounded-lg border px-3 py-2 text-xs font-bold"
-            >
-              <option value="">Change status…</option>
-              <option value="active">Activate</option>
-              <option value="suspended">Suspend</option>
-              <option value="disabled">Disable</option>
-              <option value="archived">Archive</option>
-            </select>
           )}
         </div>
       )}

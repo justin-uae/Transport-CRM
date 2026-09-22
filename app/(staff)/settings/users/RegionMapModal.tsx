@@ -558,7 +558,9 @@ export function RegionMapModal({
                               <button
                                 type="button"
                                 disabled={pending}
-                                onClick={() => handleRemove(r.id)}
+                                onClick={() => {
+                                  if (window.confirm(`Remove "${r.region}" from ${r.userName}'s regions?`)) handleRemove(r.id);
+                                }}
                                 aria-label={`Remove ${r.region}`}
                                 className="shrink-0 rounded-full p-1 text-slate-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-60"
                               >

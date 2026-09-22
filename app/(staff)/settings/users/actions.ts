@@ -41,6 +41,17 @@ async function requireUserManager() {
   return profile;
 }
 
+/**
+ * Editing another user's name/email/job title/signature is Master Admin
+ * only — unlike role/status/region, which any admin.manage_users holder can
+ * touch, this covers the account's login email, so it's gated tighter.
+ */
+async function requireMasterAdmin() {
+  const profile = await requireProfile();
+  if (!profile.is_master_admin) throw new Error("Only a Master Admin can edit another user's account details.");
+  return profile;
+}
+
 export async function inviteUserAction(
   _prevState: { error: string | null; link: string | null; emailError: string | null },
   formData: FormData,
@@ -463,4 +474,113 @@ export async function testEmailConnectionAction(data: EmailAccountInput) {
   }
 
   return result;
+}
+
+interface UserProfileInput {
+  fullName: string;
+  email: string;
+  jobTitle: string;
+  directDial: string;
+  whatsapp: string;
+  switchboard: string;
+  emergencyEmail: string;
+  website: string;
+  logoUrl: string | null;
+}
+
+/**
+ * Master Admin edits another user's name, login email and email-signature
+ * fields (Settings -> Users -> Edit). Everything except the email itself is
+ * a plain `profiles` update via the normal RLS-scoped client — a Master
+ * Admin already satisfies `profiles_update_admin`'s `has_permission` check
+ * at the DB level (is_master_admin short-circuits has_permission(), see
+ * 0001_foundation.sql), so no service-role client is needed for that part.
+ * The email is different: it's also the Supabase Auth sign-in identifier,
+ * which only the admin API can change for someone other than yourself, so
+ * that one call goes through the service-role client.
+ */
+export async function updateUserProfileAction(userId: string, data: UserProfileInput) {
+  const actor = await requireMasterAdmin();
+  const supabase = await createClient();
+
+  const fullName = data.fullName.trim();
+  const email = data.email.trim().toLowerCase();
+  const jobTitle = data.jobTitle.trim() || null;
+  if (!fullName || !email) return { error: "Name and email are required." };
+  if (!email.includes("@")) return { error: "Enter a valid email address." };
+
+  const { data: target } = await supabase
+    .from("profiles")
+    .select("tenant_id, full_name, email, job_title")
+    .eq("id", userId)
+    .single();
+  if (!target || target.tenant_id !== actor.tenant_id) {
+    return { error: "User not found." };
+  }
+
+  if (email !== target.email) {
+    const admin = createAdminClient();
+    const { error: authError } = await admin.auth.admin.updateUserById(userId, { email, email_confirm: true });
+    if (authError) return { error: authError.message };
+  }
+
+  const { error } = await supabase
+    .from("profiles")
+    .update({
+      full_name: fullName,
+      email,
+      job_title: jobTitle,
+      phone: data.directDial.trim() || null,
+      whatsapp_number: data.whatsapp.trim() || null,
+      signature_switchboard: data.switchboard.trim() || null,
+      signature_emergency_email: data.emergencyEmail.trim() || null,
+      signature_website: data.website.trim() || null,
+      signature_logo_url: data.logoUrl,
+    })
+    .eq("id", userId);
+  if (error) return { error: error.message };
+
+  await recordAudit({
+    tenantId: actor.tenant_id,
+    actorId: actor.id,
+    action: "user_profile_updated",
+    entityType: "profile",
+    entityId: userId,
+    previousValue: { fullName: target.full_name, email: target.email, jobTitle: target.job_title },
+    newValue: { fullName, email, jobTitle },
+  });
+
+  revalidatePath("/settings/users");
+  return { error: null };
+}
+
+/**
+ * Uploads a signature logo on another user's behalf. The self-service path
+ * (components/pages/EmailSignatureSettings.tsx) uploads straight from the
+ * browser into the caller's own folder, which the signature-assets storage
+ * policies allow because they check the uploader's own auth.uid() against
+ * the folder. An admin acting for someone else never satisfies that check,
+ * so this goes through the service-role client instead, which bypasses
+ * storage RLS entirely (already gated by requireMasterAdmin() above it).
+ */
+export async function uploadUserSignatureLogoAction(userId: string, formData: FormData) {
+  const actor = await requireMasterAdmin();
+  const admin = createAdminClient();
+
+  const { data: target } = await admin.from("profiles").select("tenant_id").eq("id", userId).single();
+  if (!target || target.tenant_id !== actor.tenant_id) {
+    return { error: "User not found.", url: null };
+  }
+
+  const file = formData.get("file");
+  if (!(file instanceof File)) return { error: "No file provided.", url: null };
+
+  const path = `${target.tenant_id}/${userId}/${crypto.randomUUID()}-${file.name}`;
+  const { error } = await admin.storage.from("signature-assets").upload(path, file, {
+    contentType: file.type || undefined,
+  });
+  if (error) return { error: error.message, url: null };
+
+  const { data: publicUrl } = admin.storage.from("signature-assets").getPublicUrl(path);
+  return { error: null, url: publicUrl.publicUrl };
 }
