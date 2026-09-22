@@ -270,6 +270,10 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
                 <dt className="text-xs font-bold uppercase text-slate-400">Sales rep</dt>
                 <dd className="mt-0.5 font-semibold">{quote.created_by_profile?.full_name ?? "—"}</dd>
               </div>
+              <div>
+                <dt className="text-xs font-bold uppercase text-slate-400">Sent Date</dt>
+                <dd className="mt-0.5 font-semibold">{quote.sent_at ? formatDateTime(quote.sent_at) : "—"}</dd>
+              </div>
             </dl>
           </Panel>
 
