@@ -552,7 +552,7 @@ export interface QuoteEvent {
 }
 
 export interface NumberSequence {
-  brand_id: string;
+  tenant_id: string;
   doc_type: string;
   next_value: number;
 }
