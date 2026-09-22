@@ -7,6 +7,7 @@ import { PageGuide } from "@/components/ui/PageGuide";
 import { SuppliersDiagram } from "@/components/ui/guide-diagrams/SuppliersDiagram";
 import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
+import { formatDate } from "@/lib/formatDate";
 import { AddSupplierForm } from "./AddSupplierForm";
 import type { Supplier, SupplierStatus } from "@/lib/supabase/database.types";
 
@@ -106,6 +107,7 @@ export default async function SuppliersPage({ searchParams }: { searchParams: Pr
               <div className="mt-2 text-xs text-slate-500">
                 <span className="capitalize">{s.type}</span> · {s.region ?? "No region"}
               </div>
+              <div className="mt-0.5 text-xs text-slate-400">Registered {formatDate(s.created_at)}</div>
               <Link
                 href={`/suppliers/${s.id}`}
                 className="mt-3 inline-block rounded-lg border px-3 py-2 text-xs font-bold"
@@ -119,12 +121,13 @@ export default async function SuppliersPage({ searchParams }: { searchParams: Pr
           )}
         </div>
         <div className="hidden overflow-x-auto sm:block">
-          <table className="w-full min-w-[680px] text-left text-sm">
+          <table className="w-full min-w-[780px] text-left text-sm">
             <thead className="text-xs uppercase text-slate-400">
               <tr>
                 <th className="pb-3">Supplier</th>
                 <th>Type</th>
                 <th>Region</th>
+                <th>Registered</th>
                 <th>Status</th>
                 <th></th>
               </tr>
@@ -138,6 +141,7 @@ export default async function SuppliersPage({ searchParams }: { searchParams: Pr
                   </td>
                   <td className="whitespace-nowrap capitalize">{s.type}</td>
                   <td className="whitespace-nowrap">{s.region ?? "—"}</td>
+                  <td className="whitespace-nowrap text-slate-500">{formatDate(s.created_at)}</td>
                   <td className="whitespace-nowrap">
                     <span className={`rounded-full px-2.5 py-1 text-xs font-bold capitalize ${STATUS_STYLE[s.status]}`}>
                       {s.status}
@@ -152,7 +156,7 @@ export default async function SuppliersPage({ searchParams }: { searchParams: Pr
               ))}
               {suppliers.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="py-8 text-center text-sm text-slate-500">
+                  <td colSpan={6} className="py-8 text-center text-sm text-slate-500">
                     No suppliers yet — add one to get started.
                   </td>
                 </tr>

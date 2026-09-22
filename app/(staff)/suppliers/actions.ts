@@ -155,6 +155,100 @@ export async function resendSupplierInviteAction(supplierId: string) {
   return { error: emailError, link: inviteLink };
 }
 
+export interface EditSupplierInput {
+  reason: string;
+  name?: string;
+  type?: SupplierType;
+  contactName?: string | null;
+  email?: string;
+  phone?: string | null;
+  whatsapp?: string | null;
+  region?: string | null;
+  registrationNumber?: string | null;
+  vatNumber?: string | null;
+  insuranceDetails?: string | null;
+  licenseNumber?: string | null;
+  notes?: string | null;
+}
+
+const EDITABLE_SUPPLIER_FIELDS: { key: keyof EditSupplierInput; column: string }[] = [
+  { key: "name", column: "name" },
+  { key: "type", column: "type" },
+  { key: "contactName", column: "contact_name" },
+  { key: "email", column: "email" },
+  { key: "phone", column: "phone" },
+  { key: "whatsapp", column: "whatsapp" },
+  { key: "region", column: "region" },
+  { key: "registrationNumber", column: "registration_number" },
+  { key: "vatNumber", column: "vat_number" },
+  { key: "insuranceDetails", column: "insurance_details" },
+  { key: "licenseNumber", column: "license_number" },
+  { key: "notes", column: "notes" },
+];
+
+/**
+ * Lets a suppliers.edit holder correct a supplier's business details after
+ * onboarding — required reason, logged append-only to supplier_edits (see
+ * 0081_supplier_edits.sql) so the supplier detail page can show a proper
+ * history. Status/approval fields aren't editable here — those stay on
+ * decideSupplierAction and the suspend action, which have their own
+ * dedicated audit trail via recordAudit.
+ */
+export async function editSupplierAction(supplierId: string, input: EditSupplierInput) {
+  const actor = await requireProfile();
+  const allowed = await hasPermission(actor, PERMISSIONS.SUPPLIERS_EDIT);
+  if (!allowed) return { error: "You do not have permission to edit suppliers." };
+
+  const reason = input.reason.trim();
+  if (!reason) return { error: "A reason is required to edit a supplier." };
+
+  const supabase = await createClient();
+
+  const { data: supplier } = await supabase.from("suppliers").select("*").eq("id", supplierId).single();
+  if (!supplier || supplier.tenant_id !== actor.tenant_id) return { error: "Supplier not found." };
+
+  const update: Record<string, unknown> = {};
+  const changes: Record<string, { from: unknown; to: unknown }> = {};
+  for (const { key, column } of EDITABLE_SUPPLIER_FIELDS) {
+    if (!(key in input)) continue;
+    const newValue = input[key];
+    const oldValue = (supplier as Record<string, unknown>)[column];
+    if (newValue === oldValue) continue;
+    update[column] = newValue;
+    changes[column] = { from: oldValue, to: newValue };
+  }
+
+  if (Object.keys(update).length === 0) {
+    return { error: "Change at least one field." };
+  }
+
+  const { error: updateError } = await supabase.from("suppliers").update(update).eq("id", supplierId);
+  if (updateError) return { error: updateError.message };
+
+  const { error: editError } = await supabase.from("supplier_edits").insert({
+    tenant_id: actor.tenant_id,
+    supplier_id: supplierId,
+    edited_by: actor.id,
+    reason,
+    changes,
+  });
+  if (editError) return { error: editError.message };
+
+  await recordAudit({
+    tenantId: actor.tenant_id,
+    actorId: actor.id,
+    action: "supplier_edited",
+    entityType: "supplier",
+    entityId: supplierId,
+    reason,
+    newValue: changes,
+  });
+
+  revalidatePath("/suppliers");
+  revalidatePath(`/suppliers/${supplierId}`);
+  return { error: null };
+}
+
 export async function decideSupplierAction(supplierId: string, decision: "approved" | "rejected") {
   const actor = await requireProfile();
   const allowed = await hasPermission(actor, PERMISSIONS.SUPPLIERS_APPROVE);

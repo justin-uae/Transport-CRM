@@ -7,18 +7,28 @@ import { Panel } from "@/components/ui/Panel";
 import { SectionTitle } from "@/components/ui/SectionTitle";
 import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
+import { hasPermission, PERMISSIONS } from "@/lib/permissions";
+import { formatDate } from "@/lib/formatDate";
 import { SupplierDecisionButtons } from "./SupplierDecisionButtons";
 import { ResendSupplierInviteButton } from "./ResendSupplierInviteButton";
+import { EditSupplierButton } from "./EditSupplierButton";
+import { SupplierEditHistory, type SupplierEditRecord } from "@/components/pages/SupplierEditHistory";
 
 export default async function SupplierDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  await requireProfile();
+  const profile = await requireProfile();
   const supabase = await createClient();
 
-  const [{ data: supplier }, { data: vehicles }, { data: documents }] = await Promise.all([
+  const [{ data: supplier }, { data: vehicles }, { data: documents }, canEdit, { data: editsRaw }] = await Promise.all([
     supabase.from("suppliers").select("*").eq("id", id).single(),
     supabase.from("supplier_vehicles").select("*").eq("supplier_id", id).order("created_at"),
     supabase.from("supplier_documents").select("*").eq("supplier_id", id).order("uploaded_at"),
+    hasPermission(profile, PERMISSIONS.SUPPLIERS_EDIT),
+    supabase
+      .from("supplier_edits")
+      .select("id, reason, changes, created_at, profiles(full_name)")
+      .eq("supplier_id", id)
+      .order("created_at", { ascending: false }),
   ]);
 
   if (!supplier) notFound();
@@ -40,6 +50,7 @@ export default async function SupplierDetailPage({ params }: { params: Promise<{
         action={
           <div className="flex flex-wrap items-center gap-3">
             <BackLink fallbackHref="/suppliers" label="Back to Suppliers" />
+            {canEdit && <EditSupplierButton supplier={supplier} />}
             {(supplier.status === "submitted" || supplier.status === "invited") && (
               <div className="flex flex-wrap gap-2">
                 {supplier.status === "invited" && (
@@ -53,26 +64,31 @@ export default async function SupplierDetailPage({ params }: { params: Promise<{
       />
 
       <div className="grid gap-5 lg:grid-cols-2">
-        <Panel>
-          <SectionTitle title="Business details" sub="Submitted by the supplier during verification" />
-          <div className="mt-4 space-y-2 text-sm">
-            <Row label="Status" value={supplier.status} />
-            <Row label="Contact" value={supplier.contact_name} />
-            <Row label="Email" value={supplier.email} />
-            <Row label="Phone" value={supplier.phone} />
-            <Row label="WhatsApp" value={supplier.whatsapp} />
-            <Row label="Registration number" value={supplier.registration_number} />
-            <Row label="VAT number" value={supplier.vat_number} />
-            <Row label="Insurance details" value={supplier.insurance_details} />
-            <Row label="License number" value={supplier.license_number} />
-            {supplier.notes && (
-              <div className="border-t pt-2">
-                <div className="text-slate-500">Internal notes</div>
-                <p className="mt-1">{supplier.notes}</p>
-              </div>
-            )}
-          </div>
-        </Panel>
+        <div className="space-y-5">
+          <Panel>
+            <SectionTitle title="Business details" sub="Submitted by the supplier during verification" />
+            <div className="mt-4 space-y-2 text-sm">
+              <Row label="Status" value={supplier.status} />
+              <Row label="Registered" value={formatDate(supplier.created_at)} />
+              <Row label="Contact" value={supplier.contact_name} />
+              <Row label="Email" value={supplier.email} />
+              <Row label="Phone" value={supplier.phone} />
+              <Row label="WhatsApp" value={supplier.whatsapp} />
+              <Row label="Registration number" value={supplier.registration_number} />
+              <Row label="VAT number" value={supplier.vat_number} />
+              <Row label="Insurance details" value={supplier.insurance_details} />
+              <Row label="License number" value={supplier.license_number} />
+              {supplier.notes && (
+                <div className="border-t pt-2">
+                  <div className="text-slate-500">Internal notes</div>
+                  <p className="mt-1">{supplier.notes}</p>
+                </div>
+              )}
+            </div>
+          </Panel>
+
+          <SupplierEditHistory edits={(editsRaw ?? []) as unknown as SupplierEditRecord[]} />
+        </div>
 
         <div className="space-y-5">
           <Panel>

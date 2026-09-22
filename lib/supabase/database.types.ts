@@ -619,6 +619,17 @@ export interface Supplier {
   updated_at: string;
 }
 
+/** Every past edit to a supplier's business details, with who made it and why — see 0081_supplier_edits.sql. */
+export interface SupplierEdit {
+  id: string;
+  tenant_id: string;
+  supplier_id: string;
+  edited_by: string | null;
+  reason: string;
+  changes: Record<string, { from: unknown; to: unknown }>;
+  created_at: string;
+}
+
 export interface SupplierVehicle {
   id: string;
   supplier_id: string;
@@ -1138,6 +1149,7 @@ export interface Database {
       number_sequences: Table<NumberSequence>;
       bank_accounts: Table<BankAccount>;
       suppliers: Table<Supplier>;
+      supplier_edits: Table<SupplierEdit>;
       supplier_vehicles: Table<SupplierVehicle>;
       supplier_documents: Table<SupplierDocument>;
       jobs: Table<Job>;
