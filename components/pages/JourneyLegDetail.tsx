@@ -1,6 +1,8 @@
 import { formatDateAndTime } from "@/lib/formatDate";
 
 export interface JourneyLeg {
+  /** Only present where a leg needs to be individually addressable (e.g. editing) — read-only display contexts don't select it. */
+  id?: string;
   sequence: number;
   journey_type: string;
   pickup_address: string;

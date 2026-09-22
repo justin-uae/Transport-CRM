@@ -12,7 +12,15 @@ import { useToast } from "@/components/ui/Toast";
 import { ConfirmDetailModal } from "@/components/ui/ConfirmDetailModal";
 import { JourneyLegDetail, type JourneyLeg } from "@/components/pages/JourneyLegDetail";
 import { LeadEditHistory, type LeadEditRecord } from "@/components/pages/LeadEditHistory";
-import { claimLeadAction, createEnquiryFromLeadAction, releaseLeadAction, editLeadAction, type EditLeadInput } from "@/app/(staff)/leads/actions";
+import {
+  claimLeadAction,
+  createEnquiryFromLeadAction,
+  releaseLeadAction,
+  editLeadAction,
+  editLeadLegAction,
+  type EditLeadInput,
+  type EditLeadLegInput,
+} from "@/app/(staff)/leads/actions";
 import { updateCustomerAction } from "@/app/(staff)/customers/actions";
 import { formatDate, formatTimeOnly } from "@/lib/formatDate";
 import { SOURCE_LABEL } from "@/lib/leadSource";
@@ -141,6 +149,39 @@ export function LeadDetailPage({
   const [customerEmail, setCustomerEmail] = useState(lead.customers?.email ?? "");
   const [customerPhone, setCustomerPhone] = useState(lead.customers?.phone ?? "");
 
+  // Once an enquiry has structured legs, journey editing targets those
+  // enquiry_legs rows directly (the quote is built from them) instead of the
+  // lead's own single pickup/destination snapshot — same "pick which leg"
+  // pattern as EditBookingButton, so a multi-leg booking isn't stuck only
+  // ever editing leg 1.
+  const hasLegs = legs.length > 0;
+  const [selectedLegId, setSelectedLegId] = useState(legs[0]?.id ?? "");
+  const [legPickupAddress, setLegPickupAddress] = useState(legs[0]?.pickup_address ?? "");
+  const [legDestinationAddress, setLegDestinationAddress] = useState(legs[0]?.destination_address ?? "");
+  const [legPickupDate, setLegPickupDate] = useState(legs[0]?.pickup_date ?? "");
+  const [legPickupTime, setLegPickupTime] = useState(legs[0]?.pickup_time ?? "");
+  const [legReturnDate, setLegReturnDate] = useState(legs[0]?.return_date ?? "");
+  const [legReturnTime, setLegReturnTime] = useState(legs[0]?.return_time ?? "");
+  const [legPassengerCount, setLegPassengerCount] = useState(legs[0]?.passenger_count != null ? String(legs[0].passenger_count) : "");
+  const [legLuggageCount, setLegLuggageCount] = useState(legs[0]?.luggage_count != null ? String(legs[0].luggage_count) : "");
+  const [legSpecialRequirements, setLegSpecialRequirements] = useState(legs[0]?.special_requirements ?? "");
+
+  const currentLeg = legs.find((l) => l.id === selectedLegId) ?? null;
+
+  function selectLeg(id: string) {
+    setSelectedLegId(id);
+    const leg = legs.find((l) => l.id === id);
+    setLegPickupAddress(leg?.pickup_address ?? "");
+    setLegDestinationAddress(leg?.destination_address ?? "");
+    setLegPickupDate(leg?.pickup_date ?? "");
+    setLegPickupTime(leg?.pickup_time ?? "");
+    setLegReturnDate(leg?.return_date ?? "");
+    setLegReturnTime(leg?.return_time ?? "");
+    setLegPassengerCount(leg?.passenger_count != null ? String(leg.passenger_count) : "");
+    setLegLuggageCount(leg?.luggage_count != null ? String(leg.luggage_count) : "");
+    setLegSpecialRequirements(leg?.special_requirements ?? "");
+  }
+
   const isOwnActiveLead = lead.assigned_user_id === currentUserId && lead.status !== "converted" && lead.status !== "closed";
   const showCustomerFields = (canEditCustomer || isOwnActiveLead) && !!lead.customers;
 
@@ -176,20 +217,43 @@ export function LeadDetailPage({
       setEditError("A reason is required.");
       return;
     }
+
+    // Once legs exist, journey fields (pickup/destination/date/time/
+    // passengers/luggage) belong to whichever enquiry_legs row is selected,
+    // not the lead itself — only notes stay lead-level either way.
     const input: EditLeadInput = { reason: editReason };
-    if (pickupText !== (lead.pickup_text ?? "")) input.pickupText = pickupText || null;
-    if (destinationText !== (lead.destination_text ?? "")) input.destinationText = destinationText || null;
-    if (travelDate !== (lead.travel_date ?? "")) input.travelDate = travelDate || null;
-    if (pickupTime !== (lead.pickup_time ?? "")) input.pickupTime = pickupTime || null;
-    if (returnTrip !== lead.return_trip) input.returnTrip = returnTrip;
-    if (returnDate !== (lead.return_date ?? "")) input.returnDate = returnDate || null;
-    if (returnTime !== (lead.return_time ?? "")) input.returnTime = returnTime || null;
-    const passengerNum = passengerCount === "" ? null : Number(passengerCount);
-    if (passengerNum !== lead.passenger_count) input.passengerCount = passengerNum;
-    const luggageNum = luggageCount === "" ? null : Number(luggageCount);
-    if (luggageNum !== lead.luggage_count) input.luggageCount = luggageNum;
-    if (vehicleRequested !== (lead.vehicle_requested ?? "")) input.vehicleRequested = vehicleRequested || null;
+    if (!hasLegs) {
+      if (pickupText !== (lead.pickup_text ?? "")) input.pickupText = pickupText || null;
+      if (destinationText !== (lead.destination_text ?? "")) input.destinationText = destinationText || null;
+      if (travelDate !== (lead.travel_date ?? "")) input.travelDate = travelDate || null;
+      if (pickupTime !== (lead.pickup_time ?? "")) input.pickupTime = pickupTime || null;
+      if (returnTrip !== lead.return_trip) input.returnTrip = returnTrip;
+      if (returnDate !== (lead.return_date ?? "")) input.returnDate = returnDate || null;
+      if (returnTime !== (lead.return_time ?? "")) input.returnTime = returnTime || null;
+      const passengerNum = passengerCount === "" ? null : Number(passengerCount);
+      if (passengerNum !== lead.passenger_count) input.passengerCount = passengerNum;
+      const luggageNum = luggageCount === "" ? null : Number(luggageCount);
+      if (luggageNum !== lead.luggage_count) input.luggageCount = luggageNum;
+      if (vehicleRequested !== (lead.vehicle_requested ?? "")) input.vehicleRequested = vehicleRequested || null;
+    }
     if (notesInput !== (lead.notes ?? "")) input.notes = notesInput || null;
+
+    const legInput: EditLeadLegInput = { reason: editReason };
+    if (hasLegs && currentLeg) {
+      if (legPickupAddress !== currentLeg.pickup_address) legInput.pickupAddress = legPickupAddress;
+      if (legDestinationAddress !== currentLeg.destination_address) legInput.destinationAddress = legDestinationAddress;
+      if (legPickupDate !== (currentLeg.pickup_date ?? "")) legInput.pickupDate = legPickupDate || null;
+      if (legPickupTime !== (currentLeg.pickup_time ?? "")) legInput.pickupTime = legPickupTime || null;
+      if (currentLeg.journey_type === "return") {
+        if (legReturnDate !== (currentLeg.return_date ?? "")) legInput.returnDate = legReturnDate || null;
+        if (legReturnTime !== (currentLeg.return_time ?? "")) legInput.returnTime = legReturnTime || null;
+      }
+      const legPassengerNum = legPassengerCount === "" ? null : Number(legPassengerCount);
+      if (legPassengerNum !== currentLeg.passenger_count) legInput.passengerCount = legPassengerNum;
+      const legLuggageNum = legLuggageCount === "" ? null : Number(legLuggageCount);
+      if (legLuggageNum !== currentLeg.luggage_count) legInput.luggageCount = legLuggageNum;
+      if (legSpecialRequirements !== (currentLeg.special_requirements ?? "")) legInput.specialRequirements = legSpecialRequirements || null;
+    }
 
     const customerInput: { reason: string; contactName?: string; companyName?: string | null; email?: string | null; phone?: string | null } = {
       reason: editReason,
@@ -205,9 +269,10 @@ export function LeadDetailPage({
       if (customerPhone !== (lead.customers?.phone ?? "")) customerInput.phone = customerPhone || null;
     }
     const hasLeadChanges = Object.keys(input).length > 1;
+    const hasLegChanges = hasLegs && !!currentLeg && Object.keys(legInput).length > 1;
     const hasCustomerChanges = Object.keys(customerInput).length > 1;
 
-    if (!hasLeadChanges && !hasCustomerChanges) {
+    if (!hasLeadChanges && !hasLegChanges && !hasCustomerChanges) {
       setEditError("Change at least one field.");
       return;
     }
@@ -216,6 +281,14 @@ export function LeadDetailPage({
     startTransition(async () => {
       if (hasLeadChanges) {
         const result = await editLeadAction(lead.id, input);
+        if (result?.error) {
+          setEditError(result.error);
+          notify(result.error);
+          return;
+        }
+      }
+      if (hasLegChanges && currentLeg) {
+        const result = await editLeadLegAction(currentLeg.id!, legInput);
         if (result?.error) {
           setEditError(result.error);
           notify(result.error);
@@ -356,6 +429,7 @@ export function LeadDetailPage({
                 disabled={pending}
                 onClick={() => {
                   setEditError(null);
+                  if (hasLegs) selectLeg(legs[0]?.id ?? "");
                   setEditOpen(true);
                 }}
                 className="rounded-xl border px-5 py-2.5 text-sm font-bold disabled:opacity-60"
@@ -403,7 +477,7 @@ export function LeadDetailPage({
               <SectionTitle title="Journey legs" sub="Structured legs on the enquiry created from this lead" />
               <div className="mt-4">
                 {legs.map((leg, i) => (
-                  <JourneyLegDetail key={i} leg={leg} index={i} total={legs.length} />
+                  <JourneyLegDetail key={leg.id ?? i} leg={leg} index={i} total={legs.length} />
                 ))}
               </div>
             </Panel>
@@ -434,8 +508,8 @@ export function LeadDetailPage({
           title="Edit this lead"
           description={
             showCustomerFields
-              ? "Correct the journey/intake details or the linked customer's name/contact info — every change here is logged with the reason below."
-              : "Correct the journey/intake details captured on this lead — every change here is logged with the reason below."
+              ? "Correct the journey details (pick which leg, for a multi-leg booking) or the linked customer's name/contact info — every change here is logged with the reason below."
+              : "Correct the journey details captured on this lead (pick which leg, for a multi-leg booking) — every change here is logged with the reason below."
           }
           pending={pending}
           error={editError}
@@ -494,97 +568,223 @@ export function LeadDetailPage({
               </div>
             )}
 
-            <div className="grid gap-3 sm:grid-cols-2">
-              <label className="block text-sm font-bold">
-                Pickup
-                <input
-                  value={pickupText}
-                  onChange={(e) => setPickupText(e.target.value)}
-                  className="mt-1 w-full rounded-lg border px-3 py-2 text-sm font-normal"
-                />
-              </label>
-              <label className="block text-sm font-bold">
-                Destination
-                <input
-                  value={destinationText}
-                  onChange={(e) => setDestinationText(e.target.value)}
-                  className="mt-1 w-full rounded-lg border px-3 py-2 text-sm font-normal"
-                />
-              </label>
-              <label className="block text-sm font-bold">
-                Travel date
-                <input
-                  type="date"
-                  value={travelDate}
-                  onChange={(e) => setTravelDate(e.target.value)}
-                  className="mt-1 w-full rounded-lg border px-3 py-2 text-sm font-normal"
-                />
-              </label>
-              <label className="block text-sm font-bold">
-                Pickup time
-                <input
-                  type="time"
-                  value={pickupTime}
-                  onChange={(e) => setPickupTime(e.target.value)}
-                  className="mt-1 w-full rounded-lg border px-3 py-2 text-sm font-normal"
-                />
-              </label>
-              <label className="block text-sm font-bold">
-                Passengers
-                <input
-                  type="number"
-                  min={0}
-                  value={passengerCount}
-                  onChange={(e) => setPassengerCount(e.target.value)}
-                  className="mt-1 w-full rounded-lg border px-3 py-2 text-sm font-normal"
-                />
-              </label>
-              <label className="block text-sm font-bold">
-                Luggage
-                <input
-                  type="number"
-                  min={0}
-                  value={luggageCount}
-                  onChange={(e) => setLuggageCount(e.target.value)}
-                  className="mt-1 w-full rounded-lg border px-3 py-2 text-sm font-normal"
-                />
-              </label>
-              <label className="block text-sm font-bold sm:col-span-2">
-                Vehicle requested
-                <input
-                  value={vehicleRequested}
-                  onChange={(e) => setVehicleRequested(e.target.value)}
-                  className="mt-1 w-full rounded-lg border px-3 py-2 text-sm font-normal"
-                />
-              </label>
-            </div>
+            {hasLegs ? (
+              <>
+                {legs.length > 1 && (
+                  <div>
+                    <div className="text-xs font-black uppercase tracking-wide text-slate-400">Which leg?</div>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {legs.map((l) => (
+                        <button
+                          key={l.id}
+                          type="button"
+                          onClick={() => selectLeg(l.id!)}
+                          className={`rounded-lg border px-3 py-1.5 text-left text-xs font-bold ${
+                            l.id === selectedLegId
+                              ? "border-primary-500 bg-primary-50 text-primary-700"
+                              : "border-slate-200 text-slate-600"
+                          }`}
+                        >
+                          Leg {l.sequence}: {l.pickup_address} → {l.destination_address}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
-            <label className="flex items-center gap-2 text-sm font-bold">
-              <input type="checkbox" checked={returnTrip} onChange={(e) => setReturnTrip(e.target.checked)} />
-              Return trip
-            </label>
+                {currentLeg && (
+                  <div>
+                    <div className="text-xs font-black uppercase tracking-wide text-slate-400">
+                      Journey details {legs.length > 1 && `— Leg ${currentLeg.sequence}`}
+                    </div>
+                    <div className="mt-2 grid gap-3 sm:grid-cols-2">
+                      <label className="block text-sm font-bold">
+                        Pickup
+                        <input
+                          value={legPickupAddress}
+                          onChange={(e) => setLegPickupAddress(e.target.value)}
+                          className="mt-1 w-full rounded-lg border px-3 py-2 text-sm font-normal"
+                        />
+                      </label>
+                      <label className="block text-sm font-bold">
+                        Destination
+                        <input
+                          value={legDestinationAddress}
+                          onChange={(e) => setLegDestinationAddress(e.target.value)}
+                          className="mt-1 w-full rounded-lg border px-3 py-2 text-sm font-normal"
+                        />
+                      </label>
+                      <label className="block text-sm font-bold">
+                        Date
+                        <input
+                          type="date"
+                          value={legPickupDate}
+                          onChange={(e) => setLegPickupDate(e.target.value)}
+                          className="mt-1 w-full rounded-lg border px-3 py-2 text-sm font-normal"
+                        />
+                      </label>
+                      <label className="block text-sm font-bold">
+                        Time
+                        <input
+                          type="time"
+                          value={legPickupTime}
+                          onChange={(e) => setLegPickupTime(e.target.value)}
+                          className="mt-1 w-full rounded-lg border px-3 py-2 text-sm font-normal"
+                        />
+                      </label>
+                      <label className="block text-sm font-bold">
+                        Passengers
+                        <input
+                          type="number"
+                          min={0}
+                          value={legPassengerCount}
+                          onChange={(e) => setLegPassengerCount(e.target.value)}
+                          className="mt-1 w-full rounded-lg border px-3 py-2 text-sm font-normal"
+                        />
+                      </label>
+                      <label className="block text-sm font-bold">
+                        Luggage
+                        <input
+                          type="number"
+                          min={0}
+                          value={legLuggageCount}
+                          onChange={(e) => setLegLuggageCount(e.target.value)}
+                          className="mt-1 w-full rounded-lg border px-3 py-2 text-sm font-normal"
+                        />
+                      </label>
+                    </div>
 
-            {returnTrip && (
+                    {currentLeg.journey_type === "return" && (
+                      <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                        <label className="block text-sm font-bold">
+                          Return date
+                          <input
+                            type="date"
+                            value={legReturnDate}
+                            onChange={(e) => setLegReturnDate(e.target.value)}
+                            className="mt-1 w-full rounded-lg border px-3 py-2 text-sm font-normal"
+                          />
+                        </label>
+                        <label className="block text-sm font-bold">
+                          Return time
+                          <input
+                            type="time"
+                            value={legReturnTime}
+                            onChange={(e) => setLegReturnTime(e.target.value)}
+                            className="mt-1 w-full rounded-lg border px-3 py-2 text-sm font-normal"
+                          />
+                        </label>
+                      </div>
+                    )}
+
+                    <label className="mt-3 block text-sm font-bold">
+                      Special requirements
+                      <textarea
+                        value={legSpecialRequirements}
+                        onChange={(e) => setLegSpecialRequirements(e.target.value)}
+                        className="mt-1 min-h-16 w-full rounded-xl border px-3 py-2 font-normal"
+                      />
+                    </label>
+                  </div>
+                )}
+              </>
+            ) : (
               <div className="grid gap-3 sm:grid-cols-2">
                 <label className="block text-sm font-bold">
-                  Return date
+                  Pickup
                   <input
-                    type="date"
-                    value={returnDate}
-                    onChange={(e) => setReturnDate(e.target.value)}
+                    value={pickupText}
+                    onChange={(e) => setPickupText(e.target.value)}
                     className="mt-1 w-full rounded-lg border px-3 py-2 text-sm font-normal"
                   />
                 </label>
                 <label className="block text-sm font-bold">
-                  Return time
+                  Destination
+                  <input
+                    value={destinationText}
+                    onChange={(e) => setDestinationText(e.target.value)}
+                    className="mt-1 w-full rounded-lg border px-3 py-2 text-sm font-normal"
+                  />
+                </label>
+                <label className="block text-sm font-bold">
+                  Travel date
+                  <input
+                    type="date"
+                    value={travelDate}
+                    onChange={(e) => setTravelDate(e.target.value)}
+                    className="mt-1 w-full rounded-lg border px-3 py-2 text-sm font-normal"
+                  />
+                </label>
+                <label className="block text-sm font-bold">
+                  Pickup time
                   <input
                     type="time"
-                    value={returnTime}
-                    onChange={(e) => setReturnTime(e.target.value)}
+                    value={pickupTime}
+                    onChange={(e) => setPickupTime(e.target.value)}
+                    className="mt-1 w-full rounded-lg border px-3 py-2 text-sm font-normal"
+                  />
+                </label>
+                <label className="block text-sm font-bold">
+                  Passengers
+                  <input
+                    type="number"
+                    min={0}
+                    value={passengerCount}
+                    onChange={(e) => setPassengerCount(e.target.value)}
+                    className="mt-1 w-full rounded-lg border px-3 py-2 text-sm font-normal"
+                  />
+                </label>
+                <label className="block text-sm font-bold">
+                  Luggage
+                  <input
+                    type="number"
+                    min={0}
+                    value={luggageCount}
+                    onChange={(e) => setLuggageCount(e.target.value)}
+                    className="mt-1 w-full rounded-lg border px-3 py-2 text-sm font-normal"
+                  />
+                </label>
+                <label className="block text-sm font-bold sm:col-span-2">
+                  Vehicle requested
+                  <input
+                    value={vehicleRequested}
+                    onChange={(e) => setVehicleRequested(e.target.value)}
                     className="mt-1 w-full rounded-lg border px-3 py-2 text-sm font-normal"
                   />
                 </label>
               </div>
+            )}
+
+            {!hasLegs && (
+              <>
+                <label className="flex items-center gap-2 text-sm font-bold">
+                  <input type="checkbox" checked={returnTrip} onChange={(e) => setReturnTrip(e.target.checked)} />
+                  Return trip
+                </label>
+
+                {returnTrip && (
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <label className="block text-sm font-bold">
+                      Return date
+                      <input
+                        type="date"
+                        value={returnDate}
+                        onChange={(e) => setReturnDate(e.target.value)}
+                        className="mt-1 w-full rounded-lg border px-3 py-2 text-sm font-normal"
+                      />
+                    </label>
+                    <label className="block text-sm font-bold">
+                      Return time
+                      <input
+                        type="time"
+                        value={returnTime}
+                        onChange={(e) => setReturnTime(e.target.value)}
+                        className="mt-1 w-full rounded-lg border px-3 py-2 text-sm font-normal"
+                      />
+                    </label>
+                  </div>
+                )}
+              </>
             )}
 
             <label className="block text-sm font-bold">

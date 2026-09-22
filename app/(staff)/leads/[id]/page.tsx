@@ -24,7 +24,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
   const { data: enquiry } = await supabase
     .from("enquiries")
     .select(
-      "id, status, enquiry_legs(sequence, journey_type, pickup_address, destination_address, via_points, pickup_date, pickup_time, return_date, return_time, passenger_count, luggage_count, wheelchair_required, child_seats, special_requirements, vehicle_types(name))",
+      "id, status, enquiry_legs(id, sequence, journey_type, pickup_address, destination_address, via_points, pickup_date, pickup_time, return_date, return_time, passenger_count, luggage_count, wheelchair_required, child_seats, special_requirements, vehicle_types(name))",
     )
     .eq("lead_id", id)
     .order("created_at", { ascending: false })
