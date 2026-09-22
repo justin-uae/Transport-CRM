@@ -1,8 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { recordAudit } from "@/lib/audit";
-import { sendWhatsAppText, sendWhatsAppLocationRequest } from "@/lib/whatsapp360";
+import { sendWhatsAppText } from "@/lib/whatsapp360";
 import { reverseGeocode } from "@/lib/reverseGeocode";
+import {
+  runIntakeTurn,
+  hasRequiredTripFields,
+  MAX_INTAKE_MESSAGES,
+  type CollectedTrip,
+  type ConversationMessage,
+} from "@/lib/whatsappAiIntake";
 
 // Inbound WhatsApp -> lead creation via 360dialog (a WhatsApp Business
 // Solution Provider built directly on Meta's Cloud API — same webhook
@@ -16,11 +23,14 @@ import { reverseGeocode } from "@/lib/reverseGeocode";
 // proxy.ts allows this path through PUBLIC_PATHS (no Supabase session exists
 // for an inbound webhook call).
 //
-// Rather than create a lead from whatever a contact's first message says,
-// this runs a short guided Q&A (whatsapp_intake_sessions,
-// 0051_whatsapp_lead_intake.sql) — name, email, pickup, destination, travel
-// date — sending each next prompt back over WhatsApp, and only creates the
-// actual lead once all five are collected.
+// Rather than a fixed name/email/pickup/destination/date question sequence,
+// this now runs a free-form AI conversation (lib/whatsappAiIntake.ts, one
+// OpenAI call per inbound message) — the model both replies naturally and
+// extracts the cumulative trip details from the whole transcript
+// (whatsapp_intake_sessions.messages/collected, migration
+// 0082_whatsapp_ai_intake.sql). A lead is only ever created once our own
+// server-side check (hasRequiredTripFields), not the model's say-so alone,
+// confirms name/pickup/destination/travel date are all present.
 
 type AdminClient = ReturnType<typeof createAdminClient>;
 
@@ -64,35 +74,15 @@ interface Brand {
   name: string;
 }
 
-type IntakeStep =
-  | "awaiting_name"
-  | "awaiting_email"
-  | "awaiting_pickup"
-  | "awaiting_destination"
-  | "awaiting_passengers"
-  | "awaiting_date"
-  | "done";
+type IntakeStep = "active" | "done" | "handed_off";
 
 interface IntakeSession {
   id: string;
   step: IntakeStep;
-  name: string | null;
-  email: string | null;
-  pickup: string | null;
-  destination: string | null;
-  passenger_count: number | null;
+  messages: ConversationMessage[];
+  collected: CollectedTrip;
   lead_id: string | null;
   created_at: string;
-}
-
-/** Lenient — pulls the first run of digits out of whatever was typed ("4
-    pax", "we are 6") rather than requiring a bare number; leaves it null
-    (never blocks the conversation) if nothing parses. */
-function parsePassengerCount(text: string): number | null {
-  const match = text.match(/\d+/);
-  if (!match) return null;
-  const n = Number(match[0]);
-  return Number.isFinite(n) && n > 0 ? n : null;
 }
 
 async function resolveBrand(admin: AdminClient, brandSlug: string, secret: string): Promise<Brand | null> {
@@ -102,10 +92,21 @@ async function resolveBrand(admin: AdminClient, brandSlug: string, secret: strin
   return brand;
 }
 
-function messageText(message: WhatsAppMessage): string {
+/** Turns whatever the contact sent into plain text for the AI and for the
+    conversation log — a shared pin is reverse-geocoded into a readable
+    address (falling back to raw coordinates) rather than left as
+    latitude/longitude the model can't usefully read. */
+async function resolveInboundText(message: WhatsAppMessage): Promise<string> {
   if (message.type === "text" && message.text?.body) return message.text.body;
-  if (message.type === "location") return "📍 Shared a location";
-  return `Sent a ${message.type} message (not yet supported here)`;
+  if (message.type === "location" && message.location) {
+    const loc = message.location;
+    if (loc.address) return `Shared location: ${loc.address}`;
+    if (loc.name) return `Shared location: ${loc.name}`;
+    const geocoded = await reverseGeocode(loc.latitude, loc.longitude);
+    if (geocoded) return `Shared location: ${geocoded}`;
+    return `Shared location: ${loc.latitude}, ${loc.longitude}`;
+  }
+  return `[Sent a ${message.type} message, which isn't readable yet — ask them to describe it in text.]`;
 }
 
 /** Records one row in the WhatsApp conversation log (app/(staff)/whatsapp) —
@@ -130,41 +131,20 @@ async function logWhatsAppMessage(
   });
 }
 
-/**
- * The pickup/destination questions send a "Send Location" button
- * (sendWhatsAppLocationRequest) but still accept a typed answer as a
- * fallback for a contact who ignores the button — resolves whichever one
- * actually arrived into a single address string for the lead. A shared pin
- * with no name/address of its own gets reverse-geocoded; if that also fails
- * (no Maps key configured, or the lookup itself fails), the raw
- * coordinates are kept rather than losing the answer entirely.
- */
-async function resolveAddressAnswer(message: WhatsAppMessage, fallbackText: string): Promise<string> {
-  if (message.type === "location" && message.location) {
-    const loc = message.location;
-    if (loc.address) return loc.address;
-    if (loc.name) return loc.name;
-    const geocoded = await reverseGeocode(loc.latitude, loc.longitude);
-    if (geocoded) return geocoded;
-    return `${loc.latitude}, ${loc.longitude}`;
-  }
-  return fallbackText;
-}
-
 /** Best-effort only — an unparseable date is kept as the raw text the
-    contact typed (in travel_date_raw and the lead's notes) rather than
-    guessed at or rejected; staff can correct it on the lead like any other
-    manually-entered date. */
+    contact typed (in the lead's notes/raw_payload) rather than guessed at or
+    rejected; staff can correct it on the lead like any other manually-
+    entered date. */
 function parseLenientDate(text: string): string | null {
   const parsed = new Date(text);
   if (Number.isNaN(parsed.getTime())) return null;
   return parsed.toISOString().slice(0, 10);
 }
 
-async function createLeadFromSession(admin: AdminClient, brand: Brand, waId: string, customerId: string, session: IntakeSession, dateText: string) {
-  const travelDate = parseLenientDate(dateText);
-  const name = session.name?.trim() || waId;
-  const email = session.email?.trim() || null;
+async function createLeadFromSession(admin: AdminClient, brand: Brand, waId: string, customerId: string, sessionId: string, collected: CollectedTrip) {
+  const travelDate = collected.travel_date ? parseLenientDate(collected.travel_date) : null;
+  const name = collected.name?.trim() || waId;
+  const email = collected.email?.trim() || null;
 
   await admin.from("customers").update({ contact_name: name, phone: waId, ...(email ? { email } : {}) }).eq("id", customerId);
 
@@ -176,20 +156,12 @@ async function createLeadFromSession(admin: AdminClient, brand: Brand, waId: str
       source: "whatsapp",
       status: "new",
       customer_id: customerId,
-      pickup_text: session.pickup,
-      destination_text: session.destination,
-      passenger_count: session.passenger_count,
+      pickup_text: collected.pickup,
+      destination_text: collected.destination,
+      passenger_count: collected.passenger_count,
       travel_date: travelDate,
-      notes: travelDate ? null : `Requested date (as typed via WhatsApp): ${dateText}`,
-      raw_payload: {
-        waId,
-        name,
-        email,
-        pickup: session.pickup,
-        destination: session.destination,
-        passengerCount: session.passenger_count,
-        travelDateText: dateText,
-      },
+      notes: !travelDate && collected.travel_date ? `Requested date (as typed via WhatsApp): ${collected.travel_date}` : null,
+      raw_payload: { waId, ...collected },
     })
     .select("id")
     .single();
@@ -201,8 +173,8 @@ async function createLeadFromSession(admin: AdminClient, brand: Brand, waId: str
 
   await admin
     .from("whatsapp_intake_sessions")
-    .update({ travel_date_raw: dateText, step: "done", lead_id: lead.id, updated_at: new Date().toISOString() })
-    .eq("id", session.id);
+    .update({ step: "done", lead_id: lead.id, updated_at: new Date().toISOString() })
+    .eq("id", sessionId);
 
   await recordAudit({
     client: admin,
@@ -213,21 +185,15 @@ async function createLeadFromSession(admin: AdminClient, brand: Brand, waId: str
     entityId: lead.id,
     newValue: { source: "whatsapp", waId },
   });
-
-  const confirmation = `Thanks ${name}! We've got your request — ${session.pickup} to ${session.destination}${
-    travelDate ? ` on ${travelDate}` : ` (${dateText})`
-  }. Our team will be in touch shortly.`;
-  await sendWhatsAppText(waId, confirmation);
-  await logWhatsAppMessage(admin, brand, waId, customerId, "outbound", confirmation);
 }
 
-/** Runs one step of the guided intake for a single inbound message: either
-    starts a fresh conversation, or advances an in-progress one (recording
-    this message as the answer to whatever was last asked). Every completed
-    conversation always produces its own new lead (see the note further
-    down) — this never folds a message into a previous lead's notes. */
+/** Runs one AI turn for a single inbound message: starts a fresh conversation
+    if the last one is finished (or handed off), otherwise continues it. Every
+    completed conversation always produces its own new lead — a contact who
+    messages again later about a second trip gets a second lead, not one
+    folded into the first's notes. */
 async function handleInboundMessage(admin: AdminClient, brand: Brand, waId: string, contactName: string, message: WhatsAppMessage) {
-  const text = messageText(message).trim();
+  const inboundText = await resolveInboundText(message);
 
   const { data: existingCustomer } = await admin
     .from("customers")
@@ -247,88 +213,69 @@ async function handleInboundMessage(admin: AdminClient, brand: Brand, waId: stri
   }
   if (!customerId) return;
 
-  await logWhatsAppMessage(admin, brand, waId, customerId, "inbound", text, message.type);
-
-  async function send(body: string) {
-    await sendWhatsAppText(waId, body);
-    await logWhatsAppMessage(admin, brand, waId, customerId, "outbound", body);
-  }
-  async function sendLocationRequest(body: string) {
-    await sendWhatsAppLocationRequest(waId, body);
-    await logWhatsAppMessage(admin, brand, waId, customerId, "outbound", body, "location_request");
-  }
+  await logWhatsAppMessage(admin, brand, waId, customerId, "inbound", inboundText, message.type);
 
   const { data: lastSession } = await admin
     .from("whatsapp_intake_sessions")
-    .select("id, step, name, email, pickup, destination, passenger_count, lead_id, created_at")
+    .select("id, step, messages, collected, lead_id, created_at")
     .eq("brand_id", brand.id)
     .eq("wa_id", waId)
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();
-  const session = lastSession as IntakeSession | null;
+  let session = lastSession as IntakeSession | null;
 
-  if (session && session.step !== "done") {
-    switch (session.step) {
-      case "awaiting_name":
-        await admin
-          .from("whatsapp_intake_sessions")
-          .update({ name: text, step: "awaiting_email", updated_at: new Date().toISOString() })
-          .eq("id", session.id);
-        await send(`Thanks ${text}! What's the best email to reach you at?`);
-        return;
-      case "awaiting_email":
-        await admin
-          .from("whatsapp_intake_sessions")
-          .update({ email: text, step: "awaiting_pickup", updated_at: new Date().toISOString() })
-          .eq("id", session.id);
-        await sendLocationRequest("Where would you like to be picked up from? Tap below to share the location, or just type it.");
-        return;
-      case "awaiting_pickup": {
-        const pickup = await resolveAddressAnswer(message, text);
-        await admin
-          .from("whatsapp_intake_sessions")
-          .update({ pickup, step: "awaiting_destination", updated_at: new Date().toISOString() })
-          .eq("id", session.id);
-        await sendLocationRequest("And where are you headed to? Tap below to share the location, or just type it.");
-        return;
-      }
-      case "awaiting_destination": {
-        const destination = await resolveAddressAnswer(message, text);
-        await admin
-          .from("whatsapp_intake_sessions")
-          .update({ destination, step: "awaiting_passengers", updated_at: new Date().toISOString() })
-          .eq("id", session.id);
-        await send("How many passengers will be travelling?");
-        return;
-      }
-      case "awaiting_passengers":
-        await admin
-          .from("whatsapp_intake_sessions")
-          .update({ passenger_count: parsePassengerCount(text), step: "awaiting_date", updated_at: new Date().toISOString() })
-          .eq("id", session.id);
-        await send("What date do you need this trip?");
-        return;
-      case "awaiting_date":
-        await createLeadFromSession(admin, brand, waId, customerId, session, text);
-        return;
-    }
+  // A finished or handed-off conversation never continues automatically —
+  // "done" always starts a brand new enquiry, and "handed_off" means a human
+  // is already handling this contact, so the bot stays quiet rather than
+  // stepping on a staff reply typed from app/(staff)/whatsapp.
+  if (session?.step === "handed_off") return;
+
+  if (!session || session.step === "done") {
+    const { data: created } = await admin
+      .from("whatsapp_intake_sessions")
+      .insert({ tenant_id: brand.tenant_id, brand_id: brand.id, wa_id: waId, customer_id: customerId, step: "active", messages: [], collected: {} })
+      .select("id, step, messages, collected, lead_id, created_at")
+      .single();
+    session = created as IntakeSession | null;
+  }
+  if (!session) return;
+
+  const history = session.messages ?? [];
+
+  if (history.length >= MAX_INTAKE_MESSAGES) {
+    await admin.from("whatsapp_intake_sessions").update({ step: "handed_off", updated_at: new Date().toISOString() }).eq("id", session.id);
+    const handoff = "Let me get one of our team to take it from here — they'll follow up with you shortly to finish arranging your trip.";
+    await sendWhatsAppText(waId, handoff);
+    await logWhatsAppMessage(admin, brand, waId, customerId, "outbound", handoff);
+    return;
   }
 
-  // Any prior conversation is already finished (or there wasn't one) — every
-  // new message the contact sends starts its own fresh guided intake, which
-  // always produces its own new lead. A contact who books once and messages
-  // again next week (or next hour) about a second, unrelated trip must get a
-  // second lead, not have it silently folded into notes on the first one.
-  // This first message is the trigger, not an answer.
-  await admin.from("whatsapp_intake_sessions").insert({
-    tenant_id: brand.tenant_id,
-    brand_id: brand.id,
-    wa_id: waId,
-    customer_id: customerId,
-    step: "awaiting_name",
-  });
-  await send("👋 Thanks for reaching out! Could you tell us your name?");
+  let result;
+  try {
+    result = await runIntakeTurn(brand.name, history, session.collected ?? {}, inboundText);
+  } catch (err) {
+    console.error(`360dialog webhook: AI intake turn failed for ${waId}:`, err);
+    const fallback = "Sorry, I'm having trouble replying right now — someone from our team will follow up with you shortly.";
+    await sendWhatsAppText(waId, fallback);
+    await logWhatsAppMessage(admin, brand, waId, customerId, "outbound", fallback);
+    return;
+  }
+
+  const updatedMessages: ConversationMessage[] = [...history, { role: "user", content: inboundText }, { role: "assistant", content: result.reply }];
+  const readyForLead = result.ready && hasRequiredTripFields(result.collected);
+
+  await admin
+    .from("whatsapp_intake_sessions")
+    .update({ messages: updatedMessages, collected: result.collected, updated_at: new Date().toISOString() })
+    .eq("id", session.id);
+
+  if (readyForLead) {
+    await createLeadFromSession(admin, brand, waId, customerId, session.id, result.collected);
+  }
+
+  await sendWhatsAppText(waId, result.reply);
+  await logWhatsAppMessage(admin, brand, waId, customerId, "outbound", result.reply);
 }
 
 export async function POST(request: NextRequest) {
