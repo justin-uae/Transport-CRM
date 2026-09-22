@@ -39,8 +39,12 @@ const EMPTY_COLLECTED: CollectedTrip = {
 
 /** Circuit breaker on both cost and customer experience — a conversation
     that's gone this long without completing is handed off to staff
-    (app/(staff)/whatsapp) rather than looping the AI forever. */
-export const MAX_INTAKE_MESSAGES = 24;
+    (app/(staff)/whatsapp) rather than looping the AI forever. Sized well
+    above what a real intake conversation needs (a normal one completes in
+    well under 20 messages) now that webhook redeliveries are de-duplicated
+    (migration 0083_whatsapp_message_dedup.sql) rather than each counting
+    twice against this cap. */
+export const MAX_INTAKE_MESSAGES = 40;
 
 const TURN_SCHEMA = {
   type: "object",

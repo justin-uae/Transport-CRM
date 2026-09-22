@@ -131,6 +131,38 @@ async function logWhatsAppMessage(
   });
 }
 
+/** Detects a redelivered webhook (360dialog/Meta is at-least-once, not
+    exactly-once) before any OpenAI call happens — a unique index on
+    (brand_id, wa_message_id) for inbound rows (migration
+    0083_whatsapp_message_dedup.sql) turns this insert itself into the dedup
+    check. Any other insert failure fails OPEN (treated as new) rather than
+    silently dropping a real customer message over a transient DB hiccup. */
+async function logInboundIfNew(
+  admin: AdminClient,
+  brand: Brand,
+  waId: string,
+  customerId: string,
+  body: string,
+  messageType: string,
+  waMessageId: string,
+): Promise<boolean> {
+  const { error } = await admin.from("whatsapp_messages").insert({
+    tenant_id: brand.tenant_id,
+    brand_id: brand.id,
+    customer_id: customerId,
+    wa_id: waId,
+    direction: "inbound",
+    message_type: messageType,
+    body,
+    wa_message_id: waMessageId,
+  });
+  if (error) {
+    if (error.code === "23505") return false;
+    console.error(`360dialog webhook: could not log inbound message for ${waId}: ${error.message}`);
+  }
+  return true;
+}
+
 /** Best-effort only — an unparseable date is kept as the raw text the
     contact typed (in the lead's notes/raw_payload) rather than guessed at or
     rejected; staff can correct it on the lead like any other manually-
@@ -213,7 +245,8 @@ async function handleInboundMessage(admin: AdminClient, brand: Brand, waId: stri
   }
   if (!customerId) return;
 
-  await logWhatsAppMessage(admin, brand, waId, customerId, "inbound", inboundText, message.type);
+  const isNewMessage = await logInboundIfNew(admin, brand, waId, customerId, inboundText, message.type, message.id);
+  if (!isNewMessage) return; // redelivered webhook for a message we've already answered
 
   const { data: lastSession } = await admin
     .from("whatsapp_intake_sessions")
