@@ -95,6 +95,44 @@ Cron jobs (quote expiry, lead-release SLA, dispatch escalation, document
 expiry, daily brief) are commented out in `render.yaml` — they get uncommented
 as their `/api/cron/*` route handlers are built in later phases.
 
+## Email (SendGrid)
+
+Two separate things send email, and both should point at SendGrid:
+
+**1. The app's own transactional email** (quote sent, invites, payment
+received, etc. — see `lib/email.ts` and `lib/emailTemplates.ts`) uses
+`SMTP_HOST`/`PORT`/`USER`/`PASS`/`FROM` from the environment. Nothing in the
+code is SendGrid-specific — set:
+```
+SMTP_HOST=smtp.sendgrid.net
+SMTP_PORT=587
+SMTP_USER=apikey                  # literally the string "apikey"
+SMTP_PASS=<your SendGrid API key>
+SMTP_FROM="Global Transport CRM <bookings@globalbusrental.com>"
+```
+`SMTP_FROM`'s address must be on a domain you've completed **Domain
+Authentication** for in SendGrid (Settings → Sender Authentication), or
+SendGrid rejects the send. A staff member with their own mailbox connected
+(Settings → Users → Mailbox) sends from that mailbox instead — this only
+covers the shared/automated sender.
+
+Verify it works with a real send before wiring it into Render:
+```bash
+node --env-file=.env.local scripts/test-email.mjs --to you@example.com
+```
+
+**2. Supabase Auth's own email** — currently only the "Forgot your
+password?" flow (`supabase.auth.resetPasswordForEmail`, and the default
+**Reset Password**/**Invite user** templates referenced in step 4 above).
+This is separate from `SMTP_*` and has a low built-in send limit. Fix it in
+**Authentication → SMTP Settings**: enable Custom SMTP with the same
+`smtp.sendgrid.net` / `apikey` / API-key details as above, then raise
+**Authentication → Rate Limits** as a safety margin. While there, confirm
+**Authentication → URL Configuration**'s Site URL and Redirect URLs
+(`/reset-password`, `/accept-invite`, `/auth/confirm`) point at your real
+domain — a stale value here is the usual cause of a reset/invite link
+landing on a dead URL.
+
 ## What's real vs. demo in this build
 
 **Backed by Supabase + RLS today:** authentication, tenants, companies,
