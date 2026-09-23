@@ -43,6 +43,7 @@ function invalidAddresses(addresses: string[]): string[] {
 export async function sendEmailAction(data: {
   to: string;
   cc?: string;
+  bcc?: string;
   subject: string;
   bodyText: string;
   inReplyTo?: string | null;
@@ -56,14 +57,17 @@ export async function sendEmailAction(data: {
   if (!data.subject.trim()) return { error: "Subject is required." };
   if (!data.bodyText.trim()) return { error: "Write a message before sending." };
 
-  const cc = data.cc
-    ? data.cc
-        .split(",")
-        .map((a) => a.trim())
-        .filter(Boolean)
-    : undefined;
+  const splitAddresses = (raw?: string) =>
+    raw
+      ? raw
+          .split(",")
+          .map((a) => a.trim())
+          .filter(Boolean)
+      : undefined;
+  const cc = splitAddresses(data.cc);
+  const bcc = splitAddresses(data.bcc);
 
-  const badAddresses = [...invalidAddresses(to), ...invalidAddresses(cc ?? [])];
+  const badAddresses = [...invalidAddresses(to), ...invalidAddresses(cc ?? []), ...invalidAddresses(bcc ?? [])];
   if (badAddresses.length > 0) {
     return {
       error: `Invalid recipient address${badAddresses.length > 1 ? "es" : ""}: ${badAddresses.join(", ")}`,
@@ -80,6 +84,7 @@ export async function sendEmailAction(data: {
     await sendUserEmail(supabase, account, {
       to,
       cc,
+      bcc,
       subject: data.subject.trim(),
       html: `${textToSafeHtml(data.bodyText)}<div style="margin-top:20px;padding-top:16px;border-top:1px solid #e2e8f0;">${signatureHtml}</div>`,
       inReplyTo: data.inReplyTo,

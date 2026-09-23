@@ -1,9 +1,10 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { X, Plus } from "lucide-react";
+import { X, Plus, LogIn } from "lucide-react";
 import { useToast } from "@/components/ui/Toast";
-import { removeUserRegionAction, resendUserInviteAction } from "./actions";
+import { ConfirmDetailModal } from "@/components/ui/ConfirmDetailModal";
+import { removeUserRegionAction, resendUserInviteAction, loginAsUserAction } from "./actions";
 import { RegionMapModal, type AllocatedRegion } from "./RegionMapModal";
 import { MailboxBadge, type EmailAccountStatus } from "./EmailAccountForm";
 import { EditUserButton } from "./EditUserModal";
@@ -56,6 +57,8 @@ function useUserRowActions(user: UserListRow) {
   const notify = useToast();
   const [pending, startTransition] = useTransition();
   const [regionModalOpen, setRegionModalOpen] = useState(false);
+  const [loginAsModalOpen, setLoginAsModalOpen] = useState(false);
+  const [loginAsError, setLoginAsError] = useState<string | null>(null);
 
   function removeRegion(regionId: string) {
     startTransition(async () => {
@@ -79,7 +82,56 @@ function useUserRowActions(user: UserListRow) {
     });
   }
 
-  return { pending, regionModalOpen, setRegionModalOpen, removeRegion, resendInvite };
+  function openLoginAs() {
+    setLoginAsError(null);
+    setLoginAsModalOpen(true);
+  }
+
+  function confirmLoginAs() {
+    startTransition(async () => {
+      const result = await loginAsUserAction(user.id);
+      // A successful call never returns — it redirects — so reaching here
+      // means it failed.
+      if (result?.error) {
+        setLoginAsError(result.error);
+        notify(result.error);
+      }
+    });
+  }
+
+  return {
+    pending,
+    regionModalOpen,
+    setRegionModalOpen,
+    removeRegion,
+    resendInvite,
+    loginAsModalOpen,
+    setLoginAsModalOpen,
+    loginAsError,
+    openLoginAs,
+    confirmLoginAs,
+  };
+}
+
+/** Shared confirm-before-impersonating dialog, rendered by both UserRow and UserCard. */
+function LoginAsModal({ user, a }: { user: UserListRow; a: ReturnType<typeof useUserRowActions> }) {
+  if (!a.loginAsModalOpen) return null;
+  return (
+    <ConfirmDetailModal
+      open
+      onClose={() => !a.pending && a.setLoginAsModalOpen(false)}
+      title={`Log in as ${user.full_name}?`}
+      description="You'll see and use the CRM exactly as they do — their nav, their permissions, their dashboard — until you exit. This is logged."
+      details={[
+        { label: "Email", value: user.email },
+        { label: "Job title", value: user.job_title ?? "—" },
+      ]}
+      pending={a.pending}
+      error={a.loginAsError}
+      confirmLabel="Log in as this user"
+      onConfirm={a.confirmLoginAs}
+    />
+  );
 }
 
 /**
@@ -167,6 +219,7 @@ export function UserRow({
   roles,
   canManage,
   isMasterAdmin,
+  currentUserId,
   mailbox,
   allRegions,
 }: {
@@ -174,10 +227,12 @@ export function UserRow({
   roles: { id: string; name: string }[];
   canManage: boolean;
   isMasterAdmin: boolean;
+  currentUserId: string;
   mailbox: EmailAccountStatus | null;
   allRegions: AllocatedRegion[];
 }) {
   const a = useUserRowActions(user);
+  const canLoginAs = isMasterAdmin && !user.is_master_admin && user.status === "active" && user.id !== currentUserId;
 
   return (
     <tr className="border-t border-slate-100 align-middle hover:bg-slate-50/70">
@@ -217,8 +272,20 @@ export function UserRow({
               Resend invite
             </button>
           )}
+          {canLoginAs && (
+            <button
+              type="button"
+              disabled={a.pending}
+              onClick={a.openLoginAs}
+              className="flex h-9 w-full items-center justify-center gap-1.5 whitespace-nowrap rounded-lg border border-slate-200 px-2 text-xs font-bold hover:bg-slate-50 disabled:opacity-60"
+            >
+              <LogIn size={13} />
+              Login as
+            </button>
+          )}
         </div>
       </td>
+      <LoginAsModal user={user} a={a} />
     </tr>
   );
 }
@@ -229,6 +296,7 @@ export function UserCard({
   roles,
   canManage,
   isMasterAdmin,
+  currentUserId,
   mailbox,
   allRegions,
 }: {
@@ -236,10 +304,12 @@ export function UserCard({
   roles: { id: string; name: string }[];
   canManage: boolean;
   isMasterAdmin: boolean;
+  currentUserId: string;
   mailbox: EmailAccountStatus | null;
   allRegions: AllocatedRegion[];
 }) {
   const a = useUserRowActions(user);
+  const canLoginAs = isMasterAdmin && !user.is_master_admin && user.status === "active" && user.id !== currentUserId;
 
   return (
     <div className="rounded-2xl border p-4">
@@ -288,8 +358,20 @@ export function UserCard({
               Resend invite
             </button>
           )}
+          {canLoginAs && (
+            <button
+              type="button"
+              disabled={a.pending}
+              onClick={a.openLoginAs}
+              className="flex w-full items-center justify-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-bold disabled:opacity-60"
+            >
+              <LogIn size={13} />
+              Login as
+            </button>
+          )}
         </div>
       )}
+      <LoginAsModal user={user} a={a} />
     </div>
   );
 }

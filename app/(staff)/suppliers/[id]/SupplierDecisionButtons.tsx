@@ -10,12 +10,12 @@ export function SupplierDecisionButtons({ supplierId }: { supplierId: string }) 
 
   function decide(decision: "approved" | "rejected") {
     startTransition(async () => {
-      try {
-        await decideSupplierAction(supplierId, decision);
-        notify(decision === "approved" ? "Supplier approved" : "Supplier rejected");
-      } catch (err) {
-        notify(err instanceof Error ? err.message : "Could not update the supplier.");
+      const result = await decideSupplierAction(supplierId, decision);
+      if (result?.error) {
+        notify(result.error);
+        return;
       }
+      notify(decision === "approved" ? "Supplier approved" : "Supplier rejected");
     });
   }
 

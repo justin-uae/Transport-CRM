@@ -18,6 +18,7 @@ export async function sendUserEmail(
   {
     to,
     cc,
+    bcc,
     subject,
     html,
     inReplyTo,
@@ -25,6 +26,7 @@ export async function sendUserEmail(
   }: {
     to: string[];
     cc?: string[];
+    bcc?: string[];
     subject: string;
     html: string;
     inReplyTo?: string | null;
@@ -62,6 +64,7 @@ export async function sendUserEmail(
     from: `"${account.display_name}" <${account.email_address}>`,
     to: to.join(", "),
     cc: cc && cc.length > 0 ? cc.join(", ") : undefined,
+    bcc: bcc && bcc.length > 0 ? bcc.join(", ") : undefined,
     subject,
     html,
     inReplyTo: inReplyTo ?? undefined,
@@ -81,6 +84,7 @@ export async function sendUserEmail(
     from_address: account.email_address,
     to_addresses: to,
     cc_addresses: cc ?? [],
+    bcc_addresses: bcc ?? [],
     subject,
     body_html: html,
     body_text: null,

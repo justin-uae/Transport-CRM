@@ -1,6 +1,8 @@
 "use server";
 
 import { revalidatePath, revalidateTag } from "next/cache";
+import { cookies } from "next/headers";
+import { redirect } from "next/navigation";
 import { ImapFlow } from "imapflow";
 import nodemailer from "nodemailer";
 import { createClient } from "@/lib/supabase/server";
@@ -583,4 +585,148 @@ export async function uploadUserSignatureLogoAction(userId: string, formData: Fo
 
   const { data: publicUrl } = admin.storage.from("signature-assets").getPublicUrl(path);
   return { error: null, url: publicUrl.publicUrl };
+}
+
+const IMPERSONATION_COOKIE = "impersonation";
+
+interface ImpersonationStash {
+  /** A one-time magiclink token for the ADMIN's own account, minted before their session gets overwritten — redeeming it later is how "Exit impersonation" gets them back without a real logout/login. */
+  returnTokenHash: string;
+  adminId: string;
+  adminName: string;
+  targetId: string;
+  targetName: string;
+}
+
+function impersonationCookieOptions() {
+  return {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax" as const,
+    path: "/",
+    // Matches Supabase's default access-token lifetime — no point outliving
+    // the very session it's meant to let someone return from.
+    maxAge: 3600,
+  };
+}
+
+/**
+ * Master Admin "Login as" — swaps the current session for a real session
+ * belonging to the target user, entirely server-side in this one action (no
+ * email, no intermediate link/page to click — unlike password reset/invite,
+ * this token is minted and redeemed in the same request, so there's no
+ * window for anything to pre-consume it). Every page the admin visits next
+ * is then genuinely rendered as that person, correct by construction since
+ * it's real RLS/has_permission() evaluation, not a simulated view.
+ */
+export async function loginAsUserAction(targetUserId: string) {
+  const actor = await requireProfile();
+  if (!actor.is_master_admin) {
+    return { error: "Only a Master Admin can log in as another user." };
+  }
+  if (targetUserId === actor.id) {
+    return { error: "You're already signed in as yourself." };
+  }
+
+  const admin = createAdminClient();
+
+  const { data: target } = await admin
+    .from("profiles")
+    .select("id, full_name, email, is_master_admin, status")
+    .eq("id", targetUserId)
+    .eq("tenant_id", actor.tenant_id)
+    .maybeSingle();
+  if (!target) return { error: "That user could not be found." };
+  if (target.is_master_admin) return { error: "Cannot log in as another Master Admin." };
+
+  // Mint the way back BEFORE touching the session — if this fails, abort
+  // rather than strand the admin in someone else's account with no return
+  // ticket.
+  const { data: returnLink, error: returnError } = await admin.auth.admin.generateLink({
+    type: "magiclink",
+    email: actor.email,
+  });
+  if (returnError || !returnLink.properties?.hashed_token) {
+    return { error: returnError?.message ?? "Could not prepare a way back — nothing was changed." };
+  }
+
+  const { data: targetLink, error: targetError } = await admin.auth.admin.generateLink({
+    type: "magiclink",
+    email: target.email,
+  });
+  if (targetError || !targetLink.properties?.hashed_token) {
+    return { error: targetError?.message ?? "Could not generate a session for that user." };
+  }
+
+  const supabase = await createClient();
+  const { error: verifyError } = await supabase.auth.verifyOtp({
+    type: "magiclink",
+    token_hash: targetLink.properties.hashed_token,
+  });
+  if (verifyError) {
+    return { error: verifyError.message };
+  }
+
+  const stash: ImpersonationStash = {
+    returnTokenHash: returnLink.properties.hashed_token,
+    adminId: actor.id,
+    adminName: actor.full_name,
+    targetId: target.id,
+    targetName: target.full_name,
+  };
+  const cookieStore = await cookies();
+  cookieStore.set(IMPERSONATION_COOKIE, JSON.stringify(stash), impersonationCookieOptions());
+
+  await recordAudit({
+    client: admin,
+    tenantId: actor.tenant_id,
+    actorId: actor.id,
+    action: "admin_impersonation_started",
+    entityType: "profile",
+    entityId: target.id,
+    newValue: { targetName: target.full_name },
+  });
+
+  redirect("/dashboard");
+}
+
+/** Redeems the stashed return ticket to restore the Master Admin's own session — same one-click, no-email mechanism as loginAsUserAction, in reverse. Falls back to a clean sign-out (rather than leaving them stuck as the impersonated user) if the return ticket is somehow already gone or expired. */
+export async function exitImpersonationAction() {
+  const cookieStore = await cookies();
+  const raw = cookieStore.get(IMPERSONATION_COOKIE)?.value;
+  cookieStore.delete(IMPERSONATION_COOKIE);
+
+  if (!raw) redirect("/dashboard");
+
+  let stash: ImpersonationStash;
+  try {
+    stash = JSON.parse(raw);
+  } catch {
+    redirect("/dashboard");
+  }
+
+  const supabase = await createClient();
+  const { error: verifyError } = await supabase.auth.verifyOtp({
+    type: "magiclink",
+    token_hash: stash.returnTokenHash,
+  });
+
+  if (verifyError) {
+    await supabase.auth.signOut();
+    redirect("/login");
+  }
+
+  const restoredAdmin = await requireProfile();
+  const admin = createAdminClient();
+  await recordAudit({
+    client: admin,
+    tenantId: restoredAdmin.tenant_id,
+    actorId: stash.adminId,
+    action: "admin_impersonation_ended",
+    entityType: "profile",
+    entityId: stash.targetId,
+    newValue: { targetName: stash.targetName },
+  });
+
+  redirect("/dashboard");
 }

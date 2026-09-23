@@ -35,6 +35,11 @@ export const MONTH_NAMES = [
 ];
 const WEEKDAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 const DISPLAY_TIME_ZONE = "Europe/London";
+// Attendance-only — this business's staff work out of the UAE, so clock-in/
+// out times (formatClockTime below) are shown in Gulf time first, alongside
+// the app's standard UK time. Every other timestamp in the app stays
+// UK-only, deliberately (see the module comment above).
+const ATTENDANCE_SECONDARY_TIME_ZONE = "Asia/Dubai";
 const BARE_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 function pad2(n: number): string {
@@ -103,6 +108,22 @@ export function formatDate(value: string): string {
 export function formatTime(value: string): string {
   const { hour, minute } = londonParts(new Date(value));
   return timePart(hour, minute);
+}
+
+function hourMinuteInZone(date: Date, timeZone: string) {
+  const parts = new Intl.DateTimeFormat("en-US", { timeZone, hour: "numeric", minute: "numeric", hour12: false }).formatToParts(date);
+  const get = (type: string) => Number(parts.find((p) => p.type === type)?.value ?? 0);
+  return { hour: get("hour") % 24, minute: get("minute") };
+}
+
+/** "8:17 AM UAE · 4:17 AM UK" — clock-in/out times only (AttendancePage);
+    see ATTENDANCE_SECONDARY_TIME_ZONE above for why this one pair of
+    timestamps shows two zones instead of the app's usual UK-only. */
+export function formatClockTime(value: string): string {
+  const date = new Date(value);
+  const uae = hourMinuteInZone(date, ATTENDANCE_SECONDARY_TIME_ZONE);
+  const uk = hourMinuteInZone(date, DISPLAY_TIME_ZONE);
+  return `${timePart(uae.hour, uae.minute)} UAE · ${timePart(uk.hour, uk.minute)} UK`;
 }
 
 /** "Monday 10th August 2026, 8:17 PM" — the app's one standard timestamp format. */

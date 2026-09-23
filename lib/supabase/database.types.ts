@@ -615,6 +615,9 @@ export interface Supplier {
   created_by: string | null;
   approved_by: string | null;
   approved_at: string | null;
+  suspension_reason: string | null;
+  suspended_by: string | null;
+  suspended_at: string | null;
   created_at: string;
   updated_at: string;
 }

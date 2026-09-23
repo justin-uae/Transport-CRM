@@ -124,6 +124,7 @@ export default async function UsersPage({ searchParams }: { searchParams: Promis
               roles={roles ?? []}
               canManage={canManage}
               isMasterAdmin={isMasterAdmin}
+              currentUserId={profile.id}
               mailbox={mailboxByUserId.get(user.id) ?? null}
               allRegions={allRegions}
             />
@@ -164,6 +165,7 @@ export default async function UsersPage({ searchParams }: { searchParams: Promis
                   roles={roles ?? []}
                   canManage={canManage}
                   isMasterAdmin={isMasterAdmin}
+                  currentUserId={profile.id}
                   mailbox={mailboxByUserId.get(user.id) ?? null}
                   allRegions={allRegions}
                 />

@@ -249,20 +249,28 @@ export async function editSupplierAction(supplierId: string, input: EditSupplier
   return { error: null };
 }
 
+/**
+ * Returns { error } instead of throwing — a thrown Server Action error gets
+ * the same production redaction as a Server Component render error (Next.js
+ * replaces the real message with a generic digest-only one), so the caller
+ * never actually saw *why* it failed, just a scary "An error occurred"
+ * banner. Every other action in this codebase already follows the
+ * return-not-throw pattern for exactly this reason.
+ */
 export async function decideSupplierAction(supplierId: string, decision: "approved" | "rejected") {
   const actor = await requireProfile();
   const allowed = await hasPermission(actor, PERMISSIONS.SUPPLIERS_APPROVE);
-  if (!allowed) throw new Error("You do not have permission to approve suppliers.");
+  if (!allowed) return { error: "You do not have permission to approve suppliers." };
 
   const supabase = await createClient();
   const { data: supplier } = await supabase.from("suppliers").select("status, tenant_id").eq("id", supplierId).single();
-  if (!supplier || supplier.tenant_id !== actor.tenant_id) throw new Error("Supplier not found.");
+  if (!supplier || supplier.tenant_id !== actor.tenant_id) return { error: "Supplier not found." };
 
   const { error } = await supabase
     .from("suppliers")
     .update({ status: decision, approved_by: actor.id, approved_at: new Date().toISOString() })
     .eq("id", supplierId);
-  if (error) throw new Error(error.message);
+  if (error) return { error: error.message };
 
   await recordAudit({
     tenantId: actor.tenant_id,
@@ -276,4 +284,84 @@ export async function decideSupplierAction(supplierId: string, decision: "approv
 
   revalidatePath("/suppliers");
   revalidatePath(`/suppliers/${supplierId}`);
+  return { error: null };
+}
+
+/**
+ * Temporarily takes a supplier out of rotation — dispatch's own supplier
+ * query already only offers jobs to status='approved' suppliers
+ * (app/(staff)/dispatch/[id]/page.tsx), so flipping status to 'suspended'
+ * alone is enough to stop new jobs reaching them; nothing dispatch-side
+ * needs to change. A reason is required and shown on the supplier's own page
+ * for as long as the suspension stands.
+ */
+export async function suspendSupplierAction(supplierId: string, reason: string) {
+  const actor = await requireProfile();
+  const allowed = await hasPermission(actor, PERMISSIONS.SUPPLIERS_SUSPEND);
+  if (!allowed) return { error: "You do not have permission to suspend suppliers." };
+
+  const trimmedReason = reason.trim();
+  if (!trimmedReason) return { error: "A reason is required to suspend a supplier." };
+
+  const supabase = await createClient();
+  const { data: supplier } = await supabase.from("suppliers").select("status, tenant_id").eq("id", supplierId).single();
+  if (!supplier || supplier.tenant_id !== actor.tenant_id) return { error: "Supplier not found." };
+
+  const { error } = await supabase
+    .from("suppliers")
+    .update({
+      status: "suspended",
+      suspension_reason: trimmedReason,
+      suspended_by: actor.id,
+      suspended_at: new Date().toISOString(),
+    })
+    .eq("id", supplierId);
+  if (error) return { error: error.message };
+
+  await recordAudit({
+    tenantId: actor.tenant_id,
+    actorId: actor.id,
+    action: "supplier_suspended",
+    entityType: "supplier",
+    entityId: supplierId,
+    reason: trimmedReason,
+    previousValue: { status: supplier.status },
+    newValue: { status: "suspended" },
+  });
+
+  revalidatePath("/suppliers");
+  revalidatePath(`/suppliers/${supplierId}`);
+  return { error: null };
+}
+
+/** Removes a suspension and puts the supplier back in dispatch rotation — always restores to 'approved' (the only status a supplier is ever suspended from). */
+export async function unsuspendSupplierAction(supplierId: string) {
+  const actor = await requireProfile();
+  const allowed = await hasPermission(actor, PERMISSIONS.SUPPLIERS_SUSPEND);
+  if (!allowed) return { error: "You do not have permission to suspend suppliers." };
+
+  const supabase = await createClient();
+  const { data: supplier } = await supabase.from("suppliers").select("status, tenant_id").eq("id", supplierId).single();
+  if (!supplier || supplier.tenant_id !== actor.tenant_id) return { error: "Supplier not found." };
+  if (supplier.status !== "suspended") return { error: "This supplier isn't suspended." };
+
+  const { error } = await supabase
+    .from("suppliers")
+    .update({ status: "approved", suspension_reason: null, suspended_by: null, suspended_at: null })
+    .eq("id", supplierId);
+  if (error) return { error: error.message };
+
+  await recordAudit({
+    tenantId: actor.tenant_id,
+    actorId: actor.id,
+    action: "supplier_unsuspended",
+    entityType: "supplier",
+    entityId: supplierId,
+    previousValue: { status: "suspended" },
+    newValue: { status: "approved" },
+  });
+
+  revalidatePath("/suppliers");
+  revalidatePath(`/suppliers/${supplierId}`);
+  return { error: null };
 }

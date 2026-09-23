@@ -6,6 +6,7 @@ import { Header } from "./Header";
 import { ToastProvider } from "../ui/Toast";
 import { AttendanceProvider } from "../ui/AttendanceState";
 import { ClockInGate } from "./ClockInGate";
+import { ImpersonationBanner } from "./ImpersonationBanner";
 import type { Brand } from "@/lib/supabase/database.types";
 import type { AttendanceState } from "@/lib/attendanceState";
 
@@ -20,6 +21,7 @@ export function StaffShell({
   canAddLead,
   initialAttendance,
   locked,
+  impersonation,
   children,
 }: {
   userName: string;
@@ -32,6 +34,7 @@ export function StaffShell({
   canAddLead: boolean;
   initialAttendance: AttendanceState;
   locked: boolean;
+  impersonation: { targetName: string; adminName: string } | null;
   children: React.ReactNode;
 }) {
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -40,6 +43,7 @@ export function StaffShell({
     <ToastProvider>
       <AttendanceProvider initialState={initialAttendance}>
         <div className="min-h-screen bg-appbg text-slate-800">
+          {impersonation && <ImpersonationBanner targetName={impersonation.targetName} adminName={impersonation.adminName} />}
           <div inert={locked} className={locked ? "opacity-40" : undefined}>
             <Sidebar
               mobileOpen={mobileOpen}

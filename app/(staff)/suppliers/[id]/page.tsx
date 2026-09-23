@@ -12,6 +12,7 @@ import { formatDate } from "@/lib/formatDate";
 import { SupplierDecisionButtons } from "./SupplierDecisionButtons";
 import { ResendSupplierInviteButton } from "./ResendSupplierInviteButton";
 import { EditSupplierButton } from "./EditSupplierButton";
+import { SupplierSuspendButton } from "./SupplierSuspendButton";
 import { SupplierEditHistory, type SupplierEditRecord } from "@/components/pages/SupplierEditHistory";
 
 export default async function SupplierDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -19,11 +20,12 @@ export default async function SupplierDetailPage({ params }: { params: Promise<{
   const profile = await requireProfile();
   const supabase = await createClient();
 
-  const [{ data: supplier }, { data: vehicles }, { data: documents }, canEdit, { data: editsRaw }] = await Promise.all([
-    supabase.from("suppliers").select("*").eq("id", id).single(),
+  const [{ data: supplier }, { data: vehicles }, { data: documents }, canEdit, canSuspend, { data: editsRaw }] = await Promise.all([
+    supabase.from("suppliers").select("*, suspended_by_profile:profiles!suppliers_suspended_by_fkey(full_name)").eq("id", id).single(),
     supabase.from("supplier_vehicles").select("*").eq("supplier_id", id).order("created_at"),
     supabase.from("supplier_documents").select("*").eq("supplier_id", id).order("uploaded_at"),
     hasPermission(profile, PERMISSIONS.SUPPLIERS_EDIT),
+    hasPermission(profile, PERMISSIONS.SUPPLIERS_SUSPEND),
     supabase
       .from("supplier_edits")
       .select("id, reason, changes, created_at, profiles(full_name)")
@@ -59,6 +61,9 @@ export default async function SupplierDetailPage({ params }: { params: Promise<{
                 <SupplierDecisionButtons supplierId={supplier.id} />
               </div>
             )}
+            {canSuspend && (supplier.status === "approved" || supplier.status === "suspended") && (
+              <SupplierSuspendButton supplierId={supplier.id} status={supplier.status} />
+            )}
           </div>
         }
       />
@@ -78,6 +83,15 @@ export default async function SupplierDetailPage({ params }: { params: Promise<{
               <Row label="VAT number" value={supplier.vat_number} />
               <Row label="Insurance details" value={supplier.insurance_details} />
               <Row label="License number" value={supplier.license_number} />
+              {supplier.status === "suspended" && (
+                <div className="rounded-xl border border-amber-200 bg-amber-50 p-3">
+                  <div className="font-bold text-amber-800">
+                    Suspended{supplier.suspended_at ? ` on ${formatDate(supplier.suspended_at)}` : ""}
+                    {supplier.suspended_by_profile?.full_name ? ` by ${supplier.suspended_by_profile.full_name}` : ""}
+                  </div>
+                  <p className="mt-1 text-amber-700">{supplier.suspension_reason}</p>
+                </div>
+              )}
               {supplier.notes && (
                 <div className="border-t pt-2">
                   <div className="text-slate-500">Internal notes</div>

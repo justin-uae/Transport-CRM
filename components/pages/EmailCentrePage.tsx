@@ -70,7 +70,15 @@ export function EmailCentrePage({
 
   const [replyText, setReplyText] = useState("");
   const [replyAttachments, setReplyAttachments] = useState<PendingAttachment[]>([]);
+  const [replyCc, setReplyCc] = useState("");
+  const [replyBcc, setReplyBcc] = useState("");
+  const [showReplyCc, setShowReplyCc] = useState(false);
+  const [showReplyBcc, setShowReplyBcc] = useState(false);
   const [composeTo, setComposeTo] = useState("");
+  const [composeCc, setComposeCc] = useState("");
+  const [composeBcc, setComposeBcc] = useState("");
+  const [showComposeCc, setShowComposeCc] = useState(false);
+  const [showComposeBcc, setShowComposeBcc] = useState(false);
   const [composeSubject, setComposeSubject] = useState("");
   const [composeBody, setComposeBody] = useState("");
   const [composeAttachments, setComposeAttachments] = useState<PendingAttachment[]>([]);
@@ -126,6 +134,8 @@ export function EmailCentrePage({
 
   function send(payload: {
     to: string;
+    cc?: string;
+    bcc?: string;
     subject: string;
     bodyText: string;
     inReplyTo?: string | null;
@@ -142,8 +152,16 @@ export function EmailCentrePage({
       notify("Email sent");
       setReplyText("");
       setReplyAttachments([]);
+      setReplyCc("");
+      setReplyBcc("");
+      setShowReplyCc(false);
+      setShowReplyBcc(false);
       setComposeOpen(false);
       setComposeTo("");
+      setComposeCc("");
+      setComposeBcc("");
+      setShowComposeCc(false);
+      setShowComposeBcc(false);
       setComposeSubject("");
       setComposeBody("");
       setComposeAttachments([]);
@@ -369,6 +387,54 @@ export function EmailCentrePage({
                     same recipients — from_address on a "Sent" row is your own
                     account, so using that here would address it back to yourself. */}
                 <div className="rounded-2xl border p-4">
+                  {(!showReplyCc || !showReplyBcc) && (
+                    <div className="mb-2 flex items-center justify-end gap-3">
+                      {!showReplyCc && (
+                        <button
+                          type="button"
+                          onClick={() => setShowReplyCc(true)}
+                          className="text-xs font-bold text-slate-400 hover:text-slate-600"
+                        >
+                          Add Cc
+                        </button>
+                      )}
+                      {!showReplyBcc && (
+                        <button
+                          type="button"
+                          onClick={() => setShowReplyBcc(true)}
+                          className="text-xs font-bold text-slate-400 hover:text-slate-600"
+                        >
+                          Add Bcc
+                        </button>
+                      )}
+                    </div>
+                  )}
+                  {(showReplyCc || showReplyBcc) && (
+                    <div className="mb-3 space-y-2 border-b pb-3">
+                      {showReplyCc && (
+                        <label className="flex items-center gap-2 text-xs font-bold text-slate-500">
+                          Cc
+                          <input
+                            value={replyCc}
+                            onChange={(e) => setReplyCc(e.target.value)}
+                            placeholder="name@example.com, another@example.com"
+                            className="flex-1 rounded-lg border px-2 py-1.5 text-sm font-normal outline-none"
+                          />
+                        </label>
+                      )}
+                      {showReplyBcc && (
+                        <label className="flex items-center gap-2 text-xs font-bold text-slate-500">
+                          Bcc
+                          <input
+                            value={replyBcc}
+                            onChange={(e) => setReplyBcc(e.target.value)}
+                            placeholder="name@example.com, another@example.com"
+                            className="flex-1 rounded-lg border px-2 py-1.5 text-sm font-normal outline-none"
+                          />
+                        </label>
+                      )}
+                    </div>
+                  )}
                   <textarea
                     value={replyText}
                     onChange={(e) => setReplyText(e.target.value)}
@@ -414,6 +480,8 @@ export function EmailCentrePage({
                             selected.direction === "inbound"
                               ? selected.from_address
                               : selected.to_addresses.join(", "),
+                          cc: replyCc,
+                          bcc: replyBcc,
                           subject: selected.subject?.startsWith("Re:") ? selected.subject : `Re: ${selected.subject ?? ""}`,
                           bodyText: replyText,
                           inReplyTo: selected.message_id,
@@ -444,7 +512,31 @@ export function EmailCentrePage({
             <h3 className="text-lg font-black">New message</h3>
             <div className="mt-4 space-y-3">
               <label className="block text-sm font-bold">
-                To
+                <div className="flex items-center justify-between">
+                  To
+                  {(!showComposeCc || !showComposeBcc) && (
+                    <div className="flex gap-3">
+                      {!showComposeCc && (
+                        <button
+                          type="button"
+                          onClick={() => setShowComposeCc(true)}
+                          className="text-xs font-bold text-slate-400 hover:text-slate-600"
+                        >
+                          Add Cc
+                        </button>
+                      )}
+                      {!showComposeBcc && (
+                        <button
+                          type="button"
+                          onClick={() => setShowComposeBcc(true)}
+                          className="text-xs font-bold text-slate-400 hover:text-slate-600"
+                        >
+                          Add Bcc
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
                 <input
                   value={composeTo}
                   onChange={(e) => {
@@ -463,6 +555,28 @@ export function EmailCentrePage({
                   </span>
                 )}
               </label>
+              {showComposeCc && (
+                <label className="block text-sm font-bold">
+                  Cc
+                  <input
+                    value={composeCc}
+                    onChange={(e) => setComposeCc(e.target.value)}
+                    placeholder="name@example.com, another@example.com"
+                    className="mt-1 w-full rounded-xl border px-3 py-2 font-normal"
+                  />
+                </label>
+              )}
+              {showComposeBcc && (
+                <label className="block text-sm font-bold">
+                  Bcc
+                  <input
+                    value={composeBcc}
+                    onChange={(e) => setComposeBcc(e.target.value)}
+                    placeholder="name@example.com, another@example.com"
+                    className="mt-1 w-full rounded-xl border px-3 py-2 font-normal"
+                  />
+                </label>
+              )}
               <label className="block text-sm font-bold">
                 Subject
                 <input
@@ -517,7 +631,16 @@ export function EmailCentrePage({
                 </button>
                 <button
                   disabled={pending}
-                  onClick={() => send({ to: composeTo, subject: composeSubject, bodyText: composeBody, attachments: composeAttachments })}
+                  onClick={() =>
+                    send({
+                      to: composeTo,
+                      cc: composeCc,
+                      bcc: composeBcc,
+                      subject: composeSubject,
+                      bodyText: composeBody,
+                      attachments: composeAttachments,
+                    })
+                  }
                   className="rounded-xl bg-primary-500 px-4 py-2.5 text-sm font-bold text-white disabled:opacity-60"
                 >
                   {pending ? "Sending…" : "Send"}

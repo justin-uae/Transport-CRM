@@ -9,7 +9,7 @@ import { SectionTitle } from "@/components/ui/SectionTitle";
 import { AttendanceDiagram } from "@/components/ui/guide-diagrams/AttendanceDiagram";
 import { useAttendance } from "@/components/ui/AttendanceState";
 import { legalNextEvents, formatDuration } from "@/lib/attendanceState";
-import { formatDate, formatTime } from "@/lib/formatDate";
+import { formatDate, formatClockTime } from "@/lib/formatDate";
 
 export interface DailySummary {
   date: string;
@@ -43,7 +43,7 @@ const STATUS_LABEL: Record<string, string> = {
 
 function timeLabel(iso: string | null) {
   if (!iso) return "—";
-  return formatTime(iso);
+  return formatClockTime(iso);
 }
 
 function dateLabel(dateStr: string) {
