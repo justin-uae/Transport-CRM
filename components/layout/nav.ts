@@ -16,6 +16,7 @@ import {
   BarChart3,
   FolderKanban,
   Target,
+  Wallet,
   MessagesSquare,
   ListTodo,
   Star,
@@ -93,6 +94,17 @@ export const NAV: NavItem[] = [
     href: "/quotes",
     icon: FileText,
     group: "sales",
+    anyOf: [PERMISSIONS.QUOTES_CREATE, PERMISSIONS.QUOTES_VIEW_SELLING_PRICE],
+  },
+  {
+    label: "Partially Paid",
+    href: "/quotes/partially-paid",
+    icon: Wallet,
+    group: "sales",
+    // Same gate as Pending Quotes — RLS (can_view_assignment) already scopes
+    // the actual rows to "mine" for a plain Sales User vs "everyone's" for
+    // enquiries.view_all (Master Admin, Sales Manager), no separate
+    // permission needed for the nav item itself.
     anyOf: [PERMISSIONS.QUOTES_CREATE, PERMISSIONS.QUOTES_VIEW_SELLING_PRICE],
   },
   {

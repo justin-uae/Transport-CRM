@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { hasPermission, PERMISSIONS } from "@/lib/permissions";
 import { healExpiredLeads } from "@/lib/leadExpiry";
 import { LeadsPage, type LeadRow, type LeadTab } from "@/components/pages/LeadsPage";
+import { getAssignableSalesUsers } from "@/lib/leadAssignees";
 
 const PAGE_SIZE = 25;
 
@@ -49,6 +50,7 @@ export default async function Page({
     canClaim,
     canRelease,
     canViewAll,
+    canAssign,
   ] = await Promise.all([
     listQuery.order("created_at", { ascending: false }).range(from, to),
     supabase
@@ -76,9 +78,11 @@ export default async function Page({
     hasPermission(profile, PERMISSIONS.ENQUIRIES_VIEW_ALL).then(
       async (viewAll) => viewAll || (await hasPermission(profile, PERMISSIONS.ENQUIRIES_VIEW_TEAM)),
     ),
+    hasPermission(profile, PERMISSIONS.ENQUIRIES_REASSIGN),
   ]);
 
   const quotesAwaitingResponse = openQuotesCount ?? 0;
+  const assignableUsers = canAssign ? await getAssignableSalesUsers(supabase) : [];
 
   return (
     <LeadsPage
@@ -90,6 +94,8 @@ export default async function Page({
       canClaim={canClaim}
       canRelease={canRelease}
       canViewAll={canViewAll}
+      canAssign={canAssign}
+      assignableUsers={assignableUsers}
       tab={tab}
       mineCount={mineCount ?? 0}
       poolCount={poolCount ?? 0}

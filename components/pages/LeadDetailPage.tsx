@@ -12,10 +12,12 @@ import { useToast } from "@/components/ui/Toast";
 import { ConfirmDetailModal } from "@/components/ui/ConfirmDetailModal";
 import { JourneyLegDetail, type JourneyLeg } from "@/components/pages/JourneyLegDetail";
 import { LeadEditHistory, type LeadEditRecord } from "@/components/pages/LeadEditHistory";
+import { LeadAssignmentHistory, type LeadAssignmentEvent } from "@/components/pages/LeadAssignmentHistory";
 import {
   claimLeadAction,
   createEnquiryFromLeadAction,
   releaseLeadAction,
+  assignLeadAction,
   editLeadAction,
   editLeadLegAction,
   type EditLeadInput,
@@ -96,6 +98,11 @@ export interface LeadDetailQuote {
   status: string;
 }
 
+export interface AssignableUser {
+  id: string;
+  full_name: string;
+}
+
 export interface LeadSourceDocument {
   fileName: string;
   downloadUrl: string | null;
@@ -108,11 +115,14 @@ export function LeadDetailPage({
   quote,
   sourceDocument,
   edits,
+  assignmentEvents,
   currentUserId,
   canAddEnquiry,
   canClaim,
   canRelease,
   canEditCustomer,
+  canAssign,
+  assignableUsers,
 }: {
   lead: LeadDetail;
   legs: JourneyLeg[];
@@ -120,11 +130,14 @@ export function LeadDetailPage({
   quote: LeadDetailQuote | null;
   sourceDocument: LeadSourceDocument | null;
   edits: LeadEditRecord[];
+  assignmentEvents: LeadAssignmentEvent[];
   currentUserId: string;
   canAddEnquiry: boolean;
   canClaim: boolean;
   canRelease: boolean;
   canEditCustomer: boolean;
+  canAssign: boolean;
+  assignableUsers: AssignableUser[];
 }) {
   const notify = useToast();
   const router = useRouter();
@@ -148,6 +161,7 @@ export function LeadDetailPage({
   const [customerCompanyName, setCustomerCompanyName] = useState(lead.customers?.company_name ?? "");
   const [customerEmail, setCustomerEmail] = useState(lead.customers?.email ?? "");
   const [customerPhone, setCustomerPhone] = useState(lead.customers?.phone ?? "");
+  const [assigneeId, setAssigneeId] = useState(lead.assigned_user_id ?? "");
 
   // Once an enquiry has structured legs, journey editing targets those
   // enquiry_legs rows directly (the quote is built from them) instead of the
@@ -197,6 +211,22 @@ export function LeadDetailPage({
         return;
       }
       notify("Lead accepted and moved to your dashboard");
+    });
+  }
+
+  function assign() {
+    if (!assigneeId || assigneeId === lead.assigned_user_id) return;
+    setError(null);
+    startTransition(async () => {
+      const result = await assignLeadAction(lead.id, assigneeId);
+      if (result?.error) {
+        setError(result.error);
+        notify(result.error);
+        return;
+      }
+      const name = assignableUsers.find((u) => u.id === assigneeId)?.full_name ?? "the selected user";
+      notify(`Lead assigned to ${name}`);
+      router.refresh();
     });
   }
 
@@ -377,10 +407,38 @@ export function LeadDetailPage({
               )}
               <Row label="Brand / website" value={lead.brands?.name} />
               <Row label="Priority" value={lead.priority === "high" ? "High" : "Normal"} />
-              <Row
-                label="Owner"
-                value={lead.profiles?.full_name || (lead.status === "expired" ? <span className="font-bold text-red-600">Unclaimed</span> : <span className="font-bold text-primary-600">Open pool</span>)}
-              />
+              {canAssign ? (
+                <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 border-b py-2 last:border-0">
+                  <span className="text-slate-500">Owner</span>
+                  <div className="flex items-center gap-2">
+                    <select
+                      value={assigneeId}
+                      onChange={(e) => setAssigneeId(e.target.value)}
+                      className="rounded-lg border px-2 py-1.5 text-sm font-bold outline-none focus:border-primary-300"
+                    >
+                      <option value="">— Unassigned / open pool —</option>
+                      {assignableUsers.map((u) => (
+                        <option key={u.id} value={u.id}>
+                          {u.full_name}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      disabled={pending || !assigneeId || assigneeId === lead.assigned_user_id}
+                      onClick={assign}
+                      className="rounded-lg bg-primary-500 px-3 py-1.5 text-xs font-bold text-white disabled:opacity-50"
+                    >
+                      Assign
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <Row
+                  label="Owner"
+                  value={lead.profiles?.full_name || (lead.status === "expired" ? <span className="font-bold text-red-600">Unclaimed</span> : <span className="font-bold text-primary-600">Open pool</span>)}
+                />
+              )}
               <Row label={isGeneralEnquiry ? "Message" : "Notes"} value={lead.notes} />
             </div>
           </Panel>
@@ -449,6 +507,7 @@ export function LeadDetailPage({
             )}
           </div>
 
+          <LeadAssignmentHistory events={assignmentEvents} />
           <LeadEditHistory edits={edits} />
         </div>
 

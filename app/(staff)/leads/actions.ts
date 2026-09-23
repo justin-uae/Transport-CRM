@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/server";
 import { requireProfile } from "@/lib/auth";
 import { hasPermission, PERMISSIONS } from "@/lib/permissions";
 import { recordAudit } from "@/lib/audit";
+import { sendTemplatedEmail } from "@/lib/emailTemplates";
 
 export async function claimLeadAction(leadId: string) {
   const actor = await requireProfile();
@@ -56,6 +57,76 @@ export async function releaseLeadAction(leadId: string) {
   });
 
   revalidatePath("/leads");
+  return { error: null };
+}
+
+/**
+ * A manager (enquiries.reassign) hand-picking who a lead goes to — unlike
+ * claim_lead()'s atomic self-claim (open pool only, RPC-guarded race), this
+ * is a plain RLS-gated update: leads_update already allows it for anyone
+ * holding the permission (0002_sales_crm.sql), on any lead regardless of its
+ * current owner or status, since moving a lead off one rep onto another is
+ * as much "assign" as picking one up from the open pool is.
+ */
+export async function assignLeadAction(leadId: string, targetUserId: string) {
+  const actor = await requireProfile();
+  const allowed = await hasPermission(actor, PERMISSIONS.ENQUIRIES_REASSIGN);
+  if (!allowed) {
+    return { error: "You do not have permission to assign leads." };
+  }
+  const supabase = await createClient();
+
+  const { data: target } = await supabase.from("profiles").select("id, full_name, email").eq("id", targetUserId).maybeSingle();
+  if (!target) return { error: "That user could not be found." };
+
+  const { data: lead, error } = await supabase
+    .from("leads")
+    .update({ assigned_user_id: targetUserId, status: "assigned", claimed_at: new Date().toISOString() })
+    .eq("id", leadId)
+    .select(
+      "id, source, pickup_text, destination_text, travel_date, passenger_count, vehicle_requested, notes, brands(name)",
+    )
+    .maybeSingle();
+
+  if (error || !lead) {
+    return { error: error?.message ?? "Could not assign this lead." };
+  }
+
+  await recordAudit({
+    tenantId: actor.tenant_id,
+    actorId: actor.id,
+    action: "lead_assigned_by_manager",
+    entityType: "lead",
+    entityId: leadId,
+    newValue: { assignedTo: targetUserId, assignedToName: target.full_name },
+  });
+
+  // Same "lead_assigned" template auto-routing already sends
+  // (app/api/leads/website/route.ts) — reused here so a manager's manual
+  // assign/reassign notifies the new owner exactly the same way an
+  // automatic pool routing does. Never blocks the assignment itself on a
+  // mail failure (sendTemplatedEmail logs and swallows).
+  const brand = lead.brands as unknown as { name: string } | null;
+  await sendTemplatedEmail(supabase, {
+    tenantId: actor.tenant_id,
+    key: "lead_assigned",
+    to: target.email,
+    variables: {
+      staff_name: target.full_name,
+      brand_name: brand?.name ?? "",
+      source: lead.source,
+      pickup: lead.pickup_text ?? "Not specified",
+      destination: lead.destination_text ?? "Not specified",
+      travel_date: lead.travel_date ?? "Not specified",
+      passenger_count: lead.passenger_count ? String(lead.passenger_count) : "Not specified",
+      vehicle_requested: lead.vehicle_requested ?? "Not specified",
+      notes: lead.notes ?? "",
+      link: `${process.env.NEXT_PUBLIC_APP_URL ?? ""}/leads/${leadId}`,
+    },
+  });
+
+  revalidatePath("/leads");
+  revalidatePath(`/leads/${leadId}`);
   return { error: null };
 }
 

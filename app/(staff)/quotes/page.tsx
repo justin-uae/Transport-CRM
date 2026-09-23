@@ -19,16 +19,18 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ q
   const to = from + PAGE_SIZE - 1;
 
   // Pending Quotes covers everything up to customer payment — draft/sent/
-  // viewed (no decision yet) and accepted (decided, but not yet marked paid
-  // by staff). Only once paid does a job get created and the booking moves
-  // to the Confirmed Booking tab; rejected/expired move to Lost Booking.
+  // viewed (no decision yet) and accepted (decided, but not yet paid at
+  // all). A quote that's had a partial payment moves to its own Partially
+  // Paid tab (/quotes/partially-paid) instead of staying listed here. Once
+  // fully paid a job gets created and the booking moves to the Confirmed
+  // Booking tab; rejected/expired move to Lost Booking.
   let listQuery = supabase
     .from("quotes")
     .select(
       "id, quote_number, status, currency, expiry_at, invoice_number, public_token, created_at, sent_at, customers(company_name, contact_name), enquiries(enquiry_legs(pickup_address, destination_address)), quote_versions!quotes_current_version_id_fkey(selling_price), profiles!quotes_created_by_fkey(full_name)",
       { count: "exact" },
     )
-    .in("status", ["draft", "sent", "viewed", "accepted", "partially_paid"]);
+    .in("status", ["draft", "sent", "viewed", "accepted"]);
   if (q) {
     listQuery = listQuery.or(`quote_number.ilike.%${q}%,invoice_number.ilike.%${q}%`);
   }
@@ -46,7 +48,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ q
     hasPermission(profile, PERMISSIONS.QUOTES_CREATE),
     supabase.from("quotes").select("id", { count: "exact", head: true }).eq("status", "draft"),
     supabase.from("quotes").select("id", { count: "exact", head: true }).in("status", ["sent", "viewed"]),
-    supabase.from("quotes").select("id", { count: "exact", head: true }).in("status", ["accepted", "partially_paid", "converted"]),
+    supabase.from("quotes").select("id", { count: "exact", head: true }).in("status", ["accepted", "converted"]),
     supabase.from("quotes").select("id", { count: "exact", head: true }),
     supabase
       .from("quotes")

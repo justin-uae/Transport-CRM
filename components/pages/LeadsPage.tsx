@@ -15,10 +15,11 @@ import { ConfirmDetailModal } from "@/components/ui/ConfirmDetailModal";
 import { NewLeadMenu } from "@/components/ui/NewLeadMenu";
 import { PageGuide } from "@/components/ui/PageGuide";
 import { LeadsDiagram } from "@/components/ui/guide-diagrams/LeadsDiagram";
-import { claimLeadAction, createEnquiryFromLeadAction, releaseLeadAction } from "@/app/(staff)/leads/actions";
+import { claimLeadAction, createEnquiryFromLeadAction, releaseLeadAction, assignLeadAction } from "@/app/(staff)/leads/actions";
 import { formatDate, formatTimeOnly } from "@/lib/formatDate";
 import { SOURCE_LABEL } from "@/lib/leadSource";
 import type { LeadSource, LeadStatus } from "@/lib/supabase/database.types";
+import type { AssignableUser } from "@/components/pages/LeadDetailPage";
 
 export type LeadTab = "mine" | "pool" | "all";
 
@@ -105,6 +106,8 @@ export function LeadsPage({
   canClaim,
   canRelease,
   canViewAll,
+  canAssign,
+  assignableUsers,
   tab,
   mineCount,
   poolCount,
@@ -120,6 +123,8 @@ export function LeadsPage({
   canClaim: boolean;
   canRelease: boolean;
   canViewAll: boolean;
+  canAssign: boolean;
+  assignableUsers: AssignableUser[];
   tab: LeadTab;
   mineCount: number;
   poolCount: number;
@@ -134,6 +139,9 @@ export function LeadsPage({
   const [pending, startTransition] = useTransition();
   const [detailLead, setDetailLead] = useState<LeadRow | null>(null);
   const [modalError, setModalError] = useState<string | null>(null);
+  const [assignLead, setAssignLead] = useState<LeadRow | null>(null);
+  const [assigneeId, setAssigneeId] = useState("");
+  const [assignError, setAssignError] = useState<string | null>(null);
 
   function tabHref(t: LeadTab) {
     const params = new URLSearchParams(searchParams.toString());
@@ -198,6 +206,43 @@ export function LeadsPage({
       }
       notify("Lead released back to the open pool");
       setDetailLead(null);
+    });
+  }
+
+  function openAssign(lead: LeadRow) {
+    setAssignError(null);
+    setAssigneeId(lead.assigned_user_id ?? "");
+    setAssignLead(lead);
+  }
+
+  function closeAssign() {
+    if (pending) return;
+    setAssignLead(null);
+    setAssignError(null);
+  }
+
+  function doAssign() {
+    if (!assignLead) return;
+    if (!assigneeId) {
+      setAssignError("Choose someone to assign this lead to.");
+      return;
+    }
+    if (assigneeId === assignLead.assigned_user_id) {
+      setAssignError("This lead is already assigned to that person.");
+      return;
+    }
+    setAssignError(null);
+    startTransition(async () => {
+      const result = await assignLeadAction(assignLead.id, assigneeId);
+      if (result?.error) {
+        setAssignError(result.error);
+        notify(result.error);
+        return;
+      }
+      const name = assignableUsers.find((u) => u.id === assigneeId)?.full_name ?? "the selected user";
+      notify(`Lead assigned to ${name}`);
+      setAssignLead(null);
+      router.refresh();
     });
   }
 
@@ -325,21 +370,35 @@ export function LeadsPage({
                 </span>
                 <span>{l.profiles?.full_name || (l.status === "expired" ? <span className="font-bold text-red-600">Unclaimed</span> : <span className="font-bold text-primary-600">Open pool</span>)}</span>
               </div>
-              {((l.status === "open_pool" && canClaim) || isOwnActiveLead(l)) && (
-                <button
-                  disabled={pending}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    viewLead(l);
-                  }}
-                  className={
-                    "mt-3 w-full rounded-xl px-3 py-2 text-xs font-bold disabled:opacity-60 " +
-                    (l.status === "open_pool" ? "bg-primary-500 text-white" : "border border-primary-300 text-primary-700")
-                  }
-                >
-                  {l.status === "open_pool" ? "Accept" : "View"}
-                </button>
-              )}
+              <div className="mt-3 flex gap-2">
+                {((l.status === "open_pool" && canClaim) || isOwnActiveLead(l)) && (
+                  <button
+                    disabled={pending}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      viewLead(l);
+                    }}
+                    className={
+                      "flex-1 rounded-xl px-3 py-2 text-xs font-bold disabled:opacity-60 " +
+                      (l.status === "open_pool" ? "bg-primary-500 text-white" : "border border-primary-300 text-primary-700")
+                    }
+                  >
+                    {l.status === "open_pool" ? "Accept" : "View"}
+                  </button>
+                )}
+                {canAssign && (
+                  <button
+                    disabled={pending}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      openAssign(l);
+                    }}
+                    className="flex-1 rounded-xl border border-slate-300 px-3 py-2 text-xs font-bold text-slate-700 disabled:opacity-60"
+                  >
+                    Assign
+                  </button>
+                )}
+              </div>
             </div>
           ))}
           {leads.length === 0 && <p className="py-8 text-center text-sm text-slate-500">No leads here yet.</p>}
@@ -400,23 +459,34 @@ export function LeadsPage({
                   <td className="whitespace-nowrap">{timeAgo(l.created_at)}</td>
                   <td className="whitespace-nowrap">{l.profiles?.full_name || (l.status === "expired" ? <span className="font-bold text-red-600">Unclaimed</span> : <span className="font-bold text-primary-600">Open pool</span>)}</td>
                   <td className="whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
-                    {l.status === "open_pool" && canClaim ? (
-                      <button
-                        disabled={pending}
-                        onClick={() => openDetail(l)}
-                        className="whitespace-nowrap rounded-xl bg-primary-500 px-3 py-2 text-xs font-bold text-white disabled:opacity-60"
-                      >
-                        Accept
-                      </button>
-                    ) : (
-                      <Link
-                        href={`/leads/${l.id}`}
-                        onClick={(e) => e.stopPropagation()}
-                        className="whitespace-nowrap rounded-xl border border-primary-300 px-3 py-2 text-xs font-bold text-primary-700"
-                      >
-                        View
-                      </Link>
-                    )}
+                    <div className="flex items-center gap-2">
+                      {l.status === "open_pool" && canClaim ? (
+                        <button
+                          disabled={pending}
+                          onClick={() => openDetail(l)}
+                          className="whitespace-nowrap rounded-xl bg-primary-500 px-3 py-2 text-xs font-bold text-white disabled:opacity-60"
+                        >
+                          Accept
+                        </button>
+                      ) : (
+                        <Link
+                          href={`/leads/${l.id}`}
+                          onClick={(e) => e.stopPropagation()}
+                          className="whitespace-nowrap rounded-xl border border-primary-300 px-3 py-2 text-xs font-bold text-primary-700"
+                        >
+                          View
+                        </Link>
+                      )}
+                      {canAssign && (
+                        <button
+                          disabled={pending}
+                          onClick={() => openAssign(l)}
+                          className="whitespace-nowrap rounded-xl border border-slate-300 px-3 py-2 text-xs font-bold text-slate-700 disabled:opacity-60"
+                        >
+                          Assign
+                        </button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -509,6 +579,41 @@ export function LeadsPage({
               Release to open pool
             </button>
           )}
+        </ConfirmDetailModal>
+      )}
+
+      {assignLead && (
+        <ConfirmDetailModal
+          open
+          onClose={closeAssign}
+          title={`Assign ${assignLead.customers?.company_name || assignLead.customers?.contact_name || "this lead"}`}
+          description="Hand this lead to a specific sales user — moves it straight onto their list, same as if they'd claimed it themselves."
+          pending={pending}
+          error={assignError}
+          details={[
+            {
+              label: "Currently",
+              value: assignLead.profiles?.full_name || <span className="font-bold text-primary-600">Open pool</span>,
+            },
+          ]}
+          confirmLabel="Assign"
+          onConfirm={doAssign}
+        >
+          <label className="block text-sm font-bold">
+            Assign to
+            <select
+              value={assigneeId}
+              onChange={(e) => setAssigneeId(e.target.value)}
+              className="mt-1 w-full rounded-xl border px-3 py-2 font-normal"
+            >
+              <option value="">Choose a sales user…</option>
+              {assignableUsers.map((u) => (
+                <option key={u.id} value={u.id}>
+                  {u.full_name}
+                </option>
+              ))}
+            </select>
+          </label>
         </ConfirmDetailModal>
       )}
     </div>

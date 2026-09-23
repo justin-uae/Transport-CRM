@@ -3,8 +3,10 @@ import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { hasPermission, PERMISSIONS } from "@/lib/permissions";
 import { LeadDetailPage, type LeadDetail, type LeadDetailQuote, type LeadSourceDocument } from "@/components/pages/LeadDetailPage";
+import { getAssignableSalesUsers } from "@/lib/leadAssignees";
 import type { JourneyLeg } from "@/components/pages/JourneyLegDetail";
 import type { LeadEditRecord } from "@/components/pages/LeadEditHistory";
+import type { LeadAssignmentEvent } from "@/components/pages/LeadAssignmentHistory";
 
 export default async function Page({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -58,13 +60,34 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
     }
   }
 
-  const [canAddEnquiry, canClaim, canRelease, canEditCustomer, { data: editsRaw }] = await Promise.all([
+  const [canAddEnquiry, canClaim, canRelease, canEditCustomer, canAssign, canViewAuditLog, { data: editsRaw }] = await Promise.all([
     hasPermission(profile, PERMISSIONS.ENQUIRIES_ADD),
     hasPermission(profile, PERMISSIONS.ENQUIRIES_CLAIM_OPEN_LEADS),
     hasPermission(profile, PERMISSIONS.ENQUIRIES_RETURN_TO_POOL),
     hasPermission(profile, PERMISSIONS.ENQUIRIES_EDIT),
+    hasPermission(profile, PERMISSIONS.ENQUIRIES_REASSIGN),
+    hasPermission(profile, PERMISSIONS.ADMIN_VIEW_AUDIT_LOGS),
     supabase.from("lead_edits").select("id, reason, changes, created_at, profiles(full_name)").eq("lead_id", id).order("created_at", { ascending: false }),
   ]);
+
+  // Only fetched for someone who can actually use it — the dropdown of
+  // sales users a lead can be handed to.
+  const assignableUsers = canAssign ? await getAssignableSalesUsers(supabase) : [];
+
+  // audit_log's own select policy is gated on admin.view_audit_logs
+  // tenant-wide (Master Admin, Sales Manager, Finance Manager) — querying it
+  // for anyone else would just come back empty anyway, so skip the round trip.
+  const assignmentEvents = canViewAuditLog
+    ? ((
+        await supabase
+          .from("audit_log")
+          .select("id, action, new_value, created_at, actor:profiles!audit_log_actor_id_fkey(full_name)")
+          .eq("entity_type", "lead")
+          .eq("entity_id", id)
+          .in("action", ["lead_assigned_by_manager", "lead_claimed", "lead_released"])
+          .order("created_at", { ascending: false })
+      ).data ?? [])
+    : [];
 
   return (
     <LeadDetailPage
@@ -74,11 +97,14 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
       quote={quote}
       sourceDocument={sourceDocument}
       edits={(editsRaw ?? []) as unknown as LeadEditRecord[]}
+      assignmentEvents={assignmentEvents as unknown as LeadAssignmentEvent[]}
       currentUserId={profile.id}
       canAddEnquiry={canAddEnquiry}
       canClaim={canClaim}
       canRelease={canRelease}
       canEditCustomer={canEditCustomer}
+      canAssign={canAssign}
+      assignableUsers={assignableUsers}
     />
   );
 }
