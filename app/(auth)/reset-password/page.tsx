@@ -12,7 +12,7 @@ export default async function ResetPasswordPage() {
     <div>
       <h1 className="text-2xl font-black text-slate-900">Reset password</h1>
       <p className="mt-1 text-sm text-slate-500">
-        We'll email you a secure link to choose a new password.
+        Enter your email and we'll send you a one-time code to set a new password.
       </p>
       <div className="mt-6">
         <ResetPasswordForm hasSession={Boolean(profile)} />

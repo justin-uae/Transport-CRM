@@ -36,7 +36,7 @@ export function ResetPasswordForm({ hasSession = false }: { hasSession?: boolean
         return;
       }
       setSent(true);
-      setMessage("If that email has an account, a code has been sent.");
+      setMessage("If an account exists for that email, we've sent a 6-digit code — enter it below along with your new password.");
     });
   }
 
@@ -119,11 +119,17 @@ export function ResetPasswordForm({ hasSession = false }: { hasSession?: boolean
         />
       </div>
 
+      {message && (
+        <div className="rounded-xl bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-700">
+          {message}
+        </div>
+      )}
+
       {sent && (
         <>
           <div>
             <label className="text-sm font-bold text-slate-700" htmlFor="code">
-              Code from email
+              6-digit code
             </label>
             <input
               id="code"
@@ -136,6 +142,7 @@ export function ResetPasswordForm({ hasSession = false }: { hasSession?: boolean
               onChange={(e) => setCode(e.target.value)}
               className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-3 outline-none focus:border-primary-300 focus:ring-4 focus:ring-primary-100"
             />
+            <p className="mt-1 text-xs text-slate-400">From the email we just sent — check spam if you don't see it within a minute.</p>
           </div>
           <div>
             <label className="text-sm font-bold text-slate-700" htmlFor="new-password">
@@ -151,15 +158,11 @@ export function ResetPasswordForm({ hasSession = false }: { hasSession?: boolean
               autoComplete="new-password"
               className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-3 outline-none focus:border-primary-300 focus:ring-4 focus:ring-primary-100"
             />
+            <p className="mt-1 text-xs text-slate-400">At least 8 characters.</p>
           </div>
         </>
       )}
 
-      {message && (
-        <div className="rounded-xl bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-700">
-          {message}
-        </div>
-      )}
       {error && (
         <div className="rounded-xl bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">
           {error}
