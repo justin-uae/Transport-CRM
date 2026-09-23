@@ -18,7 +18,7 @@ export default async function Page({
 
   await healExpiredLeads(supabase);
 
-  const tab: LeadTab = params.tab === "pool" || params.tab === "all" ? params.tab : "mine";
+  const tab: LeadTab = params.tab === "pool" || params.tab === "all" || params.tab === "quoted" ? params.tab : "mine";
   const q = params.q?.trim() || "";
   const page = Math.max(1, Number(params.page) || 1);
   const from = (page - 1) * PAGE_SIZE;
@@ -31,10 +31,16 @@ export default async function Page({
       { count: "exact" },
     );
 
+  // "converted" (lead.status flips the moment quotes/new actually creates a
+  // quote from it — app/(staff)/quotes/new/actions.ts) is excluded from
+  // "mine" and given its own "Quoted" tab instead, so a lead already turned
+  // into a quote doesn't sit mixed in with ones still needing work.
   if (tab === "mine") {
-    listQuery = listQuery.eq("assigned_user_id", profile.id).neq("status", "closed");
+    listQuery = listQuery.eq("assigned_user_id", profile.id).not("status", "in", "(closed,converted)");
   } else if (tab === "pool") {
     listQuery = listQuery.eq("status", "open_pool");
+  } else if (tab === "quoted") {
+    listQuery = listQuery.eq("assigned_user_id", profile.id).eq("status", "converted");
   }
   if (q) {
     listQuery = listQuery.or(`pickup_text.ilike.%${q}%,destination_text.ilike.%${q}%,notes.ilike.%${q}%`);
@@ -44,6 +50,7 @@ export default async function Page({
     { data: leads, count },
     { count: mineCount },
     { count: poolCount },
+    { count: quotedCount },
     { data: openEnquiries },
     { count: openQuotesCount },
     canAddEnquiry,
@@ -57,8 +64,13 @@ export default async function Page({
       .from("leads")
       .select("id", { count: "exact", head: true })
       .eq("assigned_user_id", profile.id)
-      .neq("status", "closed"),
+      .not("status", "in", "(closed,converted)"),
     supabase.from("leads").select("id", { count: "exact", head: true }).eq("status", "open_pool"),
+    supabase
+      .from("leads")
+      .select("id", { count: "exact", head: true })
+      .eq("assigned_user_id", profile.id)
+      .eq("status", "converted"),
     supabase
       .from("enquiries")
       .select("id, status")
@@ -99,6 +111,7 @@ export default async function Page({
       tab={tab}
       mineCount={mineCount ?? 0}
       poolCount={poolCount ?? 0}
+      quotedCount={quotedCount ?? 0}
       page={page}
       pageSize={PAGE_SIZE}
       total={count ?? 0}

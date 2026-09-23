@@ -21,7 +21,7 @@ import { SOURCE_LABEL } from "@/lib/leadSource";
 import type { LeadSource, LeadStatus } from "@/lib/supabase/database.types";
 import type { AssignableUser } from "@/components/pages/LeadDetailPage";
 
-export type LeadTab = "mine" | "pool" | "all";
+export type LeadTab = "mine" | "pool" | "all" | "quoted";
 
 export interface LeadRow {
   id: string;
@@ -111,6 +111,7 @@ export function LeadsPage({
   tab,
   mineCount,
   poolCount,
+  quotedCount,
   page,
   pageSize,
   total,
@@ -128,6 +129,7 @@ export function LeadsPage({
   tab: LeadTab;
   mineCount: number;
   poolCount: number;
+  quotedCount: number;
   page: number;
   pageSize: number;
   total: number;
@@ -272,10 +274,11 @@ export function LeadsPage({
                   ],
                 },
                 {
-                  heading: "The three tabs",
+                  heading: "The tabs",
                   bullets: true,
                   body: [
-                    "My Leads — enquiries currently assigned to you.",
+                    "My Leads — enquiries assigned to you that haven't been quoted yet.",
+                    "Quoted — your leads that already have a quote built from them, kept separate so they don't sit mixed in with ones still needing work.",
                     "Open Pool — unclaimed leads anyone with permission can accept. Claiming one moves it onto your own list.",
                     "All — every lead across the team (only visible if your role allows it).",
                   ],
@@ -310,8 +313,9 @@ export function LeadsPage({
           </div>
         }
       />
-      <div className="mb-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="mb-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
         <Kpi title="My new leads" value={String(mineCount)} icon={UserCheck} />
+        <Kpi title="My quoted leads" value={String(quotedCount)} icon={FileText} />
         <Kpi title="Open pool" value={String(poolCount)} delta="Claimable now" icon={UserPlus} />
         <Kpi title="My open enquiries" value={String(myOpenEnquiries)} icon={TrendingUp} />
         <Kpi title="Quotes awaiting response" value={String(quotesAwaitingResponse)} icon={FileText} warn={quotesAwaitingResponse > 0} />
@@ -319,7 +323,7 @@ export function LeadsPage({
       <Panel>
         <div className="flex flex-col gap-3 border-b pb-4 md:flex-row md:items-center">
           <div className="flex gap-2">
-            {(["mine", "pool", "all"] as const)
+            {(["mine", "quoted", "pool", "all"] as const)
               .filter((t) => t !== "all" || canViewAll)
               .map((t) => (
                 <Link
@@ -330,7 +334,7 @@ export function LeadsPage({
                     (tab === t ? "bg-primary-500 text-white" : "bg-slate-100 text-slate-600")
                   }
                 >
-                  {t === "mine" ? "My Leads" : t === "pool" ? "Open Pool" : "All"}
+                  {t === "mine" ? "My Leads" : t === "quoted" ? "Quoted" : t === "pool" ? "Open Pool" : "All"}
                 </Link>
               ))}
           </div>
