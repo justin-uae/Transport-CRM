@@ -2,10 +2,10 @@ import { getProfile } from "@/lib/auth";
 import { ResetPasswordForm } from "./ResetPasswordForm";
 
 export default async function ResetPasswordPage() {
-  // A recovery link routes through /auth/confirm, which verifies the token
-  // server-side and sets the session cookie before redirecting here — so by
-  // the time this renders, an active session means "show the new-password
-  // form", not "request a new link".
+  // The reset flow is code-only (ResetPasswordForm) — verifying the emailed
+  // code establishes the session client-side on this same page, so this
+  // server-side check only matters for the rare case of someone with an
+  // already-active session landing here directly.
   const profile = await getProfile();
 
   return (
