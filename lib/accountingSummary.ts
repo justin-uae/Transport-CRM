@@ -43,7 +43,7 @@ interface QuoteRow {
   decided_at: string | null;
   customers: { company_name: string | null; contact_name: string } | null;
   quote_versions: { selling_price: number; supplier_estimated_cost: number | null } | null;
-  customer_payments: { amount: number; paid_at: string }[] | null;
+  customer_payments: { amount: number; paid_at: string; verification_status: string }[] | null;
 }
 
 interface SupplierInvoiceRow {
@@ -82,7 +82,7 @@ export async function getAccountingSummary(
     supabase
       .from("quotes")
       .select(
-        "id, quote_number, status, currency, decided_at, customers(company_name, contact_name), quote_versions!quotes_current_version_id_fkey(selling_price, supplier_estimated_cost), customer_payments(amount, paid_at)",
+        "id, quote_number, status, currency, decided_at, customers(company_name, contact_name), quote_versions!quotes_current_version_id_fkey(selling_price, supplier_estimated_cost), customer_payments(amount, paid_at, verification_status)",
       )
       .in("status", ["accepted", "partially_paid", "paid"]),
     // supplier_payments has no direct FK to job_supplier_invoices — both key
@@ -109,9 +109,14 @@ export async function getAccountingSummary(
   const ageingBuckets = { current: 0, d1_30: 0, d31_60: 0, d61plus: 0 };
 
   for (const q of quotes) {
-    const paidSoFar = (q.customer_payments ?? []).reduce((sum, p) => sum + Number(p.amount), 0);
+    // PAY-04: a bank transfer sits unverified until Finance confirms it —
+    // it doesn't count toward the balance anywhere else in the app, so it
+    // can't count here either (would otherwise understate what's still
+    // outstanding, and overstate collected revenue, until verified).
+    const verifiedPayments = (q.customer_payments ?? []).filter((p) => p.verification_status === "verified");
+    const paidSoFar = verifiedPayments.reduce((sum, p) => sum + Number(p.amount), 0);
 
-    for (const p of q.customer_payments ?? []) {
+    for (const p of verifiedPayments) {
       if (p.paid_at >= monthStart) {
         const converted = toGbp(Number(p.amount), q.currency, rates);
         collectedRevenueGbp += converted.value;

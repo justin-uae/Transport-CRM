@@ -49,7 +49,14 @@ export function amountDueNow(version: VersionForDue, alreadyPaid: number, milest
     : version.deposit_percentage
       ? round2((version.selling_price * version.deposit_percentage) / 100)
       : version.selling_price;
-  return Math.max(0, round2(target - alreadyPaid));
+  const dueForDeposit = round2(target - alreadyPaid);
+  if (dueForDeposit > 0.01) return dueForDeposit;
+  // The deposit/fixed target has already been met — same fallback as the
+  // milestone branch above: fall through to whatever of the full price is
+  // still outstanding, rather than reporting nothing due just because this
+  // one step is covered (a quote can be "partially_paid" — deposit in, full
+  // balance still owed — long after this point).
+  return Math.max(0, round2(version.selling_price - alreadyPaid));
 }
 
 /**
