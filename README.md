@@ -49,18 +49,26 @@ scripts/
    the Supabase CLI with this repo linked).
 3. Copy `.env.local.example` to `.env.local` and fill in the Supabase URL,
    anon key and service role key from **Project Settings → API**.
-4. In **Authentication → Email Templates**, update the **Invite user** and
-   **Reset Password** templates so their link points at `/auth/confirm`
-   instead of the default `{{ .ConfirmationURL }}` — required because this
-   app uses PKCE/SSR auth, and Supabase's default template links don't carry
-   a session through to a server-rendered app. Replace the link `href` in
-   each template with:
-   ```
-   {{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=invite&next=/accept-invite
-   ```
-   (use `type=recovery&next=/reset-password` for the Reset Password template).
+4. In **Authentication → Email Templates**:
+   - **Invite user**: update its link to point at `/auth/confirm` instead of
+     the default `{{ .ConfirmationURL }}` — required because this app uses
+     PKCE/SSR auth, and Supabase's default template links don't carry a
+     session through to a server-rendered app. Replace the link `href` with:
+     ```
+     {{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=invite&next=/accept-invite
+     ```
+   - **Reset Password**: this flow is code-only, deliberately not a link — a
+     one-time link depends on nothing pre-visiting it before the real click,
+     which isn't reliable in practice (a mail-side scanner or antivirus
+     pre-fetching and burning the token before the person clicks is a known
+     failure mode). Just add `{{ .Token }}` somewhere in the body, e.g.
+     "Your reset code: **{{ .Token }}**" — the reset-password page has the
+     person type this code in directly (`supabase.auth.verifyOtp`), no link
+     needed.
+
    Set **Site URL** (same section) to your app's URL (`http://localhost:3000`
-   locally, your Render URL in production) so `{{ .SiteURL }}` resolves correctly.
+   locally, your Render URL in production) so `{{ .SiteURL }}` resolves
+   correctly for the invite link.
 5. Install and run:
    ```bash
    npm install
@@ -129,9 +137,10 @@ This is separate from `SMTP_*` and has a low built-in send limit. Fix it in
 `smtp.sendgrid.net` / `apikey` / API-key details as above, then raise
 **Authentication → Rate Limits** as a safety margin. While there, confirm
 **Authentication → URL Configuration**'s Site URL and Redirect URLs
-(`/reset-password`, `/accept-invite`, `/auth/confirm`) point at your real
-domain — a stale value here is the usual cause of a reset/invite link
-landing on a dead URL.
+(`/accept-invite`, `/auth/confirm`) point at your real domain — a stale value
+here is the usual cause of an invite link landing on a dead URL. Password
+reset doesn't need a redirect URL at all — it's code-only (step 4 above), not
+a link.
 
 ## What's real vs. demo in this build
 
