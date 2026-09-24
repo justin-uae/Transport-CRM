@@ -19,6 +19,8 @@ function describe(e: LeadAssignmentEvent): string {
       return `${actor} claimed this lead from the open pool`;
     case "lead_released":
       return `${actor} released this lead back to the open pool`;
+    case "lead_released_sla_breach":
+      return "Automatically released back to the open pool — it sat unquoted past the AI Auto-Quote SLA";
     default:
       return `${actor} updated this lead's ownership`;
   }

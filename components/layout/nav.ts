@@ -24,6 +24,7 @@ import {
   MessageSquareWarning,
   TriangleAlert,
   Settings,
+  Bot,
   type LucideIcon,
 } from "lucide-react";
 import { PERMISSIONS, type PermissionKey } from "@/lib/permissionKeys";
@@ -105,6 +106,17 @@ export const NAV: NavItem[] = [
     // the actual rows to "mine" for a plain Sales User vs "everyone's" for
     // enquiries.view_all (Master Admin, Sales Manager), no separate
     // permission needed for the nav item itself.
+    anyOf: [PERMISSIONS.QUOTES_CREATE, PERMISSIONS.QUOTES_VIEW_SELLING_PRICE],
+  },
+  {
+    label: "AI Created Quotes",
+    href: "/quotes/ai-created",
+    icon: Bot,
+    group: "sales",
+    // Same gate as Pending Quotes/Partially Paid — RLS scopes rows to
+    // everyone tenant-wide for enquiries.view_all (Master Admin, Sales
+    // Manager) and to nothing for a plain Sales User, since an AI-quoted
+    // lead has no assigned rep by the time it's quoted (see lib/aiAutoQuote.ts).
     anyOf: [PERMISSIONS.QUOTES_CREATE, PERMISSIONS.QUOTES_VIEW_SELLING_PRICE],
   },
   {

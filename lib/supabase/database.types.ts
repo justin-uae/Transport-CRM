@@ -14,6 +14,12 @@ export interface Tenant {
   slug: string;
   /** Tenant-wide Terms & Conditions boilerplate — the fallback quotes fall back to (both the PDF and the public quote page) when a quote has no per-quote terms_snapshot override. Admin-editable from Settings → Bank Details & Terms. */
   terms_and_conditions: string | null;
+  /** Master-Admin-only switch (Settings → AI Auto-Quote) — when true, the ai-auto-quote cron sweep is allowed to release stale leads and have OpenAI price/send a quote for them. */
+  ai_auto_quote_enabled: boolean;
+  /** Business hours (Mon–Sat, see lib/businessHours.ts) a lead can sit unquoted before the sweep takes over. Default 24. */
+  ai_auto_quote_sla_hours: number;
+  /** When the switch last flipped off -> on — the sweep floors a lead's SLA countdown here so turning it on doesn't treat the whole existing backlog as instantly overdue. Null until first enabled. */
+  ai_auto_quote_enabled_at: string | null;
   created_at: string;
 }
 
@@ -347,6 +353,8 @@ export interface Enquiry {
   customer_notes: string | null;
   created_by: string | null;
   is_complex_booking: boolean;
+  /** True when the ai-auto-quote sweep created this enquiry itself (no staff ever clicked "Create Quote") rather than a human via createEnquiryFromLeadAction. */
+  ai_generated: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -401,6 +409,8 @@ export interface Quote {
   /** Why and by whom this booking was cancelled — set by cancelBookingAction, see 0077_quote_cancellation_history.sql. */
   cancellation_reason: string | null;
   cancelled_by: string | null;
+  /** True when OpenAI priced and sent this quote itself via the ai-auto-quote sweep (see lib/aiAutoQuote.ts), rather than a human via quotes/new/actions.ts. created_by stays null on these. */
+  ai_generated: boolean;
   created_at: string;
   updated_at: string;
 }

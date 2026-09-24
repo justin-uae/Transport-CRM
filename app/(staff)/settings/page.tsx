@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Users, ShieldCheck, Building2, History } from "lucide-react";
+import { Users, ShieldCheck, Building2, History, Bot } from "lucide-react";
 import { Panel } from "@/components/ui/Panel";
 import { PageHead } from "@/components/ui/PageHead";
 import { PageGuide } from "@/components/ui/PageGuide";
@@ -14,9 +14,19 @@ const CARDS = [
   { label: "Audit Log", href: "/settings/audit-log", icon: History, text: "Review every financial, pricing and user change." },
 ];
 
+const MASTER_ADMIN_CARDS = [
+  {
+    label: "AI Auto-Quote",
+    href: "/settings/ai-auto-quote",
+    icon: Bot,
+    text: "Set how long a lead can sit unquoted before OpenAI prices and sends a quote automatically.",
+  },
+];
+
 export default async function SettingsOverviewPage() {
   const profile = await requireProfile();
   const supabase = await createClient();
+  const cards = profile.is_master_admin ? [...CARDS, ...MASTER_ADMIN_CARDS] : CARDS;
 
   const { data: tenant } = await supabase
     .from("tenants")
@@ -58,7 +68,7 @@ export default async function SettingsOverviewPage() {
         }
       />
       <div className="grid gap-4 sm:grid-cols-2">
-        {CARDS.map(({ label, href, icon: Icon, text }) => (
+        {cards.map(({ label, href, icon: Icon, text }) => (
           <Link key={href} href={href}>
             <Panel className="h-full transition hover:border-primary-300">
               <div className="flex items-start gap-4">

@@ -53,6 +53,8 @@ services:
         sync: false
       - key: WHATSAPP_API_BASE_URL
         sync: false
+      - key: OPENAI_API_KEY
+        sync: false
       - key: NODE_VERSION
         value: 20.17.0
 
@@ -77,6 +79,20 @@ services:
     buildCommand: npm install
     startCommand: >
       curl -sf -X POST "$NEXT_PUBLIC_APP_URL/api/cron/task-automation"
+      -H "Authorization: Bearer $CRON_SECRET"
+    envVars:
+      - key: NEXT_PUBLIC_APP_URL
+        sync: false
+      - key: CRON_SECRET
+        sync: false
+
+  - type: cron
+    name: ai-auto-quote
+    runtime: node
+    schedule: "0 * * * *"
+    buildCommand: npm install
+    startCommand: >
+      curl -sf -X POST "$NEXT_PUBLIC_APP_URL/api/cron/ai-auto-quote"
       -H "Authorization: Bearer $CRON_SECRET"
     envVars:
       - key: NEXT_PUBLIC_APP_URL
