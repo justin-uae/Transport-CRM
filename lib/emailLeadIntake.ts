@@ -199,24 +199,34 @@ interface SweepResult {
   leadsCreated: number;
   discarded: number;
   failed: number;
+  /** IMAP-connection-level failures (wrong host/port/credentials, network issue) — these used to only go to console.error, which lives on the web service's own logs, not the cron job's, making a silent connection failure indistinguishable from "nothing new to process." Surfaced here instead so the cron run's own JSON response tells the whole story. */
+  errors: string[];
 }
 
-/** The cron entry point (app/api/cron/email-lead-intake/route.ts). Silently no-ops (not an error) if the shared inbox's IMAP credentials aren't configured yet, so shipping this code ahead of having them is safe. */
+/** The cron entry point (app/api/cron/email-lead-intake/route.ts). Reports (rather than silently no-ops) if the shared inbox's IMAP credentials aren't configured yet, so that's visible in the cron run's own output instead of looking identical to "ran fine, nothing new." */
 export async function runEmailLeadIntakeSweep(admin: Admin): Promise<SweepResult> {
-  const result: SweepResult = { checked: 0, leadsCreated: 0, discarded: 0, failed: 0 };
+  const result: SweepResult = { checked: 0, leadsCreated: 0, discarded: 0, failed: 0, errors: [] };
 
   const host = process.env.LEADS_INBOX_IMAP_HOST;
   const port = process.env.LEADS_INBOX_IMAP_PORT;
   const user = process.env.LEADS_INBOX_IMAP_USER;
   const pass = process.env.LEADS_INBOX_IMAP_PASS;
-  if (!host || !port || !user || !pass) return result;
+  if (!host || !port || !user || !pass) {
+    result.errors.push("LEADS_INBOX_IMAP_HOST/PORT/USER/PASS are not fully configured — the sweep did not run.");
+    return result;
+  }
 
   const { data: tenants } = await admin
     .from("tenants")
     .select("id, default_lead_inbox_brand_id, email_lead_inbox_synced_since")
     .not("default_lead_inbox_brand_id", "is", null);
 
-  for (const tenant of tenants ?? []) {
+  if (!tenants || tenants.length === 0) {
+    result.errors.push("No tenant has default_lead_inbox_brand_id set — nothing to sweep (see 0088_email_lead_intake.sql).");
+    return result;
+  }
+
+  for (const tenant of tenants) {
     const { data: brand } = await admin.from("brands").select("id, name").eq("id", tenant.default_lead_inbox_brand_id!).maybeSingle();
     if (!brand) continue;
 
@@ -280,7 +290,9 @@ export async function runEmailLeadIntakeSweep(admin: Admin): Promise<SweepResult
       }
       await admin.from("tenants").update({ email_lead_inbox_synced_since: new Date().toISOString() }).eq("id", tenant.id);
     } catch (err) {
-      console.error(`emailLeadIntake: IMAP sweep failed for tenant ${tenant.id}:`, err instanceof Error ? err.message : err);
+      const message = err instanceof Error ? err.message : "Unknown IMAP error.";
+      console.error(`emailLeadIntake: IMAP sweep failed for tenant ${tenant.id}:`, message);
+      result.errors.push(`Tenant ${tenant.id}: ${message}`);
     } finally {
       await client.logout().catch(() => undefined);
     }
