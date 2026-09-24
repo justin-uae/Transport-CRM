@@ -55,7 +55,7 @@ export function AiCreatedQuotesPage({
       <PageHead
         eyebrow="Sales Workspace"
         title="AI Created Quotes"
-        text="Quotes OpenAI priced and sent automatically after a lead sat unquoted past the SLA (Settings -> AI Auto-Quote)."
+        text="Quotes Global Bus AI priced and sent automatically after a lead sat unquoted past the SLA (Settings -> AI Auto-Quote)."
       />
       <div className="grid gap-4 md:grid-cols-2">
         <Kpi title="AI-created quotes" value={String(total)} icon={Bot} />

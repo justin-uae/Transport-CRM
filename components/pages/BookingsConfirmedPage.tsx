@@ -2,7 +2,7 @@ import Link from "next/link";
 import { PageHead } from "@/components/ui/PageHead";
 import { Panel } from "@/components/ui/Panel";
 import { BookingTabs, BookingsGuideButton } from "@/components/pages/BookingTabs";
-import { formatDate } from "@/lib/formatDate";
+import { formatDate, formatDateTime } from "@/lib/formatDate";
 import type { JobStatus } from "@/lib/supabase/database.types";
 
 type CustomerRef = { company_name: string | null; contact_name: string } | null;
@@ -22,13 +22,17 @@ export interface ConfirmedBookingJob {
     quote_versions: VersionRef;
     profiles: { full_name: string } | null;
   } | null;
-  job_allocations: { status: JobStatus; suppliers: { name: string } | null }[];
+  job_allocations: { status: JobStatus; offered_at: string | null; suppliers: { name: string } | null }[];
 }
 
-function allocationSummary(allocations: { status: JobStatus; suppliers: { name: string } | null }[]) {
+function allocationSummary(allocations: { status: JobStatus; offered_at: string | null; suppliers: { name: string } | null }[]) {
   const live = allocations.filter((a) => a.status !== "cancelled");
   if (live.length === 0) return null;
-  if (live.length === 1) return live[0]!.suppliers ? `Assigned to ${live[0]!.suppliers!.name}` : null;
+  if (live.length === 1) {
+    const a = live[0]!;
+    if (!a.suppliers) return null;
+    return a.offered_at ? `Assigned to ${a.suppliers.name} · ${formatDateTime(a.offered_at)}` : `Assigned to ${a.suppliers.name}`;
+  }
   const assigned = live.filter((a) => a.suppliers).length;
   return `${assigned} of ${live.length} suppliers assigned`;
 }

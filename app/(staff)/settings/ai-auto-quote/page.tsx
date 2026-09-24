@@ -23,7 +23,7 @@ export default async function AiAutoQuotePage() {
       <PageHead
         eyebrow="Administration"
         title="AI Auto-Quote"
-        text="Have OpenAI price and send a quote automatically when a lead sits unquoted too long."
+        text="Have Global Bus AI price and send a quote automatically when a lead sits unquoted too long."
         action={
           <PageGuide
             title="AI Auto-Quote"
@@ -44,7 +44,7 @@ export default async function AiAutoQuotePage() {
                 bullets: true,
                 body: [
                   "If the lead is currently assigned to a sales user, it's released back to the open pool first — visible on the lead's Assignment history.",
-                  "OpenAI estimates a market-rate selling price and supplier cost for the trip, and a real quote is created and emailed to the customer automatically — same email, PDF and quote lifecycle as a human-sent quote.",
+                  "Global Bus AI estimates a market-rate selling price and supplier cost for the trip, and a real quote is created and emailed to the customer automatically — same email, PDF and quote lifecycle as a human-sent quote.",
                   "Every AI-priced quote shows up in Sales -> AI Created Quotes so it's easy to review what went out automatically.",
                 ],
               },

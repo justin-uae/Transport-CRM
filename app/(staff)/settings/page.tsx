@@ -19,7 +19,7 @@ const MASTER_ADMIN_CARDS = [
     label: "AI Auto-Quote",
     href: "/settings/ai-auto-quote",
     icon: Bot,
-    text: "Set how long a lead can sit unquoted before OpenAI prices and sends a quote automatically.",
+    text: "Set how long a lead can sit unquoted before Global Bus AI prices and sends a quote automatically.",
   },
 ];
 
