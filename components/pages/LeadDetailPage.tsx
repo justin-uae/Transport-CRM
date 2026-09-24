@@ -517,7 +517,10 @@ export function LeadDetailPage({
             {lead.customers ? (
               <div className="mt-4 text-sm">
                 <Row label="Name" value={lead.customers.company_name || lead.customers.contact_name} />
-                <Row label="Email" value={lead.customers.email} />
+                <Row
+                  label="Email"
+                  value={lead.customers.email ? lead.customers.email : <span className="text-amber-600">No email on file</span>}
+                />
                 <Row label="Phone" value={lead.customers.phone} />
                 <Link
                   href={`/customers/${lead.customers.id}`}

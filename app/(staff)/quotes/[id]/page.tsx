@@ -70,7 +70,7 @@ interface QuoteDetailRow {
   cancelled_by_profile: { full_name: string } | null;
   created_by: string | null;
   created_by_profile: { full_name: string } | null;
-  customers: { company_name: string | null; contact_name: string; phone: string | null; email: string | null } | null;
+  customers: { id: string; company_name: string | null; contact_name: string; phone: string | null; email: string | null } | null;
   enquiries: { id: string; assigned_user_id: string | null; enquiry_legs: (JourneyLeg & { id: string })[] } | null;
   quote_versions: VersionRow[];
   quote_events: { event: QuoteEventType; created_at: string }[];
@@ -109,7 +109,7 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
   const { data: quoteRaw, error: quoteError } = await supabase
     .from("quotes")
     .select(
-      "id, quote_number, status, currency, expiry_at, invoice_number, invoiced_at, public_token, created_at, sent_at, viewed_at, decided_at, cancellation_reason, cancelled_by, cancelled_by_profile:profiles!quotes_cancelled_by_fkey(full_name), created_by, created_by_profile:profiles!quotes_created_by_fkey(full_name), customers(company_name, contact_name, phone, email), enquiries(id, assigned_user_id, enquiry_legs(id, sequence, journey_type, pickup_address, destination_address, via_points, pickup_date, pickup_time, return_date, return_time, passenger_count, luggage_count, wheelchair_required, child_seats, special_requirements, vehicle_types(name))), quote_versions!quote_versions_quote_id_fkey(id, version_number, vehicle_description, supplier_estimated_cost, selling_price, currency, deposit_percentage, deposit_fixed_amount, customer_notes, terms_snapshot, created_at, quote_line_items(id, description, amount, category)), quote_events(event, created_at), quote_decisions(decision, reason, free_text, decided_at), customer_payments(id, amount, method, paid_at), quote_payment_milestones(id, sequence, label, amount, due_date)",
+      "id, quote_number, status, currency, expiry_at, invoice_number, invoiced_at, public_token, created_at, sent_at, viewed_at, decided_at, cancellation_reason, cancelled_by, cancelled_by_profile:profiles!quotes_cancelled_by_fkey(full_name), created_by, created_by_profile:profiles!quotes_created_by_fkey(full_name), customers(id, company_name, contact_name, phone, email), enquiries(id, assigned_user_id, enquiry_legs(id, sequence, journey_type, pickup_address, destination_address, via_points, pickup_date, pickup_time, return_date, return_time, passenger_count, luggage_count, wheelchair_required, child_seats, special_requirements, vehicle_types(name))), quote_versions!quote_versions_quote_id_fkey(id, version_number, vehicle_description, supplier_estimated_cost, selling_price, currency, deposit_percentage, deposit_fixed_amount, customer_notes, terms_snapshot, created_at, quote_line_items(id, description, amount, category)), quote_events(event, created_at), quote_decisions(decision, reason, free_text, decided_at), customer_payments(id, amount, method, paid_at), quote_payment_milestones(id, sequence, label, amount, due_date)",
     )
     .eq("id", id)
     .single();
@@ -263,8 +263,14 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
                 <dd className="mt-0.5 font-semibold">{customer?.company_name || customer?.contact_name || "—"}</dd>
               </div>
               <div>
-                <dt className="text-xs font-bold uppercase text-slate-400">Contact</dt>
-                <dd className="mt-0.5 font-semibold">{customer?.phone || customer?.email || "—"}</dd>
+                <dt className="text-xs font-bold uppercase text-slate-400">Phone</dt>
+                <dd className="mt-0.5 font-semibold">{customer?.phone || "—"}</dd>
+              </div>
+              <div>
+                <dt className="text-xs font-bold uppercase text-slate-400">Email</dt>
+                <dd className="mt-0.5 font-semibold">
+                  {customer?.email ? customer.email : <span className="text-amber-600">No email on file</span>}
+                </dd>
               </div>
               <div>
                 <dt className="text-xs font-bold uppercase text-slate-400">Sales rep</dt>
@@ -275,6 +281,21 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
                 <dd className="mt-0.5 font-semibold">{quote.sent_at ? formatDateTime(quote.sent_at) : "—"}</dd>
               </div>
             </dl>
+            {customer?.id && (
+              <Link
+                href={`/customers/${customer.id}`}
+                className="mt-4 inline-block rounded-xl border px-4 py-2 text-sm font-bold text-primary-600 hover:bg-primary-50"
+              >
+                View customer record →
+              </Link>
+            )}
+            {quote.sent_at && !customer?.email && (
+              <p className="mt-4 rounded-xl bg-amber-50 p-3 text-xs font-semibold text-amber-700">
+                This quote is marked as sent, but the customer has no email on file — it was never actually emailed to
+                them. Add an email address to the customer record above, then use &ldquo;Resend Quote Email&rdquo; to
+                deliver it.
+              </p>
+            )}
           </Panel>
 
           <Panel>

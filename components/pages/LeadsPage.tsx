@@ -555,7 +555,10 @@ export function LeadsPage({
               ),
             },
             { label: "Customer phone", value: detailLead.customers?.phone ?? "—" },
-            { label: "Customer email", value: detailLead.customers?.email ?? "—" },
+            {
+              label: "Customer email",
+              value: detailLead.customers?.email ?? <span className="text-amber-600">No email on file</span>,
+            },
             { label: detailIsGeneralEnquiry ? "Message" : "Notes", value: detailLead.notes ?? "—" },
           ]}
           confirmLabel={
