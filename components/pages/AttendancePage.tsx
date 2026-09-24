@@ -1,6 +1,7 @@
 "use client";
 
 import { LogIn, Coffee, LogOut, Clock3 } from "lucide-react";
+import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import clsx from "clsx";
 import { Panel } from "@/components/ui/Panel";
 import { PageHead } from "@/components/ui/PageHead";
@@ -24,7 +25,9 @@ export interface TeamRow {
   name: string;
   status: string;
   clockInAt: string | null;
-  activeMs: number;
+  clockOutAt: string | null;
+  /** null means this day (not necessarily today) has no clock-out yet and isn't the live/current day either — see dailyActiveMs in the route page. */
+  activeMs: number | null;
 }
 
 const STATUS_STYLE: Record<string, string> = {
@@ -50,9 +53,34 @@ function dateLabel(dateStr: string) {
   return formatDate(dateStr);
 }
 
-export function AttendancePage({ recentDays, teamRows }: { recentDays: DailySummary[]; teamRows: TeamRow[] | null }) {
+export function AttendancePage({
+  recentDays,
+  teamRows,
+  selectedDate,
+  todayStr,
+}: {
+  recentDays: DailySummary[];
+  teamRows: TeamRow[] | null;
+  selectedDate: string;
+  todayStr: string;
+}) {
   const { status, elapsedLabel, pending, clockIn, startBreak, endBreak, clockOut } = useAttendance();
   const available = legalNextEvents(status);
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const isSelectedToday = selectedDate === todayStr;
+
+  function changeDate(next: string) {
+    const params = new URLSearchParams(searchParams.toString());
+    if (next === todayStr) {
+      params.delete("date");
+    } else {
+      params.set("date", next);
+    }
+    const qs = params.toString();
+    router.push(qs ? `${pathname}?${qs}` : pathname);
+  }
 
   return (
     <div>
@@ -73,9 +101,9 @@ export function AttendancePage({ recentDays, teamRows }: { recentDays: DailySumm
                 ],
               },
               {
-                heading: "Today's attendance overview",
+                heading: "Team attendance overview",
                 body: [
-                  "Managers see every team member's live status here — Not Clocked In, Working, On Break or Clocked Out — with each person's clock-in time and running active time.",
+                  "Managers see every team member's status here — Not Clocked In, Working, On Break or Clocked Out — with clock-in, clock-out and active time. Defaults to today's live view; pick an earlier date to see that day's record instead. Incomplete means no clock-out was recorded for that day.",
                 ],
               },
               {
@@ -135,13 +163,29 @@ export function AttendancePage({ recentDays, teamRows }: { recentDays: DailySumm
 
         {teamRows && (
           <Panel className="min-w-0">
-            <SectionTitle title="Today's attendance overview" sub="Live team status" />
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <SectionTitle
+                title={isSelectedToday ? "Today's attendance overview" : `Attendance overview — ${dateLabel(selectedDate)}`}
+                sub={isSelectedToday ? "Live team status" : "As recorded for the selected date"}
+              />
+              <label className="flex items-center gap-2 text-xs font-bold text-slate-500">
+                Date
+                <input
+                  type="date"
+                  value={selectedDate}
+                  max={todayStr}
+                  onChange={(e) => e.target.value && changeDate(e.target.value)}
+                  className="rounded-lg border px-2.5 py-1.5 text-sm font-semibold text-slate-700"
+                />
+              </label>
+            </div>
             <div className="mt-4 overflow-x-auto">
-              <table className="w-full min-w-[480px] text-sm">
+              <table className="w-full min-w-[560px] text-sm">
                 <thead className="text-left text-xs uppercase text-slate-400">
                   <tr>
                     <th className="pb-3">User</th>
                     <th>Clock in</th>
+                    <th>Clock out</th>
                     <th>Active time</th>
                     <th>Status</th>
                   </tr>
@@ -151,7 +195,8 @@ export function AttendancePage({ recentDays, teamRows }: { recentDays: DailySumm
                     <tr className="border-t" key={u.profileId}>
                       <td className="whitespace-nowrap py-4 font-bold">{u.name}</td>
                       <td className="whitespace-nowrap">{timeLabel(u.clockInAt)}</td>
-                      <td className="whitespace-nowrap">{u.clockInAt ? formatDuration(u.activeMs) : "—"}</td>
+                      <td className="whitespace-nowrap">{timeLabel(u.clockOutAt)}</td>
+                      <td className="whitespace-nowrap">{u.activeMs == null ? (u.clockInAt ? "Incomplete" : "—") : formatDuration(u.activeMs)}</td>
                       <td className="whitespace-nowrap">
                         <span className={clsx("rounded-full px-2 py-1 text-xs font-bold", STATUS_STYLE[u.status])}>
                           {STATUS_LABEL[u.status]}
@@ -161,7 +206,7 @@ export function AttendancePage({ recentDays, teamRows }: { recentDays: DailySumm
                   ))}
                   {teamRows.length === 0 && (
                     <tr>
-                      <td colSpan={4} className="py-8 text-center text-sm text-slate-500">
+                      <td colSpan={5} className="py-8 text-center text-sm text-slate-500">
                         No team members yet.
                       </td>
                     </tr>

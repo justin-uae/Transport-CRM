@@ -18,6 +18,17 @@ export function daysAgoIso(days: number): string {
   return start.toISOString();
 }
 
+/** UTC-midnight boundaries for an arbitrary "YYYY-MM-DD" calendar day — same convention as startOfTodayIso, just parameterised for the team-by-date view (Attendance page's date picker). */
+export function dayBoundsIso(dateStr: string): { startIso: string; endIso: string } {
+  const parts = dateStr.split("-").map(Number);
+  const y = parts[0] ?? 1970;
+  const m = parts[1] ?? 1;
+  const d = parts[2] ?? 1;
+  const start = new Date(Date.UTC(y, m - 1, d));
+  const end = new Date(Date.UTC(y, m - 1, d + 1));
+  return { startIso: start.toISOString(), endIso: end.toISOString() };
+}
+
 /** This user's own attendance_events from `sinceIso` onward, oldest first. */
 export async function getEventsSince(
   supabase: SupabaseClient<Database>,
