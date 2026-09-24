@@ -30,7 +30,8 @@ import {
 // (whatsapp_intake_sessions.messages/collected, migration
 // 0082_whatsapp_ai_intake.sql). A lead is only ever created once our own
 // server-side check (hasRequiredTripFields), not the model's say-so alone,
-// confirms name/pickup/destination/travel date are all present.
+// confirms all seven fields (name, email, pickup, destination, travel date,
+// passenger count, notes) are present.
 
 type AdminClient = ReturnType<typeof createAdminClient>;
 
@@ -178,6 +179,15 @@ async function createLeadFromSession(admin: AdminClient, brand: Brand, waId: str
   const name = collected.name?.trim() || waId;
   const email = collected.email?.trim() || null;
 
+  // Merge the customer's own "anything else?" answer with the unparsed-date
+  // fallback (both, one, or neither may apply) rather than one clobbering
+  // the other — "None" isn't worth keeping on the lead, so it's dropped.
+  const noteParts: string[] = [];
+  const customerNotes = collected.notes?.trim();
+  if (customerNotes && !/^(none|no|n\/a|nil|nothing)\.?$/i.test(customerNotes)) noteParts.push(customerNotes);
+  if (!travelDate && collected.travel_date) noteParts.push(`Requested date (as typed via WhatsApp): ${collected.travel_date}`);
+  const notes = noteParts.length ? noteParts.join(" | ") : null;
+
   await admin.from("customers").update({ contact_name: name, phone: waId, ...(email ? { email } : {}) }).eq("id", customerId);
 
   const { data: lead, error: leadError } = await admin
@@ -192,7 +202,7 @@ async function createLeadFromSession(admin: AdminClient, brand: Brand, waId: str
       destination_text: collected.destination,
       passenger_count: collected.passenger_count,
       travel_date: travelDate,
-      notes: !travelDate && collected.travel_date ? `Requested date (as typed via WhatsApp): ${collected.travel_date}` : null,
+      notes,
       raw_payload: { waId, ...collected },
     })
     .select("id")

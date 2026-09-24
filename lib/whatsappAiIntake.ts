@@ -15,6 +15,7 @@ export interface CollectedTrip {
   destination: string | null;
   passenger_count: number | null;
   travel_date: string | null;
+  notes: string | null;
 }
 
 export interface ConversationMessage {
@@ -35,6 +36,7 @@ const EMPTY_COLLECTED: CollectedTrip = {
   destination: null,
   passenger_count: null,
   travel_date: null,
+  notes: null,
 };
 
 /** Circuit breaker on both cost and customer experience — a conversation
@@ -61,21 +63,27 @@ const TURN_SCHEMA = {
         email: { type: ["string", "null"] },
         pickup: { type: ["string", "null"], description: "Pickup location, in the customer's own words" },
         destination: { type: ["string", "null"], description: "Destination, in the customer's own words" },
-        passenger_count: { type: ["integer", "null"] },
+        passenger_count: { type: ["integer", "null"], description: "How many passengers are travelling. Required — always ask for a number, never leave it unasked." },
         travel_date: {
           type: ["string", "null"],
           description:
             "The travel date, resolved to an explicit calendar date (e.g. \"2026-10-06\") whenever you can work it out from what the customer said plus today's date given in your instructions — including relative phrases like \"next Friday\" or \"6th of next month\". Only fall back to their raw wording if it's genuinely too vague to resolve to a specific date (e.g. \"sometime in the new year\").",
         },
+        notes: {
+          type: ["string", "null"],
+          description:
+            "Any further/special requirements the customer mentions when you ask (e.g. wheelchair access, luggage, child seats, a specific pickup time). This must always be explicitly asked about once the trip basics are known. If the customer says they have nothing else to add, set this to \"None\" rather than leaving it null — null means you haven't asked yet.",
+        },
       },
-      required: ["name", "email", "pickup", "destination", "passenger_count", "travel_date"],
+      required: ["name", "email", "pickup", "destination", "passenger_count", "travel_date", "notes"],
       additionalProperties: false,
       description:
         "The COMPLETE, cumulative set of trip details known so far across the whole conversation — not just this message. Carry forward every previously known value; only change one if the customer corrects it.",
     },
     ready: {
       type: "boolean",
-      description: "True only once name, email, pickup, destination and travel_date are all known well enough to create a booking lead. Passenger count doesn't need to be known.",
+      description:
+        "True only once name, email, pickup, destination, travel_date, passenger_count are all known AND notes has been explicitly asked about (set to \"None\" if the customer had nothing to add) — all seven fields are required, none may be skipped.",
     },
   },
   required: ["reply", "collected", "ready"],
@@ -88,14 +96,16 @@ function systemPrompt(brandName: string, todayIso: string): string {
     `directly with a customer to understand what trip they need. Today's date is ${todayIso}.\n\n` +
     `Goals:\n` +
     `- Have a natural, warm, concise WhatsApp conversation — short messages, no markdown, no long paragraphs.\n` +
-    `- Collect ALL of these before finishing: the customer's name, email address, pickup location, destination, travel date, and number of passengers. Passenger count is the only one you may skip if the customer doesn't have a number yet — the other five are all required, including email.\n` +
-    `- Ask about one or two missing things at a time — never demand everything in a single message.\n` +
-    `- Never invent or guess a value the customer hasn't actually told you. Leave a field null until they say it.\n` +
+    `- These SEVEN fields are ALL required, every single time, with no exceptions — never skip one, never decide a customer "seems like" they don't need to answer one: full name, email address, pickup location, destination, travel date, number of passengers, and any further/special requirements (notes).\n` +
+    `- Ask for ONLY ONE field per message — never combine two questions in the same message. In particular, name and email are two separate questions asked one after another, never in the same message. The same applies to every other field.\n` +
+    `- Suggested order: name, then email, then pickup, then destination, then travel date, then number of passengers, then finally ask "Is there anything else you'd like us to know, or any specific requirements for the trip?" as its own separate message. If the customer says no/none, record notes as "None" — do not leave notes null, since null means you haven't asked yet, not that the answer was empty.\n` +
+    `- Never invent or guess a value the customer hasn't actually told you. Leave a field null until they've actually answered that specific question.\n` +
     `- When the customer gives a travel date, work out the actual calendar date yourself using today's date above — resolve relative phrases like "next Friday" or "6th of next month" into an explicit date rather than leaving them as vague wording.\n` +
+    `- If the customer volunteers several fields unprompted in one message (e.g. they type their whole trip in one go), that's fine — extract everything they gave you, then continue by asking for whichever of the seven fields is still missing, one at a time.\n` +
     `- If the customer shares a location pin, it will already be described to you as text (e.g. "Shared location: ...") — treat it as their answer for whichever question you just asked.\n` +
     `- If the customer asks something unrelated to booking a trip, answer briefly and helpfully if you can, then steer the conversation back to finishing their request.\n` +
-    `- Once you have name, email, pickup, destination and travel date (passenger count only if they gave you one), set ready to true and make your reply a warm confirmation summarizing what you've got and letting them know the team will follow up shortly.\n` +
-    `- Never set ready to true until you genuinely have those fields — don't rush the customer, and don't skip asking for email just because you have everything else.`
+    `- Once you have all seven fields — name, email, pickup, destination, travel date, passenger count, and notes (explicitly asked, "None" if nothing else) — set ready to true and make your reply a warm confirmation summarizing what you've got and letting them know the team will follow up shortly.\n` +
+    `- Never set ready to true until you genuinely have all seven — don't rush the customer, and don't skip asking for email, passenger count, or the "anything else" question just because you have some of the others. This must behave the exact same way for every conversation — always ask every field.`
   );
 }
 
@@ -139,15 +149,19 @@ export async function runIntakeTurn(
 /** The deterministic gate the webhook actually trusts — the model's `ready`
     flag is a signal, not the decision, so a hallucinated true (or a false
     despite everything being present) can't create a broken lead or stall a
-    finished one. Passenger count is deliberately excluded — it's the one
-    field the system prompt allows skipping if the customer has no number
-    yet — everything else here is required. */
+    finished one. All seven fields are required — notes just needs to have
+    been explicitly set (even to "None"), since null there means the model
+    never actually asked. */
 export function hasRequiredTripFields(collected: CollectedTrip): boolean {
   return Boolean(
     collected.name?.trim() &&
       collected.email?.trim() &&
       collected.pickup?.trim() &&
       collected.destination?.trim() &&
-      collected.travel_date?.trim(),
+      collected.travel_date?.trim() &&
+      collected.passenger_count !== null &&
+      collected.passenger_count > 0 &&
+      collected.notes !== null &&
+      collected.notes.trim() !== "",
   );
 }
