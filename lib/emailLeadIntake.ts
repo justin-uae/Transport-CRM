@@ -9,6 +9,14 @@ import { resolveCustomerId, notifyIfAutoAssigned } from "./leadIntake";
 
 type Admin = SupabaseClient<Database>;
 
+/** ImapFlow throws a bare `new Error("Command failed")` for a NO/BAD server response, with the server's actual human-readable reason stashed on `err.responseText` instead of the message itself — surface that, or the caller only ever sees the useless generic text. */
+function describeImapError(err: unknown): string {
+  if (!(err instanceof Error)) return "Unknown IMAP error.";
+  const responseText = (err as { responseText?: string }).responseText;
+  const responseStatus = (err as { responseStatus?: string }).responseStatus;
+  return [err.message, responseStatus, responseText].filter(Boolean).join(" — ");
+}
+
 // Email Lead Intake — 300+ transport-hire websites forward their contact-
 // form enquiries into one shared inbox (not per-site, not per-brand). This
 // sweep (runEmailLeadIntakeSweep, called hourly by
@@ -272,7 +280,7 @@ export async function runEmailLeadIntakeSweep(admin: Admin): Promise<SweepResult
               fromName: parsed.from?.value?.[0]?.name ?? null,
             });
           } catch (err) {
-            outcome = { decision: "error", detail: err instanceof Error ? err.message : "Unknown error." };
+            outcome = { decision: "error", detail: describeImapError(err) };
           }
 
           await admin
@@ -290,7 +298,7 @@ export async function runEmailLeadIntakeSweep(admin: Admin): Promise<SweepResult
       }
       await admin.from("tenants").update({ email_lead_inbox_synced_since: new Date().toISOString() }).eq("id", tenant.id);
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Unknown IMAP error.";
+      const message = describeImapError(err);
       console.error(`emailLeadIntake: IMAP sweep failed for tenant ${tenant.id}:`, message);
       result.errors.push(`Tenant ${tenant.id}: ${message}`);
     } finally {
