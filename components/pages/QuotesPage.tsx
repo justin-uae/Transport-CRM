@@ -223,7 +223,9 @@ export function QuotesPage({
                     </Link>
                     {q.invoice_number && <div className="text-xs font-normal text-slate-400">Inv {q.invoice_number}</div>}
                   </td>
-                  <td className="whitespace-nowrap px-3 py-4 font-semibold">{q.customers?.company_name || q.customers?.contact_name || "—"}</td>
+                  <td className="max-w-[220px] truncate px-3 py-4 font-semibold" title={q.customers?.company_name || q.customers?.contact_name || undefined}>
+                    {q.customers?.company_name || q.customers?.contact_name || "—"}
+                  </td>
                   <td className="px-3 py-4 text-slate-600">
                     <JourneyCell pickup={journeyOf(q)?.pickup_address} destination={journeyOf(q)?.destination_address} />
                   </td>
