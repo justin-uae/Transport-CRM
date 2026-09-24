@@ -1,15 +1,25 @@
 # Render Blueprint — https://render.com/docs/blueprint-spec
 #
-# Deploys the Next.js app as a web service, plus two cron jobs:
+# Deploys the Next.js app as a web service, plus these cron jobs:
 #   - email-sync: polls every active email_accounts mailbox's INBOX via IMAP
 #     (app/api/cron/email-sync/route.ts).
 #   - task-automation: sweeps for TSK-02's four automated task triggers —
 #     quote follow-up, payment due, supplier confirmation, travel prep
 #     (app/api/cron/task-automation/route.ts).
+#   - ai-auto-quote: prices and sends a quote via OpenAI for leads that sat
+#     unquoted past their SLA (app/api/cron/ai-auto-quote/route.ts).
+#   - email-lead-intake: polls the one shared inbox all 300+ websites forward
+#     enquiries into, and has OpenAI turn genuine ones into leads
+#     (app/api/cron/email-lead-intake/route.ts).
 # The remaining cron jobs stay commented out until their route handlers
-# exist (Phase 2+: quote-expiry, lead-release-sla, dispatch-wave-escalation,
-# document-expiry, daily-brief) — uncomment and point each at its
-# /api/cron/<name> route as those phases are built.
+# exist (Phase 2+: quote-expiry, dispatch-wave-escalation, document-expiry,
+# daily-brief) — uncomment and point each at its /api/cron/<name> route as
+# those phases are built.
+#
+# NOTE: these cron jobs may have been created by hand in the Render
+# dashboard rather than via Blueprint sync — check whether this file's
+# changes need mirroring there manually before assuming a deploy picks them
+# up automatically.
 
 services:
   - type: web
@@ -55,6 +65,16 @@ services:
         sync: false
       - key: OPENAI_API_KEY
         sync: false
+      - key: LEADS_INBOX_IMAP_HOST
+        sync: false
+      - key: LEADS_INBOX_IMAP_PORT
+        sync: false
+      - key: LEADS_INBOX_IMAP_USER
+        sync: false
+      - key: LEADS_INBOX_IMAP_PASS
+        sync: false
+      - key: LEADS_INBOX_IMAP_SECURE
+        sync: false
       - key: NODE_VERSION
         value: 20.17.0
 
@@ -93,6 +113,20 @@ services:
     buildCommand: npm install
     startCommand: >
       curl -sf -X POST "$NEXT_PUBLIC_APP_URL/api/cron/ai-auto-quote"
+      -H "Authorization: Bearer $CRON_SECRET"
+    envVars:
+      - key: NEXT_PUBLIC_APP_URL
+        sync: false
+      - key: CRON_SECRET
+        sync: false
+
+  - type: cron
+    name: email-lead-intake
+    runtime: node
+    schedule: "0 * * * *"
+    buildCommand: npm install
+    startCommand: >
+      curl -sf -X POST "$NEXT_PUBLIC_APP_URL/api/cron/email-lead-intake"
       -H "Authorization: Bearer $CRON_SECRET"
     envVars:
       - key: NEXT_PUBLIC_APP_URL

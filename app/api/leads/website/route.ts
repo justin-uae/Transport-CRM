@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { recordAudit } from "@/lib/audit";
-import { sendTemplatedEmail } from "@/lib/emailTemplates";
+import { resolveCustomerId, notifyIfAutoAssigned } from "@/lib/leadIntake";
 
 // Public website intake (Part 22). Authenticated by a per-brand shared
 // secret (brands.webhook_secret) rather than a Supabase session — the
@@ -92,87 +92,6 @@ async function resolveBrand(admin: AdminClient, brandSlug: string, secret: strin
 
   if (!brand || brand.webhook_secret !== secret) return null;
   return brand;
-}
-
-async function resolveCustomerId(
-  admin: AdminClient,
-  tenantId: string,
-  brandId: string,
-  contact: { name: string; email?: string; phone?: string; whatsapp?: string; country?: string },
-) {
-  if (contact.email || contact.phone) {
-    const { data: existing } = await admin
-      .from("customers")
-      .select("id")
-      .eq("tenant_id", tenantId)
-      .or([contact.email ? `email.eq.${contact.email}` : null, contact.phone ? `phone.eq.${contact.phone}` : null].filter(Boolean).join(","))
-      .limit(1)
-      .maybeSingle();
-    if (existing) {
-      // Matching on email OR phone means a submission that only shares one
-      // of the two (e.g. same email, new phone number) still resolves to
-      // this same customer — keep their record current with whatever the
-      // visitor just told us instead of silently ignoring it once matched.
-      await admin
-        .from("customers")
-        .update({
-          contact_name: contact.name,
-          ...(contact.email ? { email: contact.email } : {}),
-          ...(contact.phone ? { phone: contact.phone } : {}),
-          ...(contact.whatsapp ? { whatsapp: contact.whatsapp } : {}),
-          ...(contact.country ? { country: contact.country } : {}),
-        })
-        .eq("id", existing.id);
-      return existing.id;
-    }
-  }
-
-  const { data: created } = await admin
-    .from("customers")
-    .insert({
-      tenant_id: tenantId,
-      contact_name: contact.name,
-      email: contact.email ?? null,
-      phone: contact.phone ?? null,
-      whatsapp: contact.whatsapp ?? null,
-      country: contact.country ?? null,
-      default_brand_id: brandId,
-    })
-    .select("id")
-    .single();
-  return created?.id ?? null;
-}
-
-// route_lead() (the before-insert trigger on `leads`) may have already
-// auto-assigned this lead to a staff member based on territory match — if
-// so, they wouldn't otherwise know a new order landed until they happened
-// to check the Leads list, so let them know by email straight away.
-async function notifyIfAutoAssigned(
-  admin: AdminClient,
-  lead: { status: string; assigned_user_id: string | null },
-  tenantId: string,
-  brandName: string,
-  journeyVariables: Record<string, string>,
-) {
-  if (lead.status !== "assigned" || !lead.assigned_user_id) return;
-
-  const { data: assignee } = await admin
-    .from("profiles")
-    .select("full_name, email")
-    .eq("id", lead.assigned_user_id)
-    .maybeSingle();
-
-  await sendTemplatedEmail(admin, {
-    tenantId,
-    key: "lead_assigned",
-    to: assignee?.email,
-    variables: {
-      staff_name: assignee?.full_name ?? "there",
-      brand_name: brandName,
-      link: `${process.env.NEXT_PUBLIC_APP_URL ?? ""}/leads?tab=mine`,
-      ...journeyVariables,
-    },
-  });
 }
 
 async function handleContactSubmission(json: unknown) {

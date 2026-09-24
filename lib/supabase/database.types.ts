@@ -20,6 +20,22 @@ export interface Tenant {
   ai_auto_quote_sla_hours: number;
   /** When the switch last flipped off -> on — the sweep floors a lead's SLA countdown here so turning it on doesn't treat the whole existing backlog as instantly overdue. Null until first enabled. */
   ai_auto_quote_enabled_at: string | null;
+  /** Every lead the email-lead-intake sweep creates lands on this brand — set once (backfilled to the tenant's "GLOBAL BUS RENTAL LIMITED" brand, see 0088_email_lead_intake.sql) since 300+ forwarded sites can't be reliably attributed from email content alone. Null disables the sweep for this tenant entirely. */
+  default_lead_inbox_brand_id: string | null;
+  /** IMAP polling cursor for the shared lead-intake inbox — everything before this timestamp has already been swept. */
+  email_lead_inbox_synced_since: string;
+  created_at: string;
+}
+
+export interface EmailLeadIntakeLog {
+  id: string;
+  tenant_id: string;
+  message_id: string;
+  from_address: string | null;
+  subject: string | null;
+  decision: "lead_created" | "discarded_not_travel" | "discarded_no_contact" | "error";
+  lead_id: string | null;
+  detail: string | null;
   created_at: string;
 }
 
@@ -1177,6 +1193,7 @@ export interface Database {
       email_templates: Table<EmailTemplate>;
       email_accounts: Table<EmailAccount>;
       email_messages: Table<EmailMessage>;
+      email_lead_intake_log: Table<EmailLeadIntakeLog>;
       whatsapp_messages: Table<WhatsAppMessage>;
       commission_plans: Table<CommissionPlan>;
       commissions: Table<Commission>;
