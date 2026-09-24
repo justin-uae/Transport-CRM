@@ -23,6 +23,9 @@ type Admin = SupabaseClient<Database>;
 
 const NOT_QUOTABLE_STATUSES = ["converted", "closed", "spam", "duplicate", "expired"] as const;
 
+const LEAD_FOR_SWEEP_COLUMNS =
+  "id, tenant_id, brand_id, customer_id, assigned_user_id, source, pickup_text, destination_text, travel_date, pickup_time, return_trip, return_date, return_time, passenger_count, luggage_count, vehicle_requested, notes, created_at";
+
 interface LeadForSweep {
   id: string;
   tenant_id: string;
@@ -48,7 +51,6 @@ interface PricingEstimate {
   vehicle_description: string;
   supplier_estimated_cost: number;
   selling_price: number;
-  deposit_percentage: 25 | 50 | 75 | null;
   customer_notes: string;
   pricing_rationale: string;
 }
@@ -69,11 +71,6 @@ const PRICING_SCHEMA = {
       description:
         "The price to charge the customer, in the given currency — a realistic market rate for this route/vehicle/date, with a sensible margin (roughly 20-35%) over supplier_estimated_cost. Must be greater than supplier_estimated_cost.",
     },
-    deposit_percentage: {
-      type: ["integer", "null"],
-      enum: [25, 50, 75, null],
-      description: "A deposit percentage to request upfront, or null for full payment.",
-    },
     customer_notes: {
       type: "string",
       description: "One or two warm, professional sentences for the customer explaining what's included — shown on the quote itself.",
@@ -83,7 +80,7 @@ const PRICING_SCHEMA = {
       description: "One sentence, for internal staff eyes only, explaining how you arrived at this price.",
     },
   },
-  required: ["vehicle_description", "supplier_estimated_cost", "selling_price", "deposit_percentage", "customer_notes", "pricing_rationale"],
+  required: ["vehicle_description", "supplier_estimated_cost", "selling_price", "customer_notes", "pricing_rationale"],
   additionalProperties: false,
 } as const;
 
@@ -95,7 +92,8 @@ async function estimatePricing(lead: LeadForSweep, brandName: string, currency: 
       instructions:
         `You are a pricing analyst for ${brandName}, a coach and transport hire company. A lead has gone unquoted too ` +
         `long, so you're pricing and quoting the trip yourself based on typical market rates for private transport hire. ` +
-        `Give a realistic, fair estimate — never a placeholder or round guess. All money figures must be in ${currency}.`,
+        `Give a realistic, fair estimate — never a placeholder or round guess. All money figures must be in ${currency}. ` +
+        `This quote is always full payment upfront, no deposit option — don't mention a deposit or part-payment in customer_notes.`,
       input: [
         {
           role: "user" as const,
@@ -265,7 +263,10 @@ async function createAndSendQuote(admin: Admin, lead: LeadForSweep) {
       supplier_estimated_cost: pricing.supplier_estimated_cost,
       selling_price: pricing.selling_price,
       currency,
-      deposit_percentage: pricing.deposit_percentage,
+      // Always full payment upfront, no deposit plan — an AI-priced quote
+      // going out unattended shouldn't also be improvising a payment
+      // schedule.
+      deposit_percentage: null,
       deposit_fixed_amount: null,
       payment_methods: paymentMethodsForGbpValue(sellingPriceGbp),
       customer_notes: pricing.customer_notes,
@@ -360,9 +361,7 @@ export async function runAiAutoQuoteSweep(admin: Admin): Promise<SweepResult> {
 
   const { data: leads } = await admin
     .from("leads")
-    .select(
-      "id, tenant_id, brand_id, customer_id, assigned_user_id, source, pickup_text, destination_text, travel_date, pickup_time, return_trip, return_date, return_time, passenger_count, luggage_count, vehicle_requested, notes, created_at",
-    )
+    .select(LEAD_FOR_SWEEP_COLUMNS)
     .not("status", "in", `(${NOT_QUOTABLE_STATUSES.join(",")})`)
     .in("tenant_id", [...enabledTenants.keys()]);
 
