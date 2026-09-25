@@ -11,6 +11,7 @@ import { generateQuotePdf } from "@/lib/quotePdf";
 import { generateInvoicePdf } from "@/lib/invoicePdf";
 import { cancelAllocation } from "@/lib/dispatchAllocations";
 import { persistGeneratedPdf } from "@/lib/documentArchive";
+import { sendWhatsAppTemplate, normalizeWhatsAppNumber } from "@/lib/whatsapp360";
 
 /**
  * Manual bank-transfer payment recording, for a deposit, the remaining
@@ -246,6 +247,61 @@ export async function resendQuoteEmailAction(quoteId: string) {
   }
 
   return result;
+}
+
+/**
+ * Resends the quote_sent_customer WhatsApp template — a separate action
+ * (not folded into resendQuoteEmailAction) so staff can retry whichever
+ * channel actually failed rather than always resending both. Unlike the
+ * best-effort send in createQuoteAction (which never blocks quote
+ * creation), an explicit staff-triggered resend reports failure back so
+ * they know it didn't go out.
+ */
+export async function resendQuoteWhatsAppAction(quoteId: string) {
+  const actor = await requireProfile();
+  const allowed = await hasPermission(actor, PERMISSIONS.QUOTES_SEND);
+  if (!allowed) return { error: "You do not have permission to send quotes." };
+
+  const supabase = await createClient();
+  const { data: quote } = await supabase
+    .from("quotes")
+    .select(
+      "id, quote_number, public_token, currency, customers(contact_name, company_name, phone, whatsapp), brands(name), quote_versions!quotes_current_version_id_fkey(selling_price)",
+    )
+    .eq("id", quoteId)
+    .single();
+  if (!quote) return { error: "Quote not found." };
+
+  const customer = quote.customers as unknown as {
+    contact_name: string;
+    company_name: string | null;
+    phone: string | null;
+    whatsapp: string | null;
+  } | null;
+  const brand = quote.brands as unknown as { name: string } | null;
+  const version = quote.quote_versions as unknown as { selling_price: number } | null;
+
+  const whatsappNumber = customer?.whatsapp || customer?.phone;
+  if (!whatsappNumber) return { error: "This customer has no phone or WhatsApp number on file." };
+
+  const result = await sendWhatsAppTemplate(
+    normalizeWhatsAppNumber(whatsappNumber),
+    "quote_sent_customer",
+    [customer?.company_name || customer?.contact_name || "Customer", brand?.name ?? "", quote.quote_number, `${version ? version.selling_price.toFixed(2) : "0.00"} ${quote.currency}`],
+    quote.public_token,
+  );
+
+  if (!result.ok) return { error: result.error ?? "WhatsApp send failed." };
+
+  await recordAudit({
+    tenantId: actor.tenant_id,
+    actorId: actor.id,
+    action: "quote_whatsapp_resent",
+    entityType: "quote",
+    entityId: quoteId,
+  });
+
+  return { error: null };
 }
 
 /**

@@ -6,6 +6,7 @@ import { useToast } from "@/components/ui/Toast";
 import { ConfirmDetailModal } from "@/components/ui/ConfirmDetailModal";
 import {
   resendQuoteEmailAction,
+  resendQuoteWhatsAppAction,
   resendInvoiceEmailAction,
   cancelBookingAction,
   processRefundAction,
@@ -97,6 +98,13 @@ export function QuoteDetailActions({
     });
   }
 
+  function resendWhatsApp() {
+    startTransition(async () => {
+      const result = await resendQuoteWhatsAppAction(quote.id);
+      notify(result?.error ? `Could not send WhatsApp: ${result.error}` : "Quote resent via WhatsApp");
+    });
+  }
+
   function resendInvoice() {
     startTransition(async () => {
       const result = await resendInvoiceEmailAction(quote.id);
@@ -177,6 +185,15 @@ export function QuoteDetailActions({
           className="mt-2 w-full rounded-xl border px-4 py-2.5 text-sm font-bold disabled:opacity-60"
         >
           {pending ? "Sending…" : "Resend Quote Email"}
+        </button>
+      )}
+      {EMAILABLE.includes(quote.status) && (
+        <button
+          onClick={resendWhatsApp}
+          disabled={pending}
+          className="mt-2 w-full rounded-xl border px-4 py-2.5 text-sm font-bold disabled:opacity-60"
+        >
+          {pending ? "Sending…" : "Resend Quote WhatsApp"}
         </button>
       )}
       <EditBookingButton
