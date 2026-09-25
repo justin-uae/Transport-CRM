@@ -19,11 +19,20 @@ export async function resolveCustomerId(
   contact: { name: string; email?: string | null; phone?: string | null; whatsapp?: string | null; country?: string | null },
 ): Promise<string | null> {
   if (contact.email || contact.phone) {
+    // ilike (not eq) on email so "Justin@x.com" and "justin@x.com" resolve to
+    // the same customer instead of silently forking into two records — and
+    // order+limit(1) picks the OLDEST match deterministically. Without an
+    // explicit order, Postgres can return either row when more than one
+    // already matches (e.g. a pre-existing duplicate from before this fix),
+    // so the exact same contact could resolve to a different customer_id on
+    // different calls seconds apart — which is exactly what broke email
+    // intake's duplicate-lead detection (that check compares customer_id).
     const { data: existing } = await admin
       .from("customers")
       .select("id")
       .eq("tenant_id", tenantId)
-      .or([contact.email ? `email.eq.${contact.email}` : null, contact.phone ? `phone.eq.${contact.phone}` : null].filter(Boolean).join(","))
+      .or([contact.email ? `email.ilike.${contact.email}` : null, contact.phone ? `phone.eq.${contact.phone}` : null].filter(Boolean).join(","))
+      .order("created_at", { ascending: true })
       .limit(1)
       .maybeSingle();
     if (existing) {
