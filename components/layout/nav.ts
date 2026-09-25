@@ -122,11 +122,13 @@ export const NAV: NavItem[] = [
     href: "/quotes/ai-created",
     icon: Bot,
     group: "sales",
-    // Master Admin only, by explicit request — not permission-gated (see
-    // masterAdminOnly's own doc comment). The underlying RLS would actually
-    // let Sales Manager (enquiries.view_all) see these rows too, so the page
-    // itself also self-gates on is_master_admin, not just this nav entry.
-    masterAdminOnly: true,
+    // Master Admin (via its usual permission bypass) plus the AI role — the
+    // AI role's dashboard/landing page (see ROLE_LANDING_OVERRIDE below).
+    // The underlying RLS (can_view_assignment) still scopes the actual rows
+    // per viewer — the AI role only holds enquiries.view_own, so it only
+    // ever sees quotes attributed to it, never another tenant's or another
+    // AI user's; the page itself also self-gates, not just this nav entry.
+    anyOf: [PERMISSIONS.QUOTES_VIEW_AI_GENERATED],
   },
   {
     label: "Customers",
@@ -275,6 +277,7 @@ export function defaultLandingHref(granted: Set<PermissionKey>, isMasterAdmin = 
 const ROLE_LANDING_OVERRIDE: Record<string, string> = {
   "Sales User": "/leads",
   "Finance Manager": "/accounting",
+  "AI": "/quotes/ai-created",
 };
 
 /** Full landing-page decision: role-specific override (for anyone but Master Admin) falling back to the first visible nav item. */

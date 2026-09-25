@@ -33,6 +33,7 @@ export const PERMISSIONS = {
   QUOTES_OVERRIDE_AI_PRICING: "quotes.override_ai_pricing",
   QUOTES_VIEW_SUPPLIER_COST: "quotes.view_supplier_cost",
   QUOTES_VIEW_SELLING_PRICE: "quotes.view_selling_price",
+  QUOTES_VIEW_AI_GENERATED: "quotes.view_ai_generated",
   QUOTES_VIEW_MARGIN_ESTIMATED: "quotes.view_margin_estimated",
   QUOTES_VIEW_MARGIN_FINAL: "quotes.view_margin_final",
   QUOTES_APPROVE_LOW_MARGIN: "quotes.approve_low_margin",

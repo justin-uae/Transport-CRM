@@ -157,8 +157,40 @@ async function estimatePricing(lead: LeadForSweep, brandName: string): Promise<P
 
 const asPgTime = (value: string | null) => (value && /^\d{2}:\d{2}(:\d{2})?$/.test(value) ? value : null);
 
+/**
+ * The tenant's AI-role profile, if one's been invited (Settings -> Users,
+ * role "AI") — enquiries/quotes the sweep creates get attributed to it
+ * (created_by, assigned_user_id) so they show up on that profile's own
+ * dashboard (/quotes/ai-created, gated on quotes.view_ai_generated) via the
+ * normal can_view_assignment RLS, the same way a human Sales User's quotes
+ * show up on theirs. Permission-driven rather than a hardcoded role name,
+ * matching getAssignableSalesUsers (lib/leadAssignees.ts) — stays correct if
+ * the role is renamed. Falls back to null (today's behaviour, Master-Admin-
+ * only visibility) if no tenant profile holds it yet.
+ */
+async function getAiProfileId(admin: Admin, tenantId: string): Promise<string | null> {
+  const { data: perm } = await admin.from("permissions").select("id").eq("key", "quotes.view_ai_generated").maybeSingle();
+  if (!perm) return null;
+
+  const { data: roleLinks } = await admin.from("role_permissions").select("role_id").eq("permission_id", perm.id);
+  const roleIds = (roleLinks ?? []).map((r) => r.role_id);
+  if (roleIds.length === 0) return null;
+
+  const { data: profile } = await admin
+    .from("profiles")
+    .select("id")
+    .eq("tenant_id", tenantId)
+    .eq("status", "active")
+    .in("role_id", roleIds)
+    .order("created_at", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+
+  return profile?.id ?? null;
+}
+
 /** Same shape as createEnquiryFromLeadAction (app/(staff)/leads/actions.ts), minus the human actor — reuses an existing enquiry if one somehow already exists for this lead (e.g. a previous sweep run got this far and failed after). */
-async function ensureEnquiry(admin: Admin, lead: LeadForSweep) {
+async function ensureEnquiry(admin: Admin, lead: LeadForSweep, aiProfileId: string | null) {
   const { data: existing } = await admin
     .from("enquiries")
     .select("id, customer_id")
@@ -175,8 +207,8 @@ async function ensureEnquiry(admin: Admin, lead: LeadForSweep) {
       brand_id: lead.brand_id,
       lead_id: lead.id,
       customer_id: lead.customer_id!,
-      assigned_user_id: null,
-      created_by: null,
+      assigned_user_id: aiProfileId,
+      created_by: aiProfileId,
       status: "new",
       ai_generated: true,
     })
@@ -221,8 +253,8 @@ async function releaseToPool(admin: Admin, lead: LeadForSweep) {
   });
 }
 
-/** The full quote build + send, mirroring createQuoteAction's sendNow branch (app/(staff)/quotes/new/actions.ts) with an AI-priced version instead of staff-entered numbers, created_by left null throughout, and ai_generated: true on both the enquiry and the quote. */
-async function createAndSendQuote(admin: Admin, lead: LeadForSweep) {
+/** The full quote build + send, mirroring createQuoteAction's sendNow branch (app/(staff)/quotes/new/actions.ts) with an AI-priced version instead of staff-entered numbers, created_by set to the tenant's AI-role profile (or null if none's been invited yet), and ai_generated: true on both the enquiry and the quote. */
+async function createAndSendQuote(admin: Admin, lead: LeadForSweep, aiProfileId: string | null) {
   const { data: brand } = await admin.from("brands").select("*").eq("id", lead.brand_id!).maybeSingle();
   if (!brand) throw new Error(`No brand found for lead ${lead.id}.`);
 
@@ -232,7 +264,7 @@ async function createAndSendQuote(admin: Admin, lead: LeadForSweep) {
     .eq("id", lead.customer_id!)
     .maybeSingle();
 
-  const enquiry = await ensureEnquiry(admin, lead);
+  const enquiry = await ensureEnquiry(admin, lead, aiProfileId);
   // Priced in the currency of the country the trip actually happens in
   // (the AI works this out from pickup/destination, falling back to USD if
   // it can't tell), not the brand's own default_currency — a UK-registered
@@ -259,7 +291,7 @@ async function createAndSendQuote(admin: Admin, lead: LeadForSweep) {
       status: "draft",
       currency,
       expiry_at: new Date(Date.now() + expiryDays * 86400000).toISOString(),
-      created_by: null,
+      created_by: aiProfileId,
       ai_generated: true,
     })
     .select()
@@ -292,7 +324,7 @@ async function createAndSendQuote(admin: Admin, lead: LeadForSweep) {
       customer_notes: pricing.customer_notes,
       terms_snapshot: null,
       brand_snapshot: { name: brand.name, logo_url: brand.logo_url, primary_color: brand.primary_color },
-      created_by: null,
+      created_by: aiProfileId,
     })
     .select()
     .single();
@@ -379,6 +411,11 @@ export async function runAiAutoQuoteSweep(admin: Admin): Promise<SweepResult> {
   );
   if (enabledTenants.size === 0) return result;
 
+  // One lookup per tenant, reused across every lead in that tenant this run.
+  const aiProfileIdByTenant = new Map<string, string | null>(
+    await Promise.all([...enabledTenants.keys()].map(async (tenantId): Promise<[string, string | null]> => [tenantId, await getAiProfileId(admin, tenantId)])),
+  );
+
   const { data: leads } = await admin
     .from("leads")
     .select(LEAD_FOR_SWEEP_COLUMNS)
@@ -409,7 +446,7 @@ export async function runAiAutoQuoteSweep(admin: Admin): Promise<SweepResult> {
     try {
       await releaseToPool(admin, lead);
       if (lead.assigned_user_id) result.released++;
-      await createAndSendQuote(admin, lead);
+      await createAndSendQuote(admin, lead, aiProfileIdByTenant.get(lead.tenant_id) ?? null);
       result.quoted++;
     } catch (err) {
       result.failed++;
