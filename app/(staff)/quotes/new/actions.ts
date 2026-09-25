@@ -8,6 +8,7 @@ import { recordAudit } from "@/lib/audit";
 import { STRIPE_PRICE_THRESHOLD, paymentMethodsForGbpValue } from "@/lib/quoteMoney";
 import { convertToGbp } from "@/lib/fxRates";
 import { renderAndSendTemplate } from "@/lib/emailTemplates";
+import { sendWhatsAppTemplate, normalizeWhatsAppNumber } from "@/lib/whatsapp360";
 import { generateQuotePdf } from "@/lib/quotePdf";
 import { persistGeneratedPdf } from "@/lib/documentArchive";
 
@@ -38,7 +39,9 @@ export async function createQuoteAction(
   const enquiryId = String(formData.get("enquiryId") ?? "");
   const { data: enquiry } = await supabase
     .from("enquiries")
-    .select("id, brand_id, customer_id, lead_id, customers(contact_name, company_name, email), enquiry_legs(sequence, vehicle_type_id, vehicle_description, vehicle_types(name))")
+    .select(
+      "id, brand_id, customer_id, lead_id, customers(contact_name, company_name, email, phone, whatsapp), enquiry_legs(sequence, vehicle_type_id, vehicle_description, vehicle_types(name))",
+    )
     .eq("id", enquiryId)
     .single();
 
@@ -267,7 +270,13 @@ export async function createQuoteAction(
     await supabase.from("quote_events").insert({ quote_id: quote.id, event: "sent" });
     publicLink = `${process.env.NEXT_PUBLIC_APP_URL ?? ""}/q/${quote.public_token}`;
 
-    const customer = enquiry.customers as unknown as { contact_name: string; company_name: string | null; email: string | null } | null;
+    const customer = enquiry.customers as unknown as {
+      contact_name: string;
+      company_name: string | null;
+      email: string | null;
+      phone: string | null;
+      whatsapp: string | null;
+    } | null;
     // A PDF-generation failure (e.g. an unreachable brand logo URL) should
     // never block the quote from sending — fall back to no attachment, but
     // log it so a silent failure in production is still visible somewhere.
@@ -293,6 +302,21 @@ export async function createQuoteAction(
     if (emailResult.error) {
       console.error(`createQuoteAction: quote_sent email failed for quote ${quote.id}: ${emailResult.error}`);
       emailWarning = `The quote was created, but the email could not be sent: ${emailResult.error}`;
+    }
+
+    // Best-effort, same as the email above — a customer with no phone/whatsapp
+    // on file (or a send failure) never blocks the quote from going out.
+    const whatsappNumber = customer?.whatsapp || customer?.phone;
+    if (whatsappNumber) {
+      const waResult = await sendWhatsAppTemplate(
+        normalizeWhatsAppNumber(whatsappNumber),
+        "quote_sent_customer",
+        [customer?.company_name || customer?.contact_name || "Customer", brand.name, quote.quote_number, `${sellingPrice.toFixed(2)} ${currency}`],
+        quote.public_token,
+      );
+      if (!waResult.ok) {
+        console.error(`createQuoteAction: quote_sent WhatsApp template failed for quote ${quote.id}: ${waResult.error}`);
+      }
     }
 
     if (quotePdf) {

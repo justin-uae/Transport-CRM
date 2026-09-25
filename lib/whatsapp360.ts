@@ -55,6 +55,40 @@ export async function sendWhatsAppText(to: string, body: string): Promise<SendRe
   return sendMessage({ messaging_product: "whatsapp", to, type: "text", text: { body } });
 }
 
+/** WhatsApp/360dialog expect digits only (country code + number, no "+", spaces or dashes) — customers can have their phone/whatsapp stored in whatever format they typed it in. */
+export function normalizeWhatsAppNumber(raw: string): string {
+  return raw.replace(/\D/g, "");
+}
+
+/**
+ * Sends an approved WhatsApp template message — the only way to message a
+ * customer outside an active 24h conversation window (see the file header
+ * comment). `bodyParams` must match the template's {{1}}..{{n}} body
+ * variables in order; `buttonUrlParam` is the dynamic suffix for a template
+ * with a Dynamic URL button (that button's own {{1}}, a separate sequence
+ * from the body's), omitted for templates with no such button.
+ */
+export async function sendWhatsAppTemplate(
+  to: string,
+  templateName: string,
+  bodyParams: string[],
+  buttonUrlParam?: string,
+): Promise<SendResult> {
+  const components: Record<string, unknown>[] = [];
+  if (bodyParams.length > 0) {
+    components.push({ type: "body", parameters: bodyParams.map((text) => ({ type: "text", text })) });
+  }
+  if (buttonUrlParam) {
+    components.push({ type: "button", sub_type: "url", index: "0", parameters: [{ type: "text", text: buttonUrlParam }] });
+  }
+  return sendMessage({
+    messaging_product: "whatsapp",
+    to,
+    type: "template",
+    template: { name: templateName, language: { code: "en" }, components },
+  });
+}
+
 /**
  * Sends a "📍 Send Location" button instead of a plain text question — the
  * contact taps it to open WhatsApp's own location picker (current location
