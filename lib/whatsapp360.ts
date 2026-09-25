@@ -61,20 +61,36 @@ export function normalizeWhatsAppNumber(raw: string): string {
 }
 
 /**
+ * The header image approved for quote_sent_customer (Settings -> 360dialog
+ * Template Manager). A template with a static IMAGE header still requires
+ * that image supplied on every send (error 132012 "expected IMAGE, received
+ * UNKNOWN" otherwise) — it's not baked into the approved template the way
+ * static header *text* would be.
+ */
+export const QUOTE_SENT_CUSTOMER_HEADER_IMAGE_URL =
+  "https://crqkhsurvwdyoxcpuaww.supabase.co/storage/v1/object/public/template-assets/ChatGPT%20Image%20Sep%2025,%202026,%2006_24_39%20PM.png";
+
+/**
  * Sends an approved WhatsApp template message — the only way to message a
  * customer outside an active 24h conversation window (see the file header
  * comment). `bodyParams` must match the template's {{1}}..{{n}} body
  * variables in order; `buttonUrlParam` is the dynamic suffix for a template
  * with a Dynamic URL button (that button's own {{1}}, a separate sequence
  * from the body's), omitted for templates with no such button.
+ * `headerImageUrl` is required for any template whose header is an image
+ * (omit only for templates with a plain text or no header).
  */
 export async function sendWhatsAppTemplate(
   to: string,
   templateName: string,
   bodyParams: string[],
   buttonUrlParam?: string,
+  headerImageUrl?: string,
 ): Promise<SendResult> {
   const components: Record<string, unknown>[] = [];
+  if (headerImageUrl) {
+    components.push({ type: "header", parameters: [{ type: "image", image: { link: headerImageUrl } }] });
+  }
   if (bodyParams.length > 0) {
     components.push({ type: "body", parameters: bodyParams.map((text) => ({ type: "text", text })) });
   }

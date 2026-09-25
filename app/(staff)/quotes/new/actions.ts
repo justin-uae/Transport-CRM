@@ -8,7 +8,7 @@ import { recordAudit } from "@/lib/audit";
 import { STRIPE_PRICE_THRESHOLD, paymentMethodsForGbpValue } from "@/lib/quoteMoney";
 import { convertToGbp } from "@/lib/fxRates";
 import { renderAndSendTemplate } from "@/lib/emailTemplates";
-import { sendWhatsAppTemplate, normalizeWhatsAppNumber } from "@/lib/whatsapp360";
+import { sendWhatsAppTemplate, normalizeWhatsAppNumber, QUOTE_SENT_CUSTOMER_HEADER_IMAGE_URL } from "@/lib/whatsapp360";
 import { generateQuotePdf } from "@/lib/quotePdf";
 import { persistGeneratedPdf } from "@/lib/documentArchive";
 
@@ -313,6 +313,7 @@ export async function createQuoteAction(
         "quote_sent_customer",
         [customer?.company_name || customer?.contact_name || "Customer", brand.name, quote.quote_number, `${sellingPrice.toFixed(2)} ${currency}`],
         quote.public_token,
+        QUOTE_SENT_CUSTOMER_HEADER_IMAGE_URL,
       );
       if (!waResult.ok) {
         console.error(`createQuoteAction: quote_sent WhatsApp template failed for quote ${quote.id}: ${waResult.error}`);
