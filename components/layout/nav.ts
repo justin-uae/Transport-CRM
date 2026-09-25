@@ -69,6 +69,15 @@ export interface NavItem {
    * items use that key rather than being left ungated.
    */
   anyOf?: PermissionKey[];
+  /**
+   * Hidden from everyone but Master Admin, full stop — checked independently
+   * of anyOf. Master Admin's permission bypass (getGrantedPermissions
+   * returns every key) means anyOf alone can never express "Master Admin
+   * only": any key picked to gate it would also have to never be granted to
+   * any role, which is fragile and non-obvious. Used sparingly, for tooling
+   * that's genuinely Master-Admin-specific rather than permission-gated.
+   */
+  masterAdminOnly?: boolean;
   /** Which sidebar group this renders under. Omitted only for Control Centre, which is pinned above every group. */
   group?: NavGroupKey;
 }
@@ -113,11 +122,11 @@ export const NAV: NavItem[] = [
     href: "/quotes/ai-created",
     icon: Bot,
     group: "sales",
-    // Same gate as Pending Quotes/Partially Paid — RLS scopes rows to
-    // everyone tenant-wide for enquiries.view_all (Master Admin, Sales
-    // Manager) and to nothing for a plain Sales User, since an AI-quoted
-    // lead has no assigned rep by the time it's quoted (see lib/aiAutoQuote.ts).
-    anyOf: [PERMISSIONS.QUOTES_CREATE, PERMISSIONS.QUOTES_VIEW_SELLING_PRICE],
+    // Master Admin only, by explicit request — not permission-gated (see
+    // masterAdminOnly's own doc comment). The underlying RLS would actually
+    // let Sales Manager (enquiries.view_all) see these rows too, so the page
+    // itself also self-gates on is_master_admin, not just this nav entry.
+    masterAdminOnly: true,
   },
   {
     label: "Customers",
@@ -244,13 +253,16 @@ export function groupNavItems(items: NavItem[]): NavGroup[] {
 }
 
 /** Every nav href the given permission set unlocks, in NAV order. */
-export function computeVisibleHrefs(granted: Set<PermissionKey>): string[] {
-  return NAV.filter((item) => !item.anyOf || item.anyOf.some((key) => granted.has(key))).map((item) => item.href);
+export function computeVisibleHrefs(granted: Set<PermissionKey>, isMasterAdmin = false): string[] {
+  return NAV.filter((item) => {
+    if (item.masterAdminOnly && !isMasterAdmin) return false;
+    return !item.anyOf || item.anyOf.some((key) => granted.has(key));
+  }).map((item) => item.href);
 }
 
 /** Where to land a signed-in user with no more specific destination in mind — the first nav item they can actually see. */
-export function defaultLandingHref(granted: Set<PermissionKey>): string {
-  return computeVisibleHrefs(granted)[0] ?? "/dashboard";
+export function defaultLandingHref(granted: Set<PermissionKey>, isMasterAdmin = false): string {
+  return computeVisibleHrefs(granted, isMasterAdmin)[0] ?? "/dashboard";
 }
 
 /**
@@ -270,5 +282,5 @@ export function landingHref(roleName: string | null, isMasterAdmin: boolean, gra
   if (!isMasterAdmin && roleName && ROLE_LANDING_OVERRIDE[roleName]) {
     return ROLE_LANDING_OVERRIDE[roleName];
   }
-  return defaultLandingHref(granted);
+  return defaultLandingHref(granted, isMasterAdmin);
 }

@@ -140,6 +140,16 @@ export async function proxy(request: NextRequest) {
     // ad-hoc hasPermission() check, easy to forget on a new route) was never
     // enough to stop a direct URL visit. Paths matching no NAV item
     // (settings/*, api/*, ...) are left to their own gates.
+    if (navItem?.masterAdminOnly && !profile.is_master_admin) {
+      const { data: role } = profile.role_id
+        ? await supabase.from("roles").select("name").eq("id", profile.role_id).single()
+        : { data: null };
+      const granted = await grantedPermissionsFor(supabase, profile);
+      const landing = landingHref(role?.name ?? null, profile.is_master_admin, granted);
+      if (landing !== path) {
+        return NextResponse.redirect(new URL(landing, request.url));
+      }
+    }
     if (navItem?.anyOf) {
       const granted = await grantedPermissionsFor(supabase, profile);
       if (!navItem.anyOf.some((key) => granted.has(key))) {

@@ -1,3 +1,4 @@
+import { notFound } from "next/navigation";
 import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { AiCreatedQuotesPage, type AiCreatedQuoteRow } from "@/components/pages/AiCreatedQuotesPage";
@@ -7,15 +8,17 @@ const PAGE_SIZE = 25;
 /**
  * Everything lib/aiAutoQuote.ts has priced and sent on its own — split out
  * from Pending Quotes so staff can review what went out automatically
- * without hunting for it. Visibility follows quotes_select's RLS
- * (can_view_assignment) same as Partially Paid: an AI-quoted lead has no
- * assigned_user_id (it was released to the pool before being quoted), so a
- * plain Sales User (enquiries.view_own) sees none of these — only
- * enquiries.view_all holders (Master Admin, Sales Manager) do.
+ * without hunting for it. Master Admin only, by explicit request — the
+ * sidebar link is already hidden from everyone else (nav.ts's
+ * masterAdminOnly, enforced again at the middleware level in proxy.ts), but
+ * quotes_select's RLS (can_view_assignment) would still let a Sales Manager
+ * (enquiries.view_all) see these rows on a direct visit, so this page
+ * self-gates too rather than relying solely on those two.
  */
 export default async function Page({ searchParams }: { searchParams: Promise<{ q?: string; page?: string }> }) {
   const params = await searchParams;
-  await requireProfile();
+  const profile = await requireProfile();
+  if (!profile.is_master_admin) notFound();
   const supabase = await createClient();
 
   const q = params.q?.trim() || "";

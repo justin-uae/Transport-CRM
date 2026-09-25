@@ -43,7 +43,7 @@ export default async function StaffLayout({
   // (RSC can only serialize data, not function/component references) — so
   // we compute which hrefs are visible here and let the Client Component
   // Sidebar filter its own client-side NAV import by that list.
-  const visibleHrefs = computeVisibleHrefs(granted);
+  const visibleHrefs = computeVisibleHrefs(granted, profile.is_master_admin);
   const canSeeSettings = ADMIN_SURFACE_PERMISSIONS.some((key) => granted.has(key));
   const canCreateQuote = granted.has(PERMISSIONS.QUOTES_CREATE);
   const canAddLead = granted.has(PERMISSIONS.ENQUIRIES_ADD);
