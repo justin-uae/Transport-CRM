@@ -46,6 +46,7 @@ const MAX_LOOKBACK_DAYS = 7;
 // led the model to extract email: "Justin Email" (no @ at all) instead of
 // leaving it null, silently discarding the real address in the From header.
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const asPgTime = (value: string | null) => (value && /^\d{2}:\d{2}(:\d{2})?$/.test(value) ? value : null);
 
 interface EnquiryExtraction {
   is_travel_enquiry: boolean;
@@ -55,8 +56,10 @@ interface EnquiryExtraction {
   pickup: string | null;
   destination: string | null;
   travel_date: string | null;
+  pickup_time: string | null;
   return_trip: boolean;
   return_date: string | null;
+  return_time: string | null;
   passenger_count: number | null;
   notes: string | null;
 }
@@ -79,10 +82,26 @@ const EXTRACTION_SCHEMA = {
       description:
         "The travel date, resolved to an explicit calendar date if you can work it out from the email's own date (given in your instructions) plus what the customer wrote — otherwise their raw wording.",
     },
+    pickup_time: {
+      type: ["string", "null"],
+      description: "The outbound departure time, resolved to 24-hour HH:MM if the customer gave one (e.g. \"19:00\" for \"approximately 7pm\"). Null if no time was mentioned.",
+    },
     return_trip: { type: "boolean", description: "True if a return leg is mentioned at all." },
     return_date: { type: ["string", "null"] },
-    passenger_count: { type: ["integer", "null"] },
-    notes: { type: ["string", "null"], description: "Anything else relevant (vehicle type, occasion, special requirements) that doesn't fit the other fields." },
+    return_time: {
+      type: ["string", "null"],
+      description: "The return leg's departure time, resolved to 24-hour HH:MM the same way as pickup_time. Null if there's no return leg or no time was given for it.",
+    },
+    passenger_count: {
+      type: ["integer", "null"],
+      description:
+        "How many passengers. If the customer asks for pricing across several possible group/coach sizes (e.g. \"30, 40, or 54 passengers\", \"either a 30 or 40 seater\"), use the LARGEST one here — that's the safer number for vehicle-sizing and pricing — and list every size they asked about in notes so nothing is lost.",
+    },
+    notes: {
+      type: ["string", "null"],
+      description:
+        "Anything else relevant that doesn't fit the other fields — vehicle type/size options (list ALL of them if several were requested, not just the one in passenger_count), intermediate stops/waypoints along the route, occasion, and any special requirements. Preserve real detail rather than summarizing it away — for a detailed enquiry, err on the side of including too much rather than too little, since this is the only place that detail survives.",
+    },
   },
   required: [
     "is_travel_enquiry",
@@ -92,8 +111,10 @@ const EXTRACTION_SCHEMA = {
     "pickup",
     "destination",
     "travel_date",
+    "pickup_time",
     "return_trip",
     "return_date",
+    "return_time",
     "passenger_count",
     "notes",
   ],
@@ -233,8 +254,10 @@ async function processMessage(
       pickup_text: extraction.pickup,
       destination_text: extraction.destination,
       travel_date: /^\d{4}-\d{2}-\d{2}$/.test(extraction.travel_date ?? "") ? extraction.travel_date : null,
+      pickup_time: asPgTime(extraction.pickup_time),
       return_trip: extraction.return_trip,
       return_date: /^\d{4}-\d{2}-\d{2}$/.test(extraction.return_date ?? "") ? extraction.return_date : null,
+      return_time: asPgTime(extraction.return_time),
       passenger_count: extraction.passenger_count,
       notes:
         [extraction.notes, !extraction.travel_date ? null : /^\d{4}-\d{2}-\d{2}$/.test(extraction.travel_date) ? null : `Requested date (as written): ${extraction.travel_date}`]
