@@ -130,9 +130,58 @@ async function classifyEnquiryEmail(subject: string, bodyText: string, emailDate
 }
 
 interface ProcessResult {
-  decision: "lead_created" | "discarded_not_travel" | "discarded_no_contact" | "error";
+  decision: "lead_created" | "discarded_not_travel" | "discarded_no_contact" | "discarded_duplicate" | "error";
   leadId?: string;
   detail?: string;
+}
+
+const DUPLICATE_LOOKBACK_HOURS = 48;
+
+/** Case-insensitive, either-direction substring containment — "Kasaragod" (website's structured field) should match "Kasaragod, Kerala" (AI's free-text read of the same place from an email), not just an exact string. */
+function looksLikeSamePlace(a: string | null, b: string | null): boolean {
+  if (!a || !b) return false;
+  const x = a.trim().toLowerCase();
+  const y = b.trim().toLowerCase();
+  return x.length > 0 && y.length > 0 && (x.includes(y) || y.includes(x));
+}
+
+/**
+ * A site's own contact-form webhook (app/api/leads/website/route.ts) already
+ * creates a lead the moment a visitor submits — but the same form submission
+ * is often *also* emailed to that site's info@ address, which forwards into
+ * the one shared inbox this sweep polls. Without this check, that forwarded
+ * copy would create a second lead for the same enquiry.
+ *
+ * Matched on the SAME customer (resolveCustomerId already dedupes identity
+ * by email/phone across every channel) plus overlapping trip details (same
+ * travel date, or either pickup/destination looking like the same place) —
+ * customer alone isn't enough, since a repeat customer asking about a
+ * genuinely different trip within the lookback window must still get its
+ * own lead.
+ */
+async function findRecentDuplicateLead(
+  admin: Admin,
+  tenantId: string,
+  brandId: string,
+  customerId: string,
+  extraction: EnquiryExtraction,
+): Promise<string | null> {
+  const since = new Date(Date.now() - DUPLICATE_LOOKBACK_HOURS * 3600000).toISOString();
+  const { data: candidates } = await admin
+    .from("leads")
+    .select("id, pickup_text, destination_text, travel_date")
+    .eq("tenant_id", tenantId)
+    .eq("brand_id", brandId)
+    .eq("customer_id", customerId)
+    .gte("created_at", since);
+
+  for (const lead of candidates ?? []) {
+    const sameDate = Boolean(extraction.travel_date && lead.travel_date && extraction.travel_date === lead.travel_date);
+    if (sameDate || looksLikeSamePlace(extraction.pickup, lead.pickup_text) || looksLikeSamePlace(extraction.destination, lead.destination_text)) {
+      return lead.id;
+    }
+  }
+  return null;
 }
 
 async function processMessage(
@@ -161,6 +210,9 @@ async function processMessage(
 
   const customerId = await resolveCustomerId(admin, tenantId, brand.id, { name, email, phone });
   if (!customerId) return { decision: "error", detail: "Could not resolve/create a customer." };
+
+  const duplicateLeadId = await findRecentDuplicateLead(admin, tenantId, brand.id, customerId, extraction);
+  if (duplicateLeadId) return { decision: "discarded_duplicate", leadId: duplicateLeadId, detail: `Matches existing lead ${duplicateLeadId}` };
 
   const { data: lead, error: leadError } = await admin
     .from("leads")
