@@ -41,6 +41,7 @@ export const PERMISSIONS = {
   QUOTES_CHANGE_EXPIRY: "quotes.change_expiry",
 
   BOOKINGS_VIEW: "bookings.view",
+  BOOKINGS_VIEW_OWN: "bookings.view_own",
   BOOKINGS_EDIT: "bookings.edit",
   BOOKINGS_CANCEL: "bookings.cancel",
   BOOKINGS_AMEND: "bookings.amend",
