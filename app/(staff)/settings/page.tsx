@@ -16,7 +16,7 @@ const CARDS = [
 
 const MASTER_ADMIN_CARDS = [
   {
-    label: "AI Auto-Quote",
+    label: "AI Assistant",
     href: "/settings/ai-auto-quote",
     icon: Bot,
     text: "Set how long a lead can sit unquoted before Global Bus AI prices and sends a quote automatically.",

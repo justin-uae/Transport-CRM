@@ -22,11 +22,11 @@ export default async function AiAutoQuotePage() {
     <div>
       <PageHead
         eyebrow="Administration"
-        title="AI Auto-Quote"
+        title="AI Assistant"
         text="Have Global Bus AI price and send a quote automatically when a lead sits unquoted too long."
         action={
           <PageGuide
-            title="AI Auto-Quote"
+            title="AI Assistant"
             subtitle="A safety net for leads nobody's got to in time — not a replacement for a human quote."
             sections={[
               {
@@ -34,8 +34,8 @@ export default async function AiAutoQuotePage() {
                 bullets: true,
                 body: [
                   "The clock starts the moment a lead is created, whether or not it's ever assigned to a sales user.",
-                  "Only Monday-Saturday counts — Sunday never adds to the total, so a lead created Saturday evening with a 24-hour SLA breaches Monday evening, not on the Sunday in between.",
-                  "Turning this on never treats existing leads as instantly overdue — every lead's countdown is floored at the moment you switch it on, so the first sweep only ever catches ones that are still unquoted after a fresh SLA window from now.",
+                  "Only Monday-Saturday counts — Sunday never adds to the total, so a lead created Saturday evening with a 24-hour time limit breaches Monday evening, not on the Sunday in between.",
+                  "Turning this on never treats existing leads as instantly overdue — every lead's countdown is floored at the moment you switch it on, so the first sweep only ever catches ones that are still unquoted after a fresh time limit window from now.",
                   "A lead that's already been quoted, closed, marked spam/duplicate, or whose travel date has already passed is never picked up.",
                 ],
               },

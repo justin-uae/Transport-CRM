@@ -17,7 +17,7 @@ export function AiAutoQuoteForm({ initialEnabled, initialSlaHours }: { initialEn
         notify(result.error);
         return;
       }
-      notify("AI Auto-Quote settings saved");
+      notify("AI Assistant settings saved");
     });
   }
 
@@ -25,7 +25,7 @@ export function AiAutoQuoteForm({ initialEnabled, initialSlaHours }: { initialEn
     <div className="mt-4 max-w-md space-y-5">
       <label className="flex items-center justify-between gap-4 rounded-xl border p-4">
         <span>
-          <span className="block text-sm font-bold">Enable AI Auto-Quote</span>
+          <span className="block text-sm font-bold">Enable AI Assistant</span>
           <span className="block text-xs text-slate-500">When off, unquoted leads are left for staff regardless of how long they sit.</span>
         </span>
         <input
@@ -38,7 +38,7 @@ export function AiAutoQuoteForm({ initialEnabled, initialSlaHours }: { initialEn
 
       <div>
         <label className="block text-sm font-bold" htmlFor="ai-auto-quote-sla-hours">
-          SLA (business hours before AI takes over)
+          Time limit (business hours before AI takes over)
         </label>
         <p className="mt-1 text-xs text-slate-500">Monday-Saturday only — Sundays don&rsquo;t count toward this total. Default 24.</p>
         <input

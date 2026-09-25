@@ -275,13 +275,7 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
               </div>
               <div>
                 <dt className="text-xs font-bold uppercase text-slate-400">Sales rep</dt>
-                <dd className="mt-0.5 font-semibold">
-                  {quote.ai_generated ? (
-                    <span className="text-primary-600">AI Auto-Quote</span>
-                  ) : (
-                    quote.created_by_profile?.full_name ?? "—"
-                  )}
-                </dd>
+                <dd className="mt-0.5 font-semibold">{quote.created_by_profile?.full_name ?? "—"}</dd>
               </div>
               <div>
                 <dt className="text-xs font-bold uppercase text-slate-400">Sent Date</dt>
@@ -290,8 +284,8 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
             </dl>
             {quote.ai_generated && (
               <p className="mt-4 rounded-xl bg-primary-50 p-3 text-xs font-semibold text-primary-700">
-                This lead sat unquoted past the SLA, so Global Bus AI priced and sent this quote automatically (Settings
-                -&gt; AI Auto-Quote). Review the price before relying on it for anything beyond the customer&rsquo;s copy.
+                This lead sat unquoted past the time limit, so Global Bus AI priced and sent this quote automatically (Settings
+                -&gt; AI Assistant). Review the price before relying on it for anything beyond the customer&rsquo;s copy.
               </p>
             )}
             {customer?.id && (

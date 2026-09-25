@@ -332,7 +332,13 @@ async function createAndSendQuote(admin: Admin, lead: LeadForSweep, aiProfileId:
 
   await admin.from("quotes").update({ current_version_id: version.id, status: "sent", sent_at: new Date().toISOString() }).eq("id", quote.id);
   await admin.from("quote_events").insert({ quote_id: quote.id, event: "sent" });
-  await admin.from("leads").update({ status: "converted" }).eq("id", lead.id);
+  // Re-assigns the lead to the AI profile now that it's actually quoted
+  // (released to the pool above only while it was still unquoted) — without
+  // this, /leads?tab=quoted (filtered on the viewer's own assigned_user_id)
+  // never matches for the AI account, even though it's the one that quoted
+  // it. Falls back to null (today's "AI Quoted" badge/unclaimed look, see
+  // ownerLabel in components/pages/LeadsPage.tsx) if no AI profile exists yet.
+  await admin.from("leads").update({ status: "converted", assigned_user_id: aiProfileId }).eq("id", lead.id);
 
   const publicLink = `${process.env.NEXT_PUBLIC_APP_URL ?? ""}/q/${quote.public_token}`;
   const quotePdf = await generateQuotePdf(admin, quote.id).catch((err) => {
