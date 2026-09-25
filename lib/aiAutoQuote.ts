@@ -49,6 +49,7 @@ interface LeadForSweep {
 
 interface PricingEstimate {
   vehicle_description: string;
+  currency: string;
   supplier_estimated_cost: number;
   selling_price: number;
   customer_notes: string;
@@ -62,14 +63,19 @@ const PRICING_SCHEMA = {
       type: "string",
       description: "A short description of the vehicle you'd recommend for this group size (e.g. \"16-seat minibus\", \"49-seat coach\").",
     },
+    currency: {
+      type: "string",
+      description:
+        "The ISO 4217 currency code (e.g. USD, EUR, GBP, AED, INR, JPY) for the country where this trip actually takes place — work it out from the pickup/destination locations, not the company's own home currency. If you can't confidently tell which country/currency applies from the addresses given, use USD as the safe default — never default to EUR.",
+    },
     supplier_estimated_cost: {
       type: "number",
-      description: "Your best estimate of what it would cost to hire a supplier/driver to run this trip, in the given currency. Must be greater than 0.",
+      description: "Your best estimate of what it would cost to hire a supplier/driver to run this trip, in the currency you chose above. Must be greater than 0.",
     },
     selling_price: {
       type: "number",
       description:
-        "The price to charge the customer, in the given currency — a realistic market rate for this route/vehicle/date, with a sensible margin (roughly 20-35%) over supplier_estimated_cost. Must be greater than supplier_estimated_cost.",
+        "The price to charge the customer, in the currency you chose above — a realistic market rate for this route/vehicle/date, with a sensible margin (roughly 20-35%) over supplier_estimated_cost. Must be greater than supplier_estimated_cost.",
     },
     customer_notes: {
       type: "string",
@@ -77,14 +83,16 @@ const PRICING_SCHEMA = {
     },
     pricing_rationale: {
       type: "string",
-      description: "One sentence, for internal staff eyes only, explaining how you arrived at this price.",
+      description: "One sentence, for internal staff eyes only, explaining how you arrived at this price and currency.",
     },
   },
-  required: ["vehicle_description", "supplier_estimated_cost", "selling_price", "customer_notes", "pricing_rationale"],
+  required: ["vehicle_description", "currency", "supplier_estimated_cost", "selling_price", "customer_notes", "pricing_rationale"],
   additionalProperties: false,
 } as const;
 
-async function estimatePricing(lead: LeadForSweep, brandName: string, currency: string): Promise<PricingEstimate> {
+const CURRENCY_CODE_RE = /^[A-Z]{3}$/;
+
+async function estimatePricing(lead: LeadForSweep, brandName: string): Promise<PricingEstimate> {
   const client = getOpenAIClient();
   const response = await client.responses.create(
     {
@@ -92,7 +100,8 @@ async function estimatePricing(lead: LeadForSweep, brandName: string, currency: 
       instructions:
         `You are a pricing analyst for ${brandName}, a coach and transport hire company. A lead has gone unquoted too ` +
         `long, so you're pricing and quoting the trip yourself based on typical market rates for private transport hire. ` +
-        `Give a realistic, fair estimate — never a placeholder or round guess. All money figures must be in ${currency}. ` +
+        `Give a realistic, fair estimate — never a placeholder or round guess. Price it in the currency of the country ` +
+        `where the trip is taking place, not any other currency. ` +
         `This quote is always full payment upfront, no deposit option — don't mention a deposit or part-payment in customer_notes.`,
       input: [
         {
@@ -126,6 +135,13 @@ async function estimatePricing(lead: LeadForSweep, brandName: string, currency: 
   const raw = response.output_text;
   if (!raw) throw new Error("OpenAI returned no output for an AI auto-quote pricing estimate.");
   const parsed = JSON.parse(raw) as PricingEstimate;
+
+  // "Use USD, never default to EUR" only lives in the prompt — enforce it
+  // here too, in case the model returns something malformed/blank/not a
+  // real 3-letter code, rather than trusting free-form model output for
+  // something that ends up on a real invoice.
+  const code = parsed.currency?.toUpperCase().trim();
+  parsed.currency = code && CURRENCY_CODE_RE.test(code) ? code : "USD";
 
   // Defensive floor — never let a malformed/zero response through to a real
   // customer-facing quote. A genuinely bad estimate throws and is retried
@@ -217,8 +233,12 @@ async function createAndSendQuote(admin: Admin, lead: LeadForSweep) {
     .maybeSingle();
 
   const enquiry = await ensureEnquiry(admin, lead);
-  const currency = brand.default_currency;
-  const pricing = await estimatePricing(lead, brand.name, currency);
+  // Priced in the currency of the country the trip actually happens in
+  // (the AI works this out from pickup/destination, falling back to USD if
+  // it can't tell), not the brand's own default_currency — a UK-registered
+  // brand quoting a coach hire in Thailand should show THB, not GBP.
+  const pricing = await estimatePricing(lead, brand.name);
+  const currency = pricing.currency;
 
   const { data: quoteNumber, error: numberError } = await admin.rpc("next_document_number", {
     p_brand_id: brand.id,
