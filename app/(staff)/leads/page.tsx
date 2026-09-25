@@ -27,7 +27,7 @@ export default async function Page({
   let listQuery = supabase
     .from("leads")
     .select(
-      "id, source, status, priority, pickup_text, destination_text, travel_date, pickup_time, return_trip, return_date, return_time, passenger_count, luggage_count, is_complex_booking, vehicle_requested, notes, assigned_user_id, created_at, customers(company_name, contact_name, phone, email), profiles(full_name), brands(name)",
+      "id, source, status, priority, pickup_text, destination_text, travel_date, pickup_time, return_trip, return_date, return_time, passenger_count, luggage_count, is_complex_booking, vehicle_requested, notes, assigned_user_id, created_at, customers(company_name, contact_name, phone, email), profiles(full_name), brands(name), enquiries(quotes(ai_generated))",
       { count: "exact" },
     );
 
@@ -96,9 +96,19 @@ export default async function Page({
   const quotesAwaitingResponse = openQuotesCount ?? 0;
   const assignableUsers = canAssign ? await getAssignableSalesUsers(supabase) : [];
 
+  // A lead the AI Auto-Quote sweep converted has no assigned_user_id (it
+  // was released to the pool before being quoted, see lib/aiAutoQuote.ts) —
+  // without this, the Owner column would otherwise read it as still sitting
+  // unclaimed in the open pool instead of already quoted by AI.
+  const leadRows = (leads ?? []).map((l) => {
+    const enquiries = (l as unknown as { enquiries: { quotes: { ai_generated: boolean }[] }[] | null }).enquiries ?? [];
+    const aiQuoted = enquiries.some((e) => e.quotes?.some((q) => q.ai_generated));
+    return { ...l, ai_quoted: aiQuoted } as unknown as LeadRow;
+  });
+
   return (
     <LeadsPage
-      leads={(leads ?? []) as unknown as LeadRow[]}
+      leads={leadRows}
       currentUserId={profile.id}
       myOpenEnquiries={openEnquiries?.length ?? 0}
       quotesAwaitingResponse={quotesAwaitingResponse}

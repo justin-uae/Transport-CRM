@@ -96,6 +96,7 @@ export interface LeadDetailQuote {
   id: string;
   quote_number: string;
   status: string;
+  ai_generated: boolean;
 }
 
 export interface AssignableUser {
@@ -436,7 +437,16 @@ export function LeadDetailPage({
               ) : (
                 <Row
                   label="Owner"
-                  value={lead.profiles?.full_name || (lead.status === "expired" ? <span className="font-bold text-red-600">Unclaimed</span> : <span className="font-bold text-primary-600">Open pool</span>)}
+                  value={
+                    lead.profiles?.full_name ||
+                    (quote?.ai_generated ? (
+                      <span className="font-bold text-primary-600">AI Quoted</span>
+                    ) : lead.status === "expired" ? (
+                      <span className="font-bold text-red-600">Unclaimed</span>
+                    ) : (
+                      <span className="font-bold text-primary-600">Open pool</span>
+                    ))
+                  }
                 />
               )}
               <Row label={isGeneralEnquiry ? "Message" : "Notes"} value={lead.notes} />

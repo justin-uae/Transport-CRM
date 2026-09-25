@@ -45,6 +45,17 @@ export interface LeadRow {
   customers: { company_name: string | null; contact_name: string; phone: string | null; email: string | null } | null;
   profiles: { full_name: string } | null;
   brands: { name: string } | null;
+  /** True when lib/aiAutoQuote.ts quoted this lead itself — it has no assigned_user_id by that point (released to the pool first), so without this the Owner column would misread it as still unclaimed. */
+  ai_quoted: boolean;
+}
+
+/** Single source of truth for the Owner column/field — a lead with no assigned rep isn't always "open pool": it might already be quoted by AI (released, then converted) or just sitting in a terminal status (closed/spam) nobody ever picked up. */
+function ownerLabel(l: LeadRow) {
+  if (l.profiles?.full_name) return l.profiles.full_name;
+  if (l.ai_quoted) return <span className="font-bold text-primary-600">AI Quoted</span>;
+  if (l.status === "expired") return <span className="font-bold text-red-600">Unclaimed</span>;
+  if (l.status === "open_pool") return <span className="font-bold text-primary-600">Open pool</span>;
+  return <span className="text-slate-400">—</span>;
 }
 
 const STATUS_LABEL: Record<LeadStatus, string> = {
@@ -372,7 +383,7 @@ export function LeadsPage({
                 <span>
                   {STATUS_LABEL[l.status]} · {timeAgo(l.created_at)}
                 </span>
-                <span>{l.profiles?.full_name || (l.status === "expired" ? <span className="font-bold text-red-600">Unclaimed</span> : <span className="font-bold text-primary-600">Open pool</span>)}</span>
+                <span>{ownerLabel(l)}</span>
               </div>
               <div className="mt-3 flex gap-2">
                 {((l.status === "open_pool" && canClaim) || isOwnActiveLead(l)) && (
@@ -461,7 +472,7 @@ export function LeadsPage({
                   </td>
                   <td className="whitespace-nowrap">{STATUS_LABEL[l.status]}</td>
                   <td className="whitespace-nowrap">{timeAgo(l.created_at)}</td>
-                  <td className="whitespace-nowrap">{l.profiles?.full_name || (l.status === "expired" ? <span className="font-bold text-red-600">Unclaimed</span> : <span className="font-bold text-primary-600">Open pool</span>)}</td>
+                  <td className="whitespace-nowrap">{ownerLabel(l)}</td>
                   <td className="whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                     <div className="flex items-center gap-2">
                       {l.status === "open_pool" && canClaim ? (

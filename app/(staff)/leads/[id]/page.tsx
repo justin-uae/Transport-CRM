@@ -37,7 +37,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
   if (enquiry) {
     const { data: quoteRow } = await supabase
       .from("quotes")
-      .select("id, quote_number, status")
+      .select("id, quote_number, status, ai_generated")
       .eq("enquiry_id", enquiry.id)
       .order("created_at", { ascending: false })
       .limit(1)
