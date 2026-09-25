@@ -123,7 +123,7 @@ services:
   - type: cron
     name: email-lead-intake
     runtime: node
-    schedule: "0 * * * *"
+    schedule: "*/5 * * * *"
     buildCommand: npm install
     startCommand: >
       curl -sf -X POST "$NEXT_PUBLIC_APP_URL/api/cron/email-lead-intake"
