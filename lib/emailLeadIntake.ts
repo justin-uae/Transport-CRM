@@ -41,6 +41,12 @@ function describeImapError(err: unknown): string {
 
 const MAX_LOOKBACK_DAYS = 7;
 
+// A loose but sufficient check that the model actually returned an email
+// address rather than a stray phrase — e.g. "my name is Justin Email" has
+// led the model to extract email: "Justin Email" (no @ at all) instead of
+// leaving it null, silently discarding the real address in the From header.
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 interface EnquiryExtraction {
   is_travel_enquiry: boolean;
   name: string | null;
@@ -145,8 +151,10 @@ async function processMessage(
   // The forwarded "From" header is often the forwarding service or a
   // no-reply address, not the actual customer — prefer whatever the AI read
   // out of the body/signature, and only fall back to the header when the
-  // email genuinely didn't restate the sender's own contact details.
-  const email = extraction.email ?? parsed.fromAddress;
+  // email genuinely didn't restate the sender's own contact details, or when
+  // what the model extracted isn't actually an email address (EMAIL_RE).
+  const extractedEmail = extraction.email && EMAIL_RE.test(extraction.email) ? extraction.email : null;
+  const email = extractedEmail ?? parsed.fromAddress;
   const phone = extraction.phone;
   if (!email && !phone) return { decision: "discarded_no_contact" };
   const name = extraction.name ?? parsed.fromName ?? email ?? "Website enquiry";
