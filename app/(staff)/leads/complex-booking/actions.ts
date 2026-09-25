@@ -17,6 +17,44 @@ export interface ComplexBookingFileRef {
   fileSize?: number;
 }
 
+const DUPLICATE_SUBMISSION_WINDOW_MINUTES = 15;
+
+/**
+ * Unlike website/email intake, this form has no built-in "did I already
+ * submit this" feedback beyond a redirect — resubmitting (e.g. after a slow
+ * page, or not noticing the first submit went through) silently creates a
+ * second identical lead with nothing to stop it. Matched on the same
+ * customer plus the exact same pasted itinerary text or uploaded file,
+ * within a short window — narrow enough that a genuinely new booking using
+ * a similar template later doesn't get blocked.
+ */
+async function findRecentDuplicateComplexBooking(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  tenantId: string,
+  customerId: string,
+  pastedText: string | null,
+  sourceFile: ComplexBookingFileRef | null,
+): Promise<string | null> {
+  if (!pastedText?.trim() && !sourceFile) return null;
+
+  const since = new Date(Date.now() - DUPLICATE_SUBMISSION_WINDOW_MINUTES * 60000).toISOString();
+  const { data: candidates } = await supabase
+    .from("leads")
+    .select("id, raw_payload")
+    .eq("tenant_id", tenantId)
+    .eq("customer_id", customerId)
+    .eq("is_complex_booking", true)
+    .gte("created_at", since);
+
+  for (const lead of candidates ?? []) {
+    const payload = lead.raw_payload as { pastedText?: string | null; sourceFile?: { storagePath: string } | null } | null;
+    const sameText = Boolean(pastedText?.trim() && payload?.pastedText?.trim() === pastedText.trim());
+    const sameFile = Boolean(sourceFile && payload?.sourceFile?.storagePath === sourceFile.storagePath);
+    if (sameText || sameFile) return lead.id;
+  }
+  return null;
+}
+
 export async function extractComplexBookingAction(input: {
   pastedText: string;
   file: ComplexBookingFileRef | null;
@@ -119,6 +157,11 @@ export async function createComplexBookingLeadAction(
     if (!leg.pickupAddress.trim() || !leg.destinationAddress.trim()) {
       return { error: "Every leg needs a pickup and destination address." };
     }
+  }
+
+  const duplicateLeadId = await findRecentDuplicateComplexBooking(supabase, actor.tenant_id, customerId, input.pastedText, input.sourceFile);
+  if (duplicateLeadId) {
+    return { error: "It looks like this itinerary was already submitted a few minutes ago for this customer — check My Leads before submitting again." };
   }
 
   const firstLeg = input.legs[0]!;
