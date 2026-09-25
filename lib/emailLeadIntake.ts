@@ -201,8 +201,16 @@ async function processMessage(
   // no-reply address, not the actual customer — prefer whatever the AI read
   // out of the body/signature, and only fall back to the header when the
   // email genuinely didn't restate the sender's own contact details, or when
-  // what the model extracted isn't actually an email address (EMAIL_RE).
-  const extractedEmail = extraction.email && EMAIL_RE.test(extraction.email) ? extraction.email : null;
+  // what the model extracted isn't trustworthy: EMAIL_RE alone isn't enough
+  // — a well-FORMED but fabricated guess (e.g. a customer named "Daniel
+  // Email" led the model to invent "daniel.email@example.com" out of thin
+  // air, despite being told never to) still passes a format check. A genuine
+  // email the customer actually typed will literally appear in the body —
+  // one they didn't type won't, so that's the real test.
+  const extractedEmail =
+    extraction.email && EMAIL_RE.test(extraction.email) && bodyText.toLowerCase().includes(extraction.email.toLowerCase())
+      ? extraction.email
+      : null;
   const email = extractedEmail ?? parsed.fromAddress;
   const phone = extraction.phone;
   if (!email && !phone) return { decision: "discarded_no_contact" };
