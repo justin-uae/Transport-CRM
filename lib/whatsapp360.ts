@@ -68,7 +68,7 @@ export function normalizeWhatsAppNumber(raw: string): string {
  * static header *text* would be.
  */
 export const QUOTE_SENT_CUSTOMER_HEADER_IMAGE_URL =
-  "https://crqkhsurvwdyoxcpuaww.supabase.co/storage/v1/object/public/template-assets/ChatGPT%20Image%20Sep%2025,%202026,%2006_24_39%20PM.png";
+  "https://crqkhsurvwdyoxcpuaww.supabase.co/storage/v1/object/public/template-assets/WhatsApp%20Image%202026-09-25%20at%206.46.40%20PM.jpeg";
 
 /**
  * Sends an approved WhatsApp template message — the only way to message a
