@@ -35,32 +35,31 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ q
     listQuery = listQuery.or(`quote_number.ilike.%${q}%,invoice_number.ilike.%${q}%`);
   }
 
-  const [
-    { data: quotes, count },
-    canCreateQuote,
-    { count: draftCount },
-    { count: sentCount },
-    { count: acceptedCount },
-    { count: totalCount },
-    { data: pipelineRows },
-  ] = await Promise.all([
+  // The 4 separate count queries + the pipeline-value query this page used
+  // to fire were each independently re-running the same per-row RLS check
+  // (can_view_assignment) across the whole quotes table — 5 full passes
+  // instead of 1. Fetching status + selling_price once and deriving every
+  // KPI from that single result set cuts this page from 7 concurrent
+  // queries to 3, which is what was pushing Postgres into a statement
+  // timeout (57014) under load.
+  const [{ data: quotes, count }, canCreateQuote, { data: statsRows }] = await Promise.all([
     listQuery.order("created_at", { ascending: false }).range(from, to),
     hasPermission(profile, PERMISSIONS.QUOTES_CREATE),
-    supabase.from("quotes").select("id", { count: "exact", head: true }).eq("status", "draft"),
-    supabase.from("quotes").select("id", { count: "exact", head: true }).in("status", ["sent", "viewed"]),
-    supabase.from("quotes").select("id", { count: "exact", head: true }).in("status", ["accepted", "converted"]),
-    supabase.from("quotes").select("id", { count: "exact", head: true }),
-    supabase
-      .from("quotes")
-      .select("currency, quote_versions!quotes_current_version_id_fkey(selling_price)")
-      .in("status", ["sent", "viewed"]),
+    supabase.from("quotes").select("status, currency, quote_versions!quotes_current_version_id_fkey(selling_price)"),
   ]);
 
-  const pipelineValue = (pipelineRows ?? []).reduce(
+  const rows = statsRows ?? [];
+  const draftCount = rows.filter((r) => r.status === "draft").length;
+  const sentRows = rows.filter((r) => r.status === "sent" || r.status === "viewed");
+  const sentCount = sentRows.length;
+  const acceptedCount = rows.filter((r) => r.status === "accepted" || r.status === "converted").length;
+  const totalCount = rows.length;
+
+  const pipelineValue = sentRows.reduce(
     (sum, r) => sum + ((r.quote_versions as unknown as { selling_price: number } | null)?.selling_price ?? 0),
     0,
   );
-  const pipelineCurrency = (pipelineRows ?? [])[0]?.currency ?? "EUR";
+  const pipelineCurrency = sentRows[0]?.currency ?? "EUR";
 
   return (
     <QuotesPage
@@ -69,10 +68,10 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ q
       page={page}
       pageSize={PAGE_SIZE}
       total={count ?? 0}
-      draftCount={draftCount ?? 0}
-      sentCount={sentCount ?? 0}
-      acceptedCount={acceptedCount ?? 0}
-      totalCount={totalCount ?? 0}
+      draftCount={draftCount}
+      sentCount={sentCount}
+      acceptedCount={acceptedCount}
+      totalCount={totalCount}
       pipelineValue={pipelineValue}
       pipelineCurrency={pipelineCurrency}
     />
