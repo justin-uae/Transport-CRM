@@ -7,6 +7,7 @@ import { recordAudit } from "@/lib/audit";
 import { getStripeClient, toStripeAmount } from "@/lib/stripe";
 import { amountDueNow } from "@/lib/quotePayments";
 import { sendTemplatedEmail } from "@/lib/emailTemplates";
+import { sendWhatsAppTemplate, normalizeWhatsAppNumber, WHATSAPP_TEMPLATE_HEADER_IMAGE_URL } from "@/lib/whatsapp360";
 import { formatDateAndTime } from "@/lib/formatDate";
 
 interface PayableLeg {
@@ -42,7 +43,7 @@ async function loadDecidableQuote(admin: ReturnType<typeof createAdminClient>, t
   const { data: quote } = await admin
     .from("quotes")
     .select(
-      "id, tenant_id, status, quote_number, created_by, current_version_id, brands(name), enquiries(assigned_user_id, customers(contact_name, company_name))",
+      "id, tenant_id, status, quote_number, currency, public_token, created_by, current_version_id, brands(name), enquiries(assigned_user_id, customers(contact_name, company_name, phone, whatsapp)), quote_versions!quotes_current_version_id_fkey(selling_price)",
     )
     .eq("public_token", token)
     .single();
@@ -209,9 +210,10 @@ export async function acceptQuoteAction(token: string, acceptedByName: string) {
 
   const enquiry = quote.enquiries as unknown as {
     assigned_user_id: string | null;
-    customers: { contact_name: string; company_name: string | null } | null;
+    customers: { contact_name: string; company_name: string | null; phone: string | null; whatsapp: string | null } | null;
   } | null;
   const brand = quote.brands as unknown as { name: string } | null;
+  const version = quote.quote_versions as unknown as { selling_price: number } | null;
   const staffEmail = await resolveStaffEmail(admin, enquiry?.assigned_user_id ?? null, quote.created_by);
   await sendTemplatedEmail(admin, {
     tenantId: quote.tenant_id,
@@ -224,6 +226,27 @@ export async function acceptQuoteAction(token: string, acceptedByName: string) {
       link: `${process.env.NEXT_PUBLIC_APP_URL ?? ""}/quotes/${quote.id}`,
     },
   });
+
+  // Best-effort, same as every other WhatsApp send — never blocks the
+  // customer's own acceptance flow on a missing number or send failure.
+  const customerWhatsapp = enquiry?.customers?.whatsapp || enquiry?.customers?.phone;
+  if (customerWhatsapp) {
+    const waResult = await sendWhatsAppTemplate(
+      normalizeWhatsAppNumber(customerWhatsapp),
+      "booking_confirmed_customer",
+      [
+        enquiry?.customers?.company_name || enquiry?.customers?.contact_name || "Customer",
+        brand?.name ?? "",
+        quote.quote_number,
+        `${version ? version.selling_price.toFixed(2) : "0.00"} ${quote.currency}`,
+      ],
+      quote.public_token,
+      WHATSAPP_TEMPLATE_HEADER_IMAGE_URL,
+    );
+    if (!waResult.ok) {
+      console.error(`acceptQuoteAction: booking_confirmed_customer WhatsApp send failed for quote ${quote.id}: ${waResult.error}`);
+    }
+  }
 
   revalidatePath(`/q/${token}`);
   return { error: null };

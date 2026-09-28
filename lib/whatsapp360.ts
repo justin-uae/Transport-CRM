@@ -61,13 +61,15 @@ export function normalizeWhatsAppNumber(raw: string): string {
 }
 
 /**
- * The header image approved for quote_sent_customer (Settings -> 360dialog
- * Template Manager). A template with a static IMAGE header still requires
- * that image supplied on every send (error 132012 "expected IMAGE, received
- * UNKNOWN" otherwise) — it's not baked into the approved template the way
- * static header *text* would be.
+ * The shared header image used across every WhatsApp template with an IMAGE
+ * header (quote_sent_customer, booking_confirmed_customer,
+ * payment_received_customer, job_offered_supplier — 360dialog Template
+ * Manager). A template with a static IMAGE header still requires that image
+ * supplied on every send (error 132012 "expected IMAGE, received UNKNOWN"
+ * otherwise) — it's not baked into the approved template the way static
+ * header *text* would be.
  */
-export const QUOTE_SENT_CUSTOMER_HEADER_IMAGE_URL =
+export const WHATSAPP_TEMPLATE_HEADER_IMAGE_URL =
   "https://crqkhsurvwdyoxcpuaww.supabase.co/storage/v1/object/public/template-assets/WhatsApp%20Image%202026-09-25%20at%206.46.40%20PM.jpeg";
 
 /**

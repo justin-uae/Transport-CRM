@@ -2,6 +2,7 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database, CustomerPaymentMethod, QuoteStatus } from "./supabase/database.types";
 import { sendTemplatedEmail } from "./emailTemplates";
+import { sendWhatsAppTemplate, normalizeWhatsAppNumber, WHATSAPP_TEMPLATE_HEADER_IMAGE_URL } from "./whatsapp360";
 import { generateInvoicePdf } from "./invoicePdf";
 import { persistGeneratedPdf } from "./documentArchive";
 
@@ -157,7 +158,7 @@ export async function finalizeQuoteFromVerifiedPayments(
   // update/job creation below on a mail failure.
   const sendReceipt = async () => {
     const [{ data: customer }, { data: brand }] = await Promise.all([
-      supabase.from("customers").select("contact_name, company_name, email").eq("id", quote.customer_id).maybeSingle(),
+      supabase.from("customers").select("contact_name, company_name, email, phone, whatsapp").eq("id", quote.customer_id).maybeSingle(),
       supabase.from("brands").select("name").eq("id", quote.brand_id).maybeSingle(),
     ]);
     await sendTemplatedEmail(supabase, {
@@ -174,6 +175,26 @@ export async function finalizeQuoteFromVerifiedPayments(
         link: `${process.env.NEXT_PUBLIC_APP_URL ?? ""}/q/${quote.public_token}`,
       },
     });
+
+    const customerWhatsapp = customer?.whatsapp || customer?.phone;
+    if (customerWhatsapp) {
+      const waResult = await sendWhatsAppTemplate(
+        normalizeWhatsAppNumber(customerWhatsapp),
+        "payment_received_customer",
+        [
+          customer?.company_name || customer?.contact_name || "Customer",
+          quote.quote_number,
+          brand?.name ?? "",
+          `${quote.paymentAmount.toFixed(2)} ${quote.currency}`,
+          `${balanceRemaining.toFixed(2)} ${quote.currency}`,
+        ],
+        quote.public_token,
+        WHATSAPP_TEMPLATE_HEADER_IMAGE_URL,
+      );
+      if (!waResult.ok) {
+        console.error(`finalizeQuoteFromVerifiedPayments: payment_received_customer WhatsApp send failed for quote ${quote.id}: ${waResult.error}`);
+      }
+    }
   };
 
   if (!fullyPaid) {

@@ -7,6 +7,7 @@ import { requireProfile } from "@/lib/auth";
 import { hasPermission, PERMISSIONS } from "@/lib/permissions";
 import { recordAudit } from "@/lib/audit";
 import { sendTemplatedEmail } from "@/lib/emailTemplates";
+import { sendWhatsAppTemplate, normalizeWhatsAppNumber, WHATSAPP_TEMPLATE_HEADER_IMAGE_URL } from "@/lib/whatsapp360";
 import { cancelAllocation } from "@/lib/dispatchAllocations";
 import type { Database, Profile } from "@/lib/supabase/database.types";
 
@@ -271,7 +272,7 @@ export async function offerAllocationToSuppliersAction(allocationId: string, sup
     newValue: { supplierIds, status: "offered" },
   });
 
-  const { data: suppliers } = await supabase.from("suppliers").select("id, name, email").in("id", supplierIds);
+  const { data: suppliers } = await supabase.from("suppliers").select("id, name, email, phone, whatsapp").in("id", supplierIds);
 
   for (const supplier of suppliers ?? []) {
     await sendTemplatedEmail(supabase, {
@@ -288,6 +289,27 @@ export async function offerAllocationToSuppliersAction(allocationId: string, sup
         link: `${process.env.NEXT_PUBLIC_APP_URL ?? ""}/supplier/dashboard/${allocationId}`,
       },
     });
+
+    const supplierWhatsapp = supplier.whatsapp || supplier.phone;
+    if (supplierWhatsapp) {
+      const waResult = await sendWhatsAppTemplate(
+        normalizeWhatsAppNumber(supplierWhatsapp),
+        "job_offered_supplier",
+        [
+          supplier.name,
+          job.quotes?.brands?.name ?? "",
+          job.region ?? "—",
+          firstLeg?.pickup_date ?? "TBC",
+          firstLeg?.pickup_time ?? "TBC",
+          String(firstLeg?.passenger_count ?? "—"),
+        ],
+        allocationId,
+        WHATSAPP_TEMPLATE_HEADER_IMAGE_URL,
+      );
+      if (!waResult.ok) {
+        console.error(`offerAllocationToSuppliersAction: job_offered_supplier WhatsApp send failed for supplier ${supplier.id}: ${waResult.error}`);
+      }
+    }
   }
 
   revalidatePath("/dispatch");
