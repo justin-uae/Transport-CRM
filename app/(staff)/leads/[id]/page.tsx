@@ -84,7 +84,15 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
           .select("id, action, new_value, created_at, actor:profiles!audit_log_actor_id_fkey(full_name)")
           .eq("entity_type", "lead")
           .eq("entity_id", id)
-          .in("action", ["lead_assigned_by_manager", "lead_claimed", "lead_released", "lead_released_sla_breach"])
+          .in("action", [
+            "lead_assigned_by_manager",
+            "lead_claimed",
+            "lead_released",
+            "lead_released_sla_breach",
+            "ai_quote_created_sla",
+            "ai_quote_created_whatsapp_lead",
+            "ai_quote_created_manual_assign",
+          ])
           .order("created_at", { ascending: false })
       ).data ?? [])
     : [];

@@ -14,7 +14,7 @@ export default async function AiAutoQuotePage() {
   const supabase = await createClient();
   const { data: tenant } = await supabase
     .from("tenants")
-    .select("ai_auto_quote_enabled, ai_auto_quote_sla_hours")
+    .select("ai_auto_quote_enabled, ai_auto_quote_sla_hours, whatsapp_auto_quote_enabled")
     .eq("id", profile.tenant_id)
     .single();
 
@@ -49,6 +49,22 @@ export default async function AiAutoQuotePage() {
                 ],
               },
               {
+                heading: "Instant quoting for a new WhatsApp lead",
+                bullets: true,
+                body: [
+                  "A separate switch, below — once a WhatsApp conversation gathers everything needed to create a lead, AI prices and sends a quote for it immediately, over email AND WhatsApp, instead of waiting for the time limit above.",
+                  "Off by default. When off, a WhatsApp lead behaves exactly as it does today — it just sits waiting for a sales user (or, eventually, the SLA time limit above) like any other lead.",
+                ],
+              },
+              {
+                heading: "Instant quoting on manual assignment",
+                bullets: true,
+                body: [
+                  "Always on, not a switch — whenever a Master Admin or Sales Manager explicitly assigns any lead to the AI role's profile from Leads, that's treated the same as a breach: a quote is priced and sent immediately (email and, if the customer has a WhatsApp number on file, WhatsApp too) rather than waiting for the time limit.",
+                  "Skipped silently (the assignment itself still goes through) if the lead is missing a pickup, destination or customer, or its travel date has already passed — exactly the same guardrails as the time-limit sweep.",
+                ],
+              },
+              {
                 heading: "Who can change this",
                 body: ["Master Admin only — this runs hourly for the whole organisation, so it's kept out of individual role permissions."],
               },
@@ -59,7 +75,11 @@ export default async function AiAutoQuotePage() {
 
       <Panel>
         <SectionTitle title="Settings" sub="Applies tenant-wide, checked every hour" />
-        <AiAutoQuoteForm initialEnabled={tenant?.ai_auto_quote_enabled ?? false} initialSlaHours={tenant?.ai_auto_quote_sla_hours ?? 24} />
+        <AiAutoQuoteForm
+          initialEnabled={tenant?.ai_auto_quote_enabled ?? false}
+          initialSlaHours={tenant?.ai_auto_quote_sla_hours ?? 24}
+          initialWhatsappEnabled={tenant?.whatsapp_auto_quote_enabled ?? false}
+        />
       </Panel>
     </div>
   );

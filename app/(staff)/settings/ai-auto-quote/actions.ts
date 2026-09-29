@@ -5,7 +5,11 @@ import { createClient } from "@/lib/supabase/server";
 import { requireProfile } from "@/lib/auth";
 import { recordAudit } from "@/lib/audit";
 
-export async function updateAiAutoQuoteSettingsAction(enabled: boolean, slaHours: number) {
+export async function updateAiAutoQuoteSettingsAction(
+  enabled: boolean,
+  slaHours: number,
+  whatsappAutoQuoteEnabled: boolean,
+) {
   const actor = await requireProfile();
   // tenants_update's RLS policy (0001_foundation.sql) is is_master_admin()
   // only, so this mirrors that at the app layer rather than introducing a
@@ -36,6 +40,10 @@ export async function updateAiAutoQuoteSettingsAction(enabled: boolean, slaHours
       ai_auto_quote_enabled: enabled,
       ai_auto_quote_sla_hours: Math.round(slaHours),
       ...(justEnabled ? { ai_auto_quote_enabled_at: new Date().toISOString() } : {}),
+      // No backlog-floor timestamp needed for this one — it only ever fires
+      // once, at the instant a brand-new WhatsApp lead is created, so there's
+      // no pre-existing backlog flipping it on could suddenly sweep up.
+      whatsapp_auto_quote_enabled: whatsappAutoQuoteEnabled,
     })
     .eq("id", actor.tenant_id);
   if (error) return { error: error.message };
@@ -46,7 +54,7 @@ export async function updateAiAutoQuoteSettingsAction(enabled: boolean, slaHours
     action: "ai_auto_quote_settings_updated",
     entityType: "tenant",
     entityId: actor.tenant_id,
-    newValue: { enabled, slaHours: Math.round(slaHours) },
+    newValue: { enabled, slaHours: Math.round(slaHours), whatsappAutoQuoteEnabled },
   });
 
   revalidatePath("/settings/ai-auto-quote");

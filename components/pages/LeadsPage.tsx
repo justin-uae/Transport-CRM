@@ -261,7 +261,7 @@ export function LeadsPage({
         return;
       }
       const name = assignableUsers.find((u) => u.id === assigneeId)?.full_name ?? "the selected user";
-      notify(`Lead assigned to ${name}`);
+      notify(result?.warning ?? (result?.quoted ? `Lead assigned to ${name} — quote created and sent automatically` : `Lead assigned to ${name}`));
       setAssignLead(null);
       router.refresh();
     });

@@ -4,15 +4,24 @@ import { useState, useTransition } from "react";
 import { useToast } from "@/components/ui/Toast";
 import { updateAiAutoQuoteSettingsAction } from "./actions";
 
-export function AiAutoQuoteForm({ initialEnabled, initialSlaHours }: { initialEnabled: boolean; initialSlaHours: number }) {
+export function AiAutoQuoteForm({
+  initialEnabled,
+  initialSlaHours,
+  initialWhatsappEnabled,
+}: {
+  initialEnabled: boolean;
+  initialSlaHours: number;
+  initialWhatsappEnabled: boolean;
+}) {
   const notify = useToast();
   const [enabled, setEnabled] = useState(initialEnabled);
   const [slaHours, setSlaHours] = useState(String(initialSlaHours));
+  const [whatsappEnabled, setWhatsappEnabled] = useState(initialWhatsappEnabled);
   const [pending, startTransition] = useTransition();
 
   function save() {
     startTransition(async () => {
-      const result = await updateAiAutoQuoteSettingsAction(enabled, Number(slaHours));
+      const result = await updateAiAutoQuoteSettingsAction(enabled, Number(slaHours), whatsappEnabled);
       if (result?.error) {
         notify(result.error);
         return;
@@ -51,6 +60,25 @@ export function AiAutoQuoteForm({ initialEnabled, initialSlaHours }: { initialEn
           disabled={!enabled}
           className="mt-2 w-32 rounded-xl border px-3 py-2.5 text-sm font-semibold disabled:opacity-50"
         />
+      </div>
+
+      <div className="border-t pt-5">
+        <label className="flex items-center justify-between gap-4 rounded-xl border p-4">
+          <span>
+            <span className="block text-sm font-bold">Instant quote for new WhatsApp leads</span>
+            <span className="block text-xs text-slate-500">
+              When on, a lead captured over WhatsApp is priced and quoted by AI the moment it&rsquo;s created — email and
+              WhatsApp both — instead of waiting for the time limit above. Off by default; a separate switch from AI
+              Assistant itself.
+            </span>
+          </span>
+          <input
+            type="checkbox"
+            checked={whatsappEnabled}
+            onChange={(e) => setWhatsappEnabled(e.target.checked)}
+            className="h-5 w-5 shrink-0 accent-primary-500"
+          />
+        </label>
       </div>
 
       <button

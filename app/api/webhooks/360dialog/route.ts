@@ -12,6 +12,7 @@ import {
   type CollectedTrip,
   type ConversationMessage,
 } from "@/lib/whatsappAiIntake";
+import { createAndSendQuote, getAiProfileId, LEAD_FOR_SWEEP_COLUMNS, type LeadForSweep } from "@/lib/aiAutoQuote";
 
 // Inbound WhatsApp -> lead creation via 360dialog (a WhatsApp Business
 // Solution Provider built directly on Meta's Cloud API — same webhook
@@ -229,6 +230,45 @@ async function createLeadFromSession(admin: AdminClient, brand: Brand, waId: str
     entityId: lead.id,
     newValue: { source: "whatsapp", waId },
   });
+
+  // Optional instant auto-quote (Settings -> AI Assistant -> "Instant quote
+  // for new WhatsApp leads", off by default) — everything below is
+  // best-effort: any failure here is logged and swallowed rather than
+  // thrown, since the WhatsApp conversation itself already completed
+  // successfully and the lead already exists normally either way. A human
+  // can always quote it manually if this doesn't go through.
+  const { data: tenant } = await admin.from("tenants").select("whatsapp_auto_quote_enabled").eq("id", brand.tenant_id).maybeSingle();
+  if (tenant?.whatsapp_auto_quote_enabled) {
+    // Same guard as the SLA sweep — a trip whose date has already passed
+    // can't be served, so it's left for a human rather than auto-quoted for
+    // a date that's gone.
+    const today = new Date().toISOString().slice(0, 10);
+    if (!travelDate || travelDate >= today) {
+      const { data: fullLead } = await admin.from("leads").select(LEAD_FOR_SWEEP_COLUMNS).eq("id", lead.id).single();
+      if (fullLead) {
+        // A heads-up before the (real, multi-second) pricing/PDF/send
+        // pipeline below — without this the customer just sees nothing
+        // happen for a while and then a quote appear out of nowhere. Free-
+        // form text is fine here (not a template): this fires seconds after
+        // their own inbound message, well inside WhatsApp's 24h window.
+        // First-name only, and only if a real name was actually captured —
+        // collected.name can otherwise just be the raw wa_id.
+        const firstName = collected.name?.trim()?.split(/\s+/)[0];
+        const headsUp = firstName
+          ? `Perfect, ${firstName}! I'm putting together your official quote now — you'll have it right here on WhatsApp in just a few minutes. 🙂`
+          : "Perfect! I'm putting together your official quote now — you'll have it right here on WhatsApp in just a few minutes. 🙂";
+        await sendWhatsAppText(waId, headsUp);
+        await logWhatsAppMessage(admin, brand, waId, customerId, "outbound", headsUp);
+
+        try {
+          const aiProfileId = await getAiProfileId(admin, brand.tenant_id);
+          await createAndSendQuote(admin, fullLead as LeadForSweep, aiProfileId, { trigger: "whatsapp_lead", alsoSendWhatsApp: true });
+        } catch (err) {
+          console.error(`360dialog webhook: instant WhatsApp auto-quote failed for lead ${lead.id}:`, err);
+        }
+      }
+    }
+  }
 }
 
 /** Runs one AI turn for a single inbound message: starts a fresh conversation
@@ -356,12 +396,20 @@ async function handleInboundMessage(admin: AdminClient, brand: Brand, waId: stri
     .update({ messages: updatedMessages, collected: mergedCollected, updated_at: new Date().toISOString() })
     .eq("id", session.id);
 
+  // Sent before createLeadFromSession, not after — that call can run the
+  // full instant auto-quote pipeline (AI pricing, PDF, email, WhatsApp
+  // template) inline when enabled, which takes a few real seconds. Sending
+  // the conversational closing reply first keeps the messages in the order
+  // the customer actually experiences them: "thanks, here's what I've got"
+  // arrives right away, then (if auto-quote fires) a heads-up, then the
+  // quote itself once it's actually ready — not the quote appearing first
+  // with a "thanks" arriving confusingly after it.
+  await sendWhatsAppText(waId, result.reply);
+  await logWhatsAppMessage(admin, brand, waId, customerId, "outbound", result.reply);
+
   if (readyForLead) {
     await createLeadFromSession(admin, brand, waId, customerId, session.id, mergedCollected);
   }
-
-  await sendWhatsAppText(waId, result.reply);
-  await logWhatsAppMessage(admin, brand, waId, customerId, "outbound", result.reply);
 }
 
 export async function POST(request: NextRequest) {

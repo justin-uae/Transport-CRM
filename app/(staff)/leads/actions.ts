@@ -3,10 +3,12 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { requireProfile } from "@/lib/auth";
 import { hasPermission, PERMISSIONS } from "@/lib/permissions";
 import { recordAudit } from "@/lib/audit";
 import { sendTemplatedEmail } from "@/lib/emailTemplates";
+import { createAndSendQuote, getAiProfileId, LEAD_FOR_SWEEP_COLUMNS, type LeadForSweep } from "@/lib/aiAutoQuote";
 
 export async function claimLeadAction(leadId: string) {
   const actor = await requireProfile();
@@ -125,9 +127,42 @@ export async function assignLeadAction(leadId: string, targetUserId: string) {
     },
   });
 
+  // Assigning directly to the AI role's profile is treated the same as an
+  // SLA breach (lib/aiAutoQuote.ts) — a quote is priced and sent
+  // immediately rather than waiting for the time limit. Uses the admin
+  // client, same as the SLA sweep and the WhatsApp webhook, since this is
+  // the system acting on the AI profile's behalf, not the actor's own
+  // session — best-effort throughout: the assignment above has already
+  // succeeded regardless of anything below, so a failure here is reported
+  // back as a warning, never as the action's own error.
+  let warning: string | null = null;
+  let quoted = false;
+  const admin = createAdminClient();
+  const aiProfileId = await getAiProfileId(admin, actor.tenant_id);
+  if (aiProfileId && targetUserId === aiProfileId) {
+    const { data: fullLead } = await admin.from("leads").select(LEAD_FOR_SWEEP_COLUMNS).eq("id", leadId).single();
+    const l = fullLead as LeadForSweep | null;
+    if (!l) {
+      warning = "Lead assigned to AI, but it could not be re-read to create a quote automatically.";
+    } else if (!l.pickup_text || !l.destination_text || !l.customer_id || !l.brand_id) {
+      warning = "Lead assigned to AI, but it's missing pickup, destination or customer details, so no quote was created automatically.";
+    } else if (l.travel_date && l.travel_date < new Date().toISOString().slice(0, 10)) {
+      warning = "Lead assigned to AI, but its travel date has already passed, so no quote was created automatically.";
+    } else {
+      try {
+        await createAndSendQuote(admin, l, aiProfileId, { trigger: "manual_assign", alsoSendWhatsApp: true });
+        quoted = true;
+      } catch (err) {
+        console.error(`assignLeadAction: instant AI auto-quote failed for lead ${leadId}:`, err);
+        warning = "Lead assigned to AI, but the automatic quote could not be created — quote it manually instead.";
+      }
+    }
+  }
+
   revalidatePath("/leads");
   revalidatePath(`/leads/${leadId}`);
-  return { error: null };
+  revalidatePath("/quotes");
+  return { error: null, warning, quoted };
 }
 
 export interface EditLeadInput {

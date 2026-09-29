@@ -9,6 +9,7 @@ import { convertToGbp } from "./fxRates";
 import { renderAndSendTemplate } from "./emailTemplates";
 import { generateQuotePdf } from "./quotePdf";
 import { persistGeneratedPdf } from "./documentArchive";
+import { sendWhatsAppTemplate, normalizeWhatsAppNumber, WHATSAPP_TEMPLATE_HEADER_IMAGE_URL } from "./whatsapp360";
 
 type Admin = SupabaseClient<Database>;
 
@@ -20,13 +21,35 @@ type Admin = SupabaseClient<Database>;
 // exactly the way a human would from Pending Quotes -> New Quote — same
 // quote_sent email, PDF, quote_events/status lifecycle. Only the pricing
 // source and who clicks "send" differ.
+//
+// createAndSendQuote (below) is also the shared engine behind two other
+// triggers that reuse this exact same pricing/build/send logic, each with
+// its own tag so the lead's own Assignment history timeline (see
+// LeadAssignmentHistory.tsx) can tell them apart:
+// - "whatsapp_lead" — a brand-new lead captured over WhatsApp (see the
+//   360dialog webhook), fired instantly at creation, tenant-gated on
+//   tenants.whatsapp_auto_quote_enabled (0094_whatsapp_auto_quote.sql).
+// - "manual_assign" — a Master Admin/Sales Manager explicitly assigning a
+//   lead to the AI role's profile (assignLeadAction), fired instantly
+//   instead of waiting for the SLA sweep to eventually pick it up.
+// Both of those also try a WhatsApp send alongside the email
+// (alsoSendWhatsApp) — the SLA-breach sweep path deliberately does not,
+// keeping that specific trigger's behaviour exactly as it was.
 
-const NOT_QUOTABLE_STATUSES = ["converted", "closed", "spam", "duplicate", "expired"] as const;
+export const NOT_QUOTABLE_STATUSES = ["converted", "closed", "spam", "duplicate", "expired"] as const;
 
-const LEAD_FOR_SWEEP_COLUMNS =
+export const LEAD_FOR_SWEEP_COLUMNS =
   "id, tenant_id, brand_id, customer_id, assigned_user_id, source, pickup_text, destination_text, travel_date, pickup_time, return_trip, return_date, return_time, passenger_count, luggage_count, vehicle_requested, notes, created_at";
 
-interface LeadForSweep {
+export type AiQuoteTrigger = "sla_breach" | "whatsapp_lead" | "manual_assign";
+
+const LEAD_AUDIT_ACTION_FOR_TRIGGER: Record<AiQuoteTrigger, string> = {
+  sla_breach: "ai_quote_created_sla",
+  whatsapp_lead: "ai_quote_created_whatsapp_lead",
+  manual_assign: "ai_quote_created_manual_assign",
+};
+
+export interface LeadForSweep {
   id: string;
   tenant_id: string;
   brand_id: string | null;
@@ -175,7 +198,7 @@ const asPgTime = (value: string | null) => (value && /^\d{2}:\d{2}(:\d{2})?$/.te
  * the role is renamed. Falls back to null (today's behaviour, Master-Admin-
  * only visibility) if no tenant profile holds it yet.
  */
-async function getAiProfileId(admin: Admin, tenantId: string): Promise<string | null> {
+export async function getAiProfileId(admin: Admin, tenantId: string): Promise<string | null> {
   const { data: perm } = await admin.from("permissions").select("id").eq("key", "quotes.view_ai_generated").maybeSingle();
   if (!perm) return null;
 
@@ -261,13 +284,18 @@ async function releaseToPool(admin: Admin, lead: LeadForSweep) {
 }
 
 /** The full quote build + send, mirroring createQuoteAction's sendNow branch (app/(staff)/quotes/new/actions.ts) with an AI-priced version instead of staff-entered numbers, created_by set to the tenant's AI-role profile (or null if none's been invited yet), and ai_generated: true on both the enquiry and the quote. */
-async function createAndSendQuote(admin: Admin, lead: LeadForSweep, aiProfileId: string | null) {
+export async function createAndSendQuote(
+  admin: Admin,
+  lead: LeadForSweep,
+  aiProfileId: string | null,
+  options: { trigger: AiQuoteTrigger; alsoSendWhatsApp?: boolean },
+) {
   const { data: brand } = await admin.from("brands").select("*").eq("id", lead.brand_id!).maybeSingle();
   if (!brand) throw new Error(`No brand found for lead ${lead.id}.`);
 
   const { data: customer } = await admin
     .from("customers")
-    .select("contact_name, company_name, email")
+    .select("contact_name, company_name, email, whatsapp, phone")
     .eq("id", lead.customer_id!)
     .maybeSingle();
 
@@ -383,6 +411,32 @@ async function createAndSendQuote(admin: Admin, lead: LeadForSweep, aiProfileId:
     });
   }
 
+  // Only the two newer triggers (a WhatsApp-captured lead, or a manual
+  // assign-to-AI) also try WhatsApp — deliberately not the SLA-breach sweep,
+  // whose behaviour this was explicitly asked to leave unchanged. Best-
+  // effort and never fatal: no whatsapp/phone on file, or the send itself
+  // failing, just gets logged — the email above has already gone out either
+  // way, so nothing about the quote itself is left unsent.
+  if (options.alsoSendWhatsApp) {
+    const whatsappNumber = customer?.whatsapp || customer?.phone;
+    if (whatsappNumber) {
+      try {
+        const waResult = await sendWhatsAppTemplate(
+          normalizeWhatsAppNumber(whatsappNumber),
+          "quote_sent_customer",
+          [customer?.company_name || customer?.contact_name || "Customer", brand.name, quote.quote_number, `${pricing.selling_price.toFixed(2)} ${currency}`],
+          quote.public_token,
+          WHATSAPP_TEMPLATE_HEADER_IMAGE_URL,
+        );
+        if (!waResult.ok) {
+          console.error(`aiAutoQuote: quote_sent WhatsApp send failed for quote ${quote.id}: ${waResult.error}`);
+        }
+      } catch (err) {
+        console.error(`aiAutoQuote: quote_sent WhatsApp send threw for quote ${quote.id}:`, err);
+      }
+    }
+  }
+
   await recordAudit({
     client: admin,
     tenantId: lead.tenant_id,
@@ -397,7 +451,22 @@ async function createAndSendQuote(admin: Admin, lead: LeadForSweep, aiProfileId:
       currency,
       pricingRationale: pricing.pricing_rationale,
       leadId: lead.id,
+      trigger: options.trigger,
     },
+  });
+
+  // A second, lead-scoped record purely so this shows up on the lead's own
+  // Assignment history timeline (LeadAssignmentHistory.tsx reads entity_type
+  // = 'lead') — the audit entry above is scoped to the quote instead, which
+  // that timeline doesn't query.
+  await recordAudit({
+    client: admin,
+    tenantId: lead.tenant_id,
+    actorId: null,
+    action: LEAD_AUDIT_ACTION_FOR_TRIGGER[options.trigger],
+    entityType: "lead",
+    entityId: lead.id,
+    newValue: { quoteNumber: quote.quote_number },
   });
 }
 
@@ -459,7 +528,7 @@ export async function runAiAutoQuoteSweep(admin: Admin): Promise<SweepResult> {
     try {
       await releaseToPool(admin, lead);
       if (lead.assigned_user_id) result.released++;
-      await createAndSendQuote(admin, lead, aiProfileIdByTenant.get(lead.tenant_id) ?? null);
+      await createAndSendQuote(admin, lead, aiProfileIdByTenant.get(lead.tenant_id) ?? null, { trigger: "sla_breach" });
       result.quoted++;
     } catch (err) {
       result.failed++;

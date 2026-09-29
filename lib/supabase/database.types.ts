@@ -20,6 +20,8 @@ export interface Tenant {
   ai_auto_quote_sla_hours: number;
   /** When the switch last flipped off -> on — the sweep floors a lead's SLA countdown here so turning it on doesn't treat the whole existing backlog as instantly overdue. Null until first enabled. */
   ai_auto_quote_enabled_at: string | null;
+  /** Master-Admin-only switch (Settings → AI Assistant) — when true, a lead captured over WhatsApp is priced and quoted by AI immediately at creation (email + WhatsApp), instead of waiting for the SLA sweep above. See 0094_whatsapp_auto_quote.sql. */
+  whatsapp_auto_quote_enabled: boolean;
   /** Every lead the email-lead-intake sweep creates lands on this brand — set once (backfilled to the tenant's "GLOBAL BUS RENTAL LIMITED" brand, see 0088_email_lead_intake.sql) since 300+ forwarded sites can't be reliably attributed from email content alone. Null disables the sweep for this tenant entirely. */
   default_lead_inbox_brand_id: string | null;
   /** IMAP polling cursor for the shared lead-intake inbox — everything before this timestamp has already been swept. */
