@@ -153,14 +153,24 @@ export function QuotesPage({
   // estimate comes back — without this, "Get AI estimate" would need a full
   // page reload (router.refresh()) to show its own result.
   const [estimateOverrides, setEstimateOverrides] = useState<
-    Record<string, { price: number; currency: string; distanceKm: number | null; usedHistoricalRate: boolean; historicalSampleSize: number | null }>
+    Record<
+      string,
+      { price: number; currency: string; distanceKm: number | null; legCount: number | null; usedHistoricalRate: boolean; historicalSampleSize: number | null }
+    >
   >({});
 
   function aiEstimateFor(q: QuoteRow) {
     return (
       estimateOverrides[q.id] ??
       (q.ai_estimated_price != null
-        ? { price: q.ai_estimated_price, currency: q.ai_estimated_price_currency!, distanceKm: null, usedHistoricalRate: false, historicalSampleSize: null }
+        ? {
+            price: q.ai_estimated_price,
+            currency: q.ai_estimated_price_currency!,
+            distanceKm: null,
+            legCount: null,
+            usedHistoricalRate: false,
+            historicalSampleSize: null,
+          }
         : null)
     );
   }
@@ -178,6 +188,7 @@ export function QuotesPage({
             price: result.estimatedPrice!,
             currency: result.currency!,
             distanceKm: result.distanceKm ?? null,
+            legCount: result.legCount ?? null,
             usedHistoricalRate: result.usedHistoricalRate ?? false,
             historicalSampleSize: result.historicalSampleSize ?? null,
           },
@@ -457,7 +468,9 @@ export function QuotesPage({
                                 <span className={clsx("font-black", seemsUnderpriced ? "text-amber-600" : "text-slate-900")}>
                                   {money(estimate.price, estimate.currency)}
                                   {estimate.distanceKm != null && (
-                                    <span className="ml-1.5 text-xs font-normal text-slate-400">(≈{estimate.distanceKm} km)</span>
+                                    <span className="ml-1.5 text-xs font-normal text-slate-400">
+                                      (≈{estimate.distanceKm} km{estimate.legCount && estimate.legCount > 1 ? ` across ${estimate.legCount} legs` : ""})
+                                    </span>
                                   )}
                                   {seemsUnderpriced && <span className="ml-1.5 text-xs font-normal">(quoted below AI estimate)</span>}
                                 </span>

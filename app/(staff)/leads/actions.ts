@@ -150,7 +150,7 @@ export async function assignLeadAction(leadId: string, targetUserId: string) {
       warning = "Lead assigned to AI, but its travel date has already passed, so no quote was created automatically.";
     } else {
       try {
-        await createAndSendQuote(admin, l, aiProfileId, { trigger: "manual_assign", alsoSendWhatsApp: true });
+        await createAndSendQuote(admin, l, aiProfileId, { trigger: "manual_assign", alsoSendWhatsApp: true, actorId: actor.id });
         quoted = true;
       } catch (err) {
         console.error(`assignLeadAction: instant AI auto-quote failed for lead ${leadId}:`, err);

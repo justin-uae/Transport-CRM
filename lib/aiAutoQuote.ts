@@ -70,7 +70,7 @@ export interface LeadForSweep {
   created_at: string;
 }
 
-interface PricingEstimate {
+export interface PricingEstimate {
   vehicle_description: string;
   currency: string;
   supplier_estimated_cost: number;
@@ -115,7 +115,22 @@ const PRICING_SCHEMA = {
 
 const CURRENCY_CODE_RE = /^[A-Z]{3}$/;
 
-async function estimatePricing(lead: LeadForSweep, brandName: string): Promise<PricingEstimate> {
+/**
+ * The one, single pricing brain for "what should this trip cost" — used
+ * both to actually price and send a quote unattended (createAndSendQuote
+ * below) AND, via lib/aiPriceEstimate.ts, as the Master-Admin benchmark
+ * button on an existing quote. Those two used to run two separately-
+ * prompted AI calls that reasoned completely differently (this one: supplier
+ * cost then a margin on top; the other: a flat "market rate per km") and
+ * disagreed by 3x on the same kind of trip in real testing — rather than
+ * maintain two pricing philosophies that happen to agree sometimes, the
+ * benchmark tool now calls this exact function too.
+ */
+export async function estimatePricing(
+  lead: LeadForSweep,
+  brandName: string,
+  options?: { realDistanceKm?: number; realDurationMinutes?: number },
+): Promise<PricingEstimate> {
   const client = getOpenAIClient();
   const response = await client.responses.create(
     {
@@ -137,6 +152,9 @@ async function estimatePricing(lead: LeadForSweep, brandName: string): Promise<P
           content: [
             `Pickup: ${lead.pickup_text ?? "Not specified"}`,
             `Destination: ${lead.destination_text ?? "Not specified"}`,
+            options?.realDistanceKm
+              ? `Real driving distance (from mapping data — use this exact figure, do not re-estimate it): ${options.realDistanceKm} km, approx ${options.realDurationMinutes ?? "?"} minutes`
+              : null,
             `Travel date: ${lead.travel_date ?? "Not specified"}`,
             lead.return_trip ? `Return date: ${lead.return_date ?? "Not specified"}` : "One-way trip",
             `Passengers: ${lead.passenger_count ?? "Not specified"}`,
@@ -288,7 +306,18 @@ export async function createAndSendQuote(
   admin: Admin,
   lead: LeadForSweep,
   aiProfileId: string | null,
-  options: { trigger: AiQuoteTrigger; alsoSendWhatsApp?: boolean },
+  options: {
+    trigger: AiQuoteTrigger;
+    alsoSendWhatsApp?: boolean;
+    /** The human who caused this, for the "manual_assign" trigger only
+        (assignLeadAction has an actual actor.id in scope) — left undefined
+        for "sla_breach"/"whatsapp_lead", which are genuinely system-
+        initiated, no human clicked anything. Without this, every trigger's
+        audit entries recorded a null actor, so the lead timeline showed
+        "Someone assigned this lead to it" even for a manual assignment a
+        real Master Admin/Sales Manager just performed. */
+    actorId?: string | null;
+  },
 ) {
   const { data: brand } = await admin.from("brands").select("*").eq("id", lead.brand_id!).maybeSingle();
   if (!brand) throw new Error(`No brand found for lead ${lead.id}.`);
@@ -440,7 +469,7 @@ export async function createAndSendQuote(
   await recordAudit({
     client: admin,
     tenantId: lead.tenant_id,
-    actorId: null,
+    actorId: options.actorId ?? null,
     action: "ai_quote_created",
     entityType: "quote",
     entityId: quote.id,
@@ -462,7 +491,7 @@ export async function createAndSendQuote(
   await recordAudit({
     client: admin,
     tenantId: lead.tenant_id,
-    actorId: null,
+    actorId: options.actorId ?? null,
     action: LEAD_AUDIT_ACTION_FOR_TRIGGER[options.trigger],
     entityType: "lead",
     entityId: lead.id,

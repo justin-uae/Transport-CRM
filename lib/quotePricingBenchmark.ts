@@ -37,23 +37,35 @@ export async function computeHistoricalRatePerKm(
     .limit(40);
   if (!data) return null;
 
-  const candidates: { sellingPrice: number; pickup: string; destination: string }[] = [];
+  // Every leg, not just the first — a historical quote that was itself a
+  // multi-leg trip would otherwise have its real total distance understated
+  // (only leg 1 measured) against its FULL selling price, silently
+  // inflating the computed rate/km for every quote that happens to be
+  // multi-leg.
+  const candidates: { sellingPrice: number; legs: { pickup: string; destination: string }[]; maxPassengerCount: number | null }[] = [];
   for (const row of data) {
     const version = row.quote_versions as unknown as { selling_price: number } | null;
-    const leg = (
+    const legs = (
       row.enquiries as unknown as { enquiry_legs: { pickup_address: string; destination_address: string; passenger_count: number | null }[] } | null
-    )?.enquiry_legs?.[0];
-    if (!version?.selling_price || !leg?.pickup_address || !leg?.destination_address) continue;
+    )?.enquiry_legs;
+    if (!version?.selling_price || !legs || legs.length === 0) continue;
+    const usableLegs = legs.filter((l) => l.pickup_address && l.destination_address);
+    if (usableLegs.length === 0) continue;
 
+    const maxPassengerCount = legs.reduce<number | null>((max, l) => (l.passenger_count != null ? Math.max(max ?? 0, l.passenger_count) : max), null);
     // Similar vehicle size only — a 4-seat car's per-km rate says nothing
     // about a 50-seat coach's. Loose ±60% band around the target passenger
-    // count; any size counts if the new trip's own count isn't known.
-    if (params.passengerCount && leg.passenger_count) {
-      const ratio = leg.passenger_count / params.passengerCount;
+    // count; any size counts if either side's count isn't known.
+    if (params.passengerCount && maxPassengerCount) {
+      const ratio = maxPassengerCount / params.passengerCount;
       if (ratio < 0.4 || ratio > 1.6) continue;
     }
 
-    candidates.push({ sellingPrice: version.selling_price, pickup: leg.pickup_address, destination: leg.destination_address });
+    candidates.push({
+      sellingPrice: version.selling_price,
+      legs: usableLegs.map((l) => ({ pickup: l.pickup_address, destination: l.destination_address })),
+      maxPassengerCount,
+    });
     if (candidates.length >= 8) break; // caps how many Distance Matrix calls this can trigger
   }
   if (candidates.length < 3) return null;
@@ -61,9 +73,11 @@ export async function computeHistoricalRatePerKm(
   const rates = (
     await Promise.all(
       candidates.map(async (c) => {
-        const distance = await estimateTripDistance(c.pickup, c.destination);
-        if (!distance || distance.distanceKm < 1) return null;
-        return c.sellingPrice / distance.distanceKm;
+        const legDistances = await Promise.all(c.legs.map((l) => estimateTripDistance(l.pickup, l.destination)));
+        const resolved = legDistances.filter((d): d is NonNullable<typeof d> => d !== null && d.distanceKm >= 1);
+        if (resolved.length === 0) return null;
+        const totalDistanceKm = resolved.reduce((sum, d) => sum + d.distanceKm, 0);
+        return c.sellingPrice / totalDistanceKm;
       }),
     )
   ).filter((r): r is number => r !== null && r > 0);

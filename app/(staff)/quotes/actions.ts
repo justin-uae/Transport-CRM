@@ -1084,20 +1084,40 @@ export async function estimateQuotePriceAction(quoteId: string) {
   const { data: quote } = await supabase
     .from("quotes")
     .select(
-      "id, currency, brands(name), enquiries(enquiry_legs(pickup_address, destination_address, pickup_date, passenger_count)), quote_versions!quotes_current_version_id_fkey(vehicle_description)",
+      "id, currency, brands(name), enquiries(enquiry_legs(sequence, pickup_address, destination_address, pickup_date, passenger_count, luggage_count, special_requirements)), quote_versions!quotes_current_version_id_fkey(vehicle_description)",
     )
     .eq("id", quoteId)
     .single();
   if (!quote) return { error: "Quote not found." };
 
   const brand = quote.brands as unknown as { name: string } | null;
-  const leg = (quote.enquiries as unknown as { enquiry_legs: { pickup_address: string; destination_address: string; pickup_date: string | null; passenger_count: number | null }[] } | null)?.enquiry_legs?.[0];
+  const legs = (
+    quote.enquiries as unknown as {
+      enquiry_legs: {
+        sequence: number;
+        pickup_address: string;
+        destination_address: string;
+        pickup_date: string | null;
+        passenger_count: number | null;
+        luggage_count: number | null;
+        special_requirements: string | null;
+      }[];
+    } | null
+  )?.enquiry_legs;
+  const sortedLegs = (legs ?? []).slice().sort((a, b) => a.sequence - b.sequence);
   const version = quote.quote_versions as unknown as { vehicle_description: string | null } | null;
+
+  // Every leg's own passenger count, at its highest — sizes the vehicle for
+  // the trip's peak load, not just whatever leg 1 happened to carry.
+  const maxPassengerCount = sortedLegs.reduce<number | null>(
+    (max, l) => (l.passenger_count != null ? Math.max(max ?? 0, l.passenger_count) : max),
+    null,
+  );
 
   const historicalRatePerKm = await computeHistoricalRatePerKm(supabase, {
     tenantId: actor.tenant_id,
     currency: quote.currency,
-    passengerCount: leg?.passenger_count ?? null,
+    passengerCount: maxPassengerCount,
     excludeQuoteId: quoteId,
   });
 
@@ -1105,11 +1125,16 @@ export async function estimateQuotePriceAction(quoteId: string) {
   try {
     result = await estimateQuoteTripPrice({
       brandName: brand?.name ?? "the company",
-      pickup: leg?.pickup_address ?? null,
-      destination: leg?.destination_address ?? null,
-      travelDate: leg?.pickup_date ?? null,
-      passengerCount: leg?.passenger_count ?? null,
+      travelDate: sortedLegs[0]?.pickup_date ?? null,
       vehicleDescription: version?.vehicle_description ?? null,
+      legs: sortedLegs.map((l) => ({
+        sequence: l.sequence,
+        pickup: l.pickup_address,
+        destination: l.destination_address,
+        passengerCount: l.passenger_count,
+        luggageCount: l.luggage_count,
+        specialRequirements: l.special_requirements,
+      })),
       historicalRatePerKm,
     });
   } catch (err) {
@@ -1136,6 +1161,7 @@ export async function estimateQuotePriceAction(quoteId: string) {
     currency: result.currency,
     distanceKm: result.distanceKm,
     pricePerKm: result.pricePerKm,
+    legCount: result.legCount,
     usedHistoricalRate: result.usedHistoricalRate,
     historicalSampleSize: result.historicalSampleSize,
     computedAt,

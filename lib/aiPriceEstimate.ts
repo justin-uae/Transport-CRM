@@ -1,191 +1,178 @@
 import "server-only";
-import { getOpenAIClient } from "./openai";
 import { estimateTripDistance } from "./tripDistance";
+import { estimatePricing, type LeadForSweep } from "./aiAutoQuote";
 import type { PricingBenchmark } from "./quotePricingBenchmark";
 
-// An on-demand OpenAI price benchmark for an EXISTING quote (Master Admin
-// only, see estimateQuotePriceAction in app/(staff)/quotes/actions.ts) —
-// distinct from lib/aiAutoQuote.ts's estimatePricing, which prices and sends
-// a brand-new quote unattended. This one is purely a read-only sanity check
-// against whatever price was actually charged, so it returns a single
-// market-rate figure rather than a full vehicle/customer-notes/deposit quote
-// build.
-//
-// Three things made this unreliable, all fixed here:
-// 1. No temperature set, so the model sampled a fresh, loosely-anchored
-//    number each call instead of reasoning the same way twice (reported
-//    live: MXN 25,000 on one click, MXN 4,500 on the very next, same
-//    unchanged trip). Now pinned to temperature: 0.
-// 2. The model had to guess BOTH the geography and the price from two
-//    address strings alone, with nothing to anchor the number to. Now
-//    grounded with a real driving distance from Google's Distance Matrix
-//    API (lib/tripDistance.ts) whenever it's available.
-// 3. Even once grounded in real distance, gpt-4o-mini's own "market rate"
-//    guess still isn't reliable — a real test came back pricing a 15-seat
-//    coach at roughly taxi per-km rates (₹3,174 for 211km, vs. an actual
-//    accepted quote of ₹35,000 for a comparable trip). An LLM's parametric
-//    knowledge of niche regional commercial-vehicle rates just isn't
-//    trustworthy. So price_per_km is no longer trusted from the model at
-//    all when there's real data to use instead: the caller
-//    (estimateQuotePriceAction) looks up this tenant's own recent accepted
-//    quotes for a similarly-sized vehicle (lib/quotePricingBenchmark.ts)
-//    and, when there's enough of them, that empirical rate — not the
-//    model's guess — becomes price_per_km. The model still runs for
-//    currency/minimum-fee/rationale, and remains the sole source of
-//    price_per_km only when there isn't enough real history yet (e.g. a
-//    brand-new tenant, or a genuinely novel route/vehicle size).
+// An on-demand price benchmark for an EXISTING quote (Master Admin only, see
+// estimateQuotePriceAction in app/(staff)/quotes/actions.ts) — a read-only
+// sanity check against whatever price was actually charged, using the exact
+// same pricing brain (lib/aiAutoQuote.ts's estimatePricing) that actually
+// prices and sends a quote unattended. These used to be two separately-
+// prompted AI calls that reasoned completely differently — this one asked
+// for a flat "market rate per km", which drifts toward taxi-tier numbers,
+// while estimatePricing asks for supplier cost then a margin on top, which
+// in practice lands on far more sensible figures — and disagreed by roughly
+// 3x on the same kind of trip in real testing. Rather than maintain two
+// pricing philosophies that happen to agree sometimes, this now delegates
+// to that one function, adding on top of it:
+// 1. Every leg of the journey, not just the first — a quote's enquiry can
+//    have more than one leg (a multi-stop tour, a separate return leg, ...),
+//    and reading only enquiry_legs[0] silently threw the rest of the trip
+//    away. Real per-leg distances are summed into one real total, and each
+//    leg's own special requirements/luggage are folded in too, not just
+//    leg 1's — see aggregateLegs() below.
+// 2. A real driving distance from Google's Distance Matrix API
+//    (lib/tripDistance.ts) for each leg, fed into the same call as
+//    grounding — estimatePricing's own direct callers (the SLA sweep,
+//    WhatsApp-lead and manual-assign triggers) don't pass this, so this is
+//    currently the one caller that does.
+// 3. This tenant's own real historical rate/km for a similarly-sized
+//    vehicle (lib/quotePricingBenchmark.ts), when there's enough of it to
+//    trust — overrides the model's own price entirely in that case, since
+//    real accepted-quote data beats any LLM's guess, however well-reasoned.
+
+export interface QuoteEstimateLeg {
+  sequence: number;
+  pickup: string | null;
+  destination: string | null;
+  passengerCount: number | null;
+  luggageCount: number | null;
+  specialRequirements: string | null;
+}
 
 export interface QuoteEstimateInput {
   brandName: string;
-  pickup: string | null;
-  destination: string | null;
   travelDate: string | null;
-  passengerCount: number | null;
   vehicleDescription: string | null;
+  legs: QuoteEstimateLeg[];
   /** This tenant's own real historical rate/km for a similarly-sized
       vehicle, if lib/quotePricingBenchmark.ts found enough comparable past
-      bookings to trust — takes over from the model's own price_per_km when
-      present. */
+      bookings to trust — overrides estimatePricing's own selling price
+      (recomputed as total distance × this rate) when present. */
   historicalRatePerKm: PricingBenchmark | null;
 }
 
 export interface QuoteEstimateResult {
   currency: string;
   estimatedPrice: number;
+  /** Sum across every leg that resolved a real distance — null only if none
+      of them did (e.g. Distance Matrix unavailable/addresses too vague). */
   distanceKm: number | null;
-  pricePerKm: number;
-  /** True when pricePerKm came from this tenant's own quote history rather
-      than the model's guess — surfaced so the UI/rationale can say which. */
+  pricePerKm: number | null;
+  legCount: number;
+  /** True when the price came from this tenant's own quote history rather
+      than estimatePricing's own figure — surfaced so the UI can say which. */
   usedHistoricalRate: boolean;
   historicalSampleSize: number | null;
   rationale: string;
 }
 
-const ESTIMATE_SCHEMA = {
-  type: "object",
-  properties: {
-    currency: {
-      type: "string",
-      description:
-        "The ISO 4217 currency code (e.g. USD, EUR, GBP, AED, INR, MXN) for the country where this trip actually takes place — work it out from the pickup/destination locations. If you can't confidently tell, use USD as the safe default, never EUR.",
-    },
-    distance_km: {
-      type: "number",
-      description:
-        "The one-way driving distance for this trip in kilometres. If a real driving distance is given to you in the input, use that EXACT figure — never re-estimate or round it differently. Otherwise, your best estimate from the pickup/destination. Must be greater than 0.",
-    },
-    price_per_km: {
-      type: "number",
-      description:
-        "A fair, realistic market rate per kilometre for hiring THIS SPECIFIC vehicle/group size in this country, in the currency you chose. This is a commercial passenger vehicle (minibus/coach), NOT a private car or taxi — its per-km rate is typically several times a taxi's, since it must cover a professional driver, a much larger vehicle's fuel/maintenance cost, and the driver's return leg (many operators charge for the round trip even on a one-way hire, since the vehicle and driver still have to get back). Reason explicitly about vehicle class before naming a rate — do not default to a generic per-km transport figure. Must be greater than 0.",
-    },
-    minimum_fee: {
-      type: "number",
-      description:
-        "A flat minimum charge for a short trip, in the currency you chose, covering base costs regardless of distance (e.g. a local airport transfer) — the final price is whichever is higher: distance_km × price_per_km, or this minimum. Use a realistic local minimum, not 0, unless the trip is long enough that a minimum would never apply.",
-    },
-    rationale: {
-      type: "string",
-      description: "One sentence, for internal staff eyes only, explaining how you arrived at this figure.",
-    },
-  },
-  required: ["currency", "distance_km", "price_per_km", "minimum_fee", "rationale"],
-  additionalProperties: false,
-} as const;
+/** Turns however many legs a quote has into the single pickup/destination/
+    notes/passenger-count/luggage estimatePricing actually takes (it's
+    shaped around a Lead, which only ever has one journey) — without this,
+    only enquiry_legs[0] would ever reach the model, silently dropping every
+    other leg of a multi-stop or return trip. */
+function aggregateLegs(legs: QuoteEstimateLeg[]) {
+  const first = legs[0];
+  const last = legs[legs.length - 1] ?? first;
 
-const CURRENCY_CODE_RE = /^[A-Z]{3}$/;
+  // The vehicle has to be sized for whichever leg carries the most people/
+  // luggage, not just leg 1 — a multi-leg trip that adds passengers partway
+  // through needs pricing for its peak load.
+  const passengerCount = legs.reduce<number | null>((max, l) => (l.passengerCount != null ? Math.max(max ?? 0, l.passengerCount) : max), null);
+  const luggageCount = legs.reduce<number | null>((max, l) => (l.luggageCount != null ? Math.max(max ?? 0, l.luggageCount) : max), null);
 
-export async function estimateQuoteTripPrice(input: QuoteEstimateInput): Promise<QuoteEstimateResult> {
-  const client = getOpenAIClient();
-  const realDistance = await estimateTripDistance(input.pickup, input.destination);
-
-  const response = await client.responses.create(
-    {
-      model: "gpt-4o-mini",
-      // temperature: 0 — this is a pricing benchmark a Master Admin re-runs
-      // to sanity-check a quote; it needs to give the same answer for the
-      // same unchanged trip every time, not a fresh guess each click.
-      temperature: 0,
-      instructions:
-        `You are a pricing analyst for ${input.brandName}, a coach and transport hire company. Reason step by step: ` +
-        `identify the vehicle class from the group size, pick a realistic per-km rate for THAT vehicle class (not a car/taxi ` +
-        `rate) in this country's market, and a sensible minimum fee for a short trip, then let the actual total follow ` +
-        `from those — never jump straight to a round total figure. Price it in the currency of the country where the ` +
-        `trip takes place.`,
-      input: [
-        {
-          role: "user" as const,
-          content: [
-            `Pickup: ${input.pickup ?? "Not specified"}`,
-            `Destination: ${input.destination ?? "Not specified"}`,
-            realDistance
-              ? `Real driving distance (from mapping data — use this exact figure, do not re-estimate it): ${realDistance.distanceKm} km, approx ${realDistance.durationMinutes} minutes`
-              : null,
-            `Travel date: ${input.travelDate ?? "Not specified"}`,
-            `Passengers: ${input.passengerCount ?? "Not specified"}`,
-            input.vehicleDescription ? `Vehicle: ${input.vehicleDescription}` : null,
-          ]
-            .filter(Boolean)
-            .join("\n"),
-        },
-      ],
-      text: {
-        format: {
-          type: "json_schema",
-          name: "quote_price_estimate",
-          strict: true,
-          schema: ESTIMATE_SCHEMA,
-        },
-      },
-    },
-    { timeout: 20000 },
-  );
-
-  const raw = response.output_text;
-  if (!raw) throw new Error("OpenAI returned no output for a quote price estimate.");
-  const parsed = JSON.parse(raw) as {
-    currency: string;
-    distance_km: number;
-    price_per_km: number;
-    minimum_fee: number;
-    rationale: string;
-  };
-
-  const code = parsed.currency?.toUpperCase().trim();
-  const currency = code && CURRENCY_CODE_RE.test(code) ? code : "USD";
-
-  // The real, mapping-derived distance always wins over the model's own
-  // figure when we have one — the model is only asked to echo it back so it
-  // reasons in the right units, not to override real data with a guess.
-  const distanceKm = realDistance?.distanceKm ?? (parsed.distance_km > 0 ? parsed.distance_km : null);
-
-  // Real historical data beats the model's own rate guess whenever there's
-  // enough of it — see the module comment above for why the guess alone
-  // isn't trustworthy.
-  const usedHistoricalRate = !!input.historicalRatePerKm;
-  const pricePerKm = input.historicalRatePerKm?.ratePerKm ?? parsed.price_per_km;
-
-  if (!(pricePerKm > 0)) {
-    throw new Error("AI price estimate returned a non-positive rate.");
+  const notesParts: string[] = [];
+  if (legs.length > 1) {
+    notesParts.push(
+      `Multi-leg journey (${legs.length} legs) — ` +
+        legs.map((l) => `Leg ${l.sequence}: ${l.pickup ?? "?"} → ${l.destination ?? "?"}`).join("; "),
+    );
   }
-
-  // Computed here, not trusted from the model's own arithmetic — removes
-  // "the model can't multiply reliably" as a further source of
-  // same-input-different-answer inconsistency.
-  const distanceCharge = distanceKm ? distanceKm * pricePerKm : 0;
-  const estimatedPrice = Math.round(Math.max(distanceCharge, parsed.minimum_fee || 0) * 100) / 100;
-
-  if (!(estimatedPrice > 0)) {
-    throw new Error("AI price estimate resolved to a non-positive amount.");
+  for (const l of legs) {
+    if (l.specialRequirements?.trim()) {
+      notesParts.push(legs.length > 1 ? `Leg ${l.sequence} special requirements: ${l.specialRequirements.trim()}` : l.specialRequirements.trim());
+    }
   }
 
   return {
-    currency,
+    pickup: first?.pickup ?? null,
+    destination: last?.destination ?? null,
+    passengerCount,
+    luggageCount,
+    notes: notesParts.length ? notesParts.join(" | ") : null,
+  };
+}
+
+export async function estimateQuoteTripPrice(input: QuoteEstimateInput): Promise<QuoteEstimateResult> {
+  const legs = input.legs.length > 0 ? input.legs : [{ sequence: 1, pickup: null, destination: null, passengerCount: null, luggageCount: null, specialRequirements: null }];
+  const aggregated = aggregateLegs(legs);
+
+  // Real distance for EVERY leg, summed — a 3-leg tour's true distance is
+  // leg 1 + leg 2 + leg 3, not just the first leg's, which is what a plain
+  // pickup-to-destination lookup on the whole trip would otherwise measure
+  // (cutting straight across intermediate stops, or missing a return leg
+  // entirely).
+  const legDistances = await Promise.all(legs.map((l) => estimateTripDistance(l.pickup, l.destination)));
+  const resolvedDistances = legDistances.filter((d): d is NonNullable<typeof d> => d !== null);
+  const totalDistanceKm = resolvedDistances.length > 0 ? Math.round(resolvedDistances.reduce((sum, d) => sum + d.distanceKm, 0) * 10) / 10 : null;
+  const totalDurationMinutes = resolvedDistances.length > 0 ? resolvedDistances.reduce((sum, d) => sum + d.durationMinutes, 0) : undefined;
+
+  // estimatePricing takes a LeadForSweep — most of its fields describe
+  // things a quote doesn't have its own equivalent of (source channel, who
+  // it's assigned to, ...), so this is a minimal stand-in built just to
+  // reuse that one pricing brain rather than forking it. The vehicle
+  // already recorded on the quote is passed through as "customer
+  // requested" so it reasons about the SAME vehicle class the quote
+  // actually used, not a freshly re-guessed one.
+  const leadLike: LeadForSweep = {
+    id: "quote-price-estimate",
+    tenant_id: "",
+    brand_id: null,
+    customer_id: null,
+    assigned_user_id: null,
+    source: "manual",
+    pickup_text: aggregated.pickup,
+    destination_text: aggregated.destination,
+    travel_date: input.travelDate,
+    pickup_time: null,
+    return_trip: false,
+    return_date: null,
+    return_time: null,
+    passenger_count: aggregated.passengerCount,
+    luggage_count: aggregated.luggageCount,
+    vehicle_requested: input.vehicleDescription,
+    notes: aggregated.notes,
+    created_at: new Date().toISOString(),
+  };
+
+  const pricing = await estimatePricing(leadLike, input.brandName, {
+    realDistanceKm: totalDistanceKm ?? undefined,
+    realDurationMinutes: totalDurationMinutes,
+  });
+
+  const usedHistoricalRate = !!input.historicalRatePerKm;
+
+  // Real historical data beats estimatePricing's own figure whenever
+  // there's enough of it — recomputed from the total distance rather than
+  // trusted as a flat override, since the historical rate is per-km.
+  const estimatedPrice =
+    usedHistoricalRate && totalDistanceKm
+      ? Math.round(totalDistanceKm * input.historicalRatePerKm!.ratePerKm * 100) / 100
+      : pricing.selling_price;
+
+  const pricePerKm = totalDistanceKm ? Math.round((estimatedPrice / totalDistanceKm) * 100) / 100 : null;
+
+  return {
+    currency: pricing.currency,
     estimatedPrice,
-    distanceKm,
+    distanceKm: totalDistanceKm,
     pricePerKm,
+    legCount: legs.length,
     usedHistoricalRate,
     historicalSampleSize: input.historicalRatePerKm?.sampleSize ?? null,
-    rationale: parsed.rationale,
+    rationale: usedHistoricalRate
+      ? `Based on this tenant's own historical rate (${input.historicalRatePerKm!.sampleSize} comparable bookings) rather than the model's own figure. Model's own reasoning: ${pricing.pricing_rationale}`
+      : pricing.pricing_rationale,
   };
 }
