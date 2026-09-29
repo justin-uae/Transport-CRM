@@ -45,7 +45,7 @@ export default async function AiAutoQuotePage() {
                 body: [
                   "If the lead is currently assigned to a sales user, it's released back to the open pool first — visible on the lead's Assignment history.",
                   "Global Bus AI estimates a market-rate selling price and supplier cost for the trip, and a real quote is created and emailed to the customer automatically — same email, PDF and quote lifecycle as a human-sent quote.",
-                  "Every AI-priced quote shows up in Sales -> AI Created Quotes so it's easy to review what went out automatically.",
+                  "Every AI-priced quote shows up in Sales -> Pending Quotes (or wherever it's since moved on to, e.g. a Bookings tab) alongside everything else, marked with a small \"AI\" badge next to its status so it's easy to tell what went out automatically.",
                 ],
               },
               {

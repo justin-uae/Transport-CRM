@@ -56,6 +56,48 @@ function money(amount: number | undefined, currency: string) {
   return new Intl.NumberFormat("en-GB", { style: "currency", currency, maximumFractionDigits: 2 }).format(amount);
 }
 
+export type CustomerPaymentsSortKey = "decided_desc" | "decided_asc" | "pickup_asc" | "pickup_desc" | "value_desc" | "value_asc";
+
+const SORT_OPTIONS: { value: CustomerPaymentsSortKey; label: string }[] = [
+  { value: "decided_desc", label: "Newest accepted" },
+  { value: "decided_asc", label: "Oldest accepted" },
+  { value: "pickup_asc", label: "Travel date: soonest" },
+  { value: "pickup_desc", label: "Travel date: latest" },
+  { value: "value_desc", label: "Highest value" },
+  { value: "value_asc", label: "Lowest value" },
+];
+
+function time(value: string | null | undefined): number {
+  return value ? new Date(value).getTime() : 0;
+}
+
+function sortQuotes(rows: AcceptedQuoteRow[], sort: CustomerPaymentsSortKey): AcceptedQuoteRow[] {
+  const pickupOf = (q: AcceptedQuoteRow) => q.enquiries?.enquiry_legs?.[0]?.pickup_date ?? null;
+  const valueOf = (q: AcceptedQuoteRow) => q.quote_versions?.selling_price ?? null;
+  const sorted = rows.slice();
+  switch (sort) {
+    case "decided_asc":
+      sorted.sort((a, b) => time(a.decided_at) - time(b.decided_at));
+      break;
+    case "pickup_asc":
+      sorted.sort((a, b) => (pickupOf(a) ? time(pickupOf(a)) : Infinity) - (pickupOf(b) ? time(pickupOf(b)) : Infinity));
+      break;
+    case "pickup_desc":
+      sorted.sort((a, b) => (pickupOf(b) ? time(pickupOf(b)) : -Infinity) - (pickupOf(a) ? time(pickupOf(a)) : -Infinity));
+      break;
+    case "value_desc":
+      sorted.sort((a, b) => (valueOf(b) ?? -Infinity) - (valueOf(a) ?? -Infinity));
+      break;
+    case "value_asc":
+      sorted.sort((a, b) => (valueOf(a) ?? Infinity) - (valueOf(b) ?? Infinity));
+      break;
+    case "decided_desc":
+    default:
+      sorted.sort((a, b) => time(b.decided_at) - time(a.decided_at));
+  }
+  return sorted;
+}
+
 export function CustomerPaymentsPage({
   quotes,
   refunds,
@@ -79,6 +121,7 @@ export function CustomerPaymentsPage({
   const [processingRefundId, setProcessingRefundId] = useState<string | null>(null);
   const [confirmRefund, setConfirmRefund] = useState<CustomerRefundRow | null>(null);
   const [tab, setTab] = useState<"awaiting" | "verify" | "paid" | "refunds">("awaiting");
+  const [sort, setSort] = useState<CustomerPaymentsSortKey>("decided_desc");
   const [target, setTarget] = useState<AcceptedQuoteRow | null>(null);
   const [amount, setAmount] = useState("");
   const [proofFile, setProofFile] = useState<File | null>(null);
@@ -96,7 +139,7 @@ export function CustomerPaymentsPage({
       ),
     [quotes],
   );
-  const visible = tab === "awaiting" ? awaiting : tab === "paid" ? paid : [];
+  const visible = useMemo(() => sortQuotes(tab === "awaiting" ? awaiting : tab === "paid" ? paid : [], sort), [tab, awaiting, paid, sort]);
   const pendingRefunds = useMemo(() => refunds.filter((r) => r.status === "pending"), [refunds]);
 
   function processRefund() {
@@ -262,25 +305,40 @@ export function CustomerPaymentsPage({
           />
         }
       />
-      <div className="mb-4 flex flex-wrap gap-2">
-        {(["awaiting", "verify", "paid", "refunds"] as const).map((t) => (
-          <button
-            key={t}
-            onClick={() => setTab(t)}
-            className={
-              "rounded-xl px-3 py-2 text-sm font-bold " +
-              (tab === t ? "bg-primary-500 text-white" : "bg-slate-100 text-slate-600")
-            }
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-wrap gap-2">
+          {(["awaiting", "verify", "paid", "refunds"] as const).map((t) => (
+            <button
+              key={t}
+              onClick={() => setTab(t)}
+              className={
+                "rounded-xl px-3 py-2 text-sm font-bold " +
+                (tab === t ? "bg-primary-500 text-white" : "bg-slate-100 text-slate-600")
+              }
+            >
+              {t === "awaiting"
+                ? `Awaiting Payment (${awaiting.length})`
+                : t === "verify"
+                  ? `Pending Verification (${pendingPayments.length})`
+                  : t === "paid"
+                    ? `Paid (${paid.length})`
+                    : `Refunds (${pendingRefunds.length})`}
+            </button>
+          ))}
+        </div>
+        {(tab === "awaiting" || tab === "paid") && (
+          <select
+            value={sort}
+            onChange={(e) => setSort(e.target.value as CustomerPaymentsSortKey)}
+            className="rounded-xl border bg-slate-50 px-3 py-2 text-sm font-semibold"
           >
-            {t === "awaiting"
-              ? `Awaiting Payment (${awaiting.length})`
-              : t === "verify"
-                ? `Pending Verification (${pendingPayments.length})`
-                : t === "paid"
-                  ? `Paid (${paid.length})`
-                  : `Refunds (${pendingRefunds.length})`}
-          </button>
-        ))}
+            {SORT_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+        )}
       </div>
       {tab === "refunds" ? (
         <Panel>

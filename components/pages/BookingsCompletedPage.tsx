@@ -3,6 +3,7 @@ import { PageHead } from "@/components/ui/PageHead";
 import { Panel } from "@/components/ui/Panel";
 import { Pagination } from "@/components/ui/Pagination";
 import { SortSelect } from "@/components/ui/SortSelect";
+import { AiBadge } from "@/components/ui/AiBadge";
 import { BookingTabs, BookingsGuideButton } from "@/components/pages/BookingTabs";
 import { formatDate, formatDateTime } from "@/lib/formatDate";
 
@@ -27,6 +28,7 @@ export interface CompletedBookingJob {
     customers: { company_name: string | null; contact_name: string } | null;
     enquiries: { enquiry_legs: { pickup_date: string | null }[] } | null;
     quote_versions: { selling_price: number } | null;
+    ai_generated: boolean;
   } | null;
   job_allocations: { status: string; completed_at: string | null; suppliers: { name: string } | null }[];
 }
@@ -82,7 +84,10 @@ export function BookingsCompletedPage({
                       {job.quotes?.quote_number} · {job.region ?? "No region"}
                     </div>
                   </div>
-                  <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-bold text-emerald-700">Completed</span>
+                  <div className="flex shrink-0 items-center gap-1.5">
+                    {job.quotes?.ai_generated && <AiBadge />}
+                    <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-bold text-emerald-700">Completed</span>
+                  </div>
                 </div>
                 <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-sm text-slate-600">
                   <span>{supplierSummary(job.job_allocations)}</span>

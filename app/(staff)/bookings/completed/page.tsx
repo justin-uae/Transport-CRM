@@ -49,7 +49,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ p
   const { data: jobs } = await supabase
     .from("jobs")
     .select(
-      "id, status, region, created_at, quotes(quote_number, currency, customers(company_name, contact_name), enquiries(enquiry_legs(pickup_date)), quote_versions!quotes_current_version_id_fkey(selling_price)), job_allocations(status, completed_at, suppliers(name))",
+      "id, status, region, created_at, quotes(quote_number, currency, ai_generated, customers(company_name, contact_name), enquiries(enquiry_legs(pickup_date)), quote_versions!quotes_current_version_id_fkey(selling_price)), job_allocations(status, completed_at, suppliers(name))",
     )
     .eq("status", "completed");
 

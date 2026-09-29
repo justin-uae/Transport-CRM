@@ -6,15 +6,28 @@ import { Panel } from "@/components/ui/Panel";
 import { Kpi } from "@/components/ui/Kpi";
 import { PageHead } from "@/components/ui/PageHead";
 import { SearchInput } from "@/components/ui/SearchInput";
+import { SortSelect } from "@/components/ui/SortSelect";
 import { Pagination } from "@/components/ui/Pagination";
 import { JourneyCell } from "@/components/ui/JourneyCell";
 import { Breadcrumb } from "@/components/ui/Breadcrumb";
+
+export type PartiallyPaidSortKey = "created_desc" | "created_asc" | "remaining_desc" | "remaining_asc" | "paid_desc" | "paid_asc";
+
+const SORT_OPTIONS = [
+  { value: "created_desc", label: "Newest created" },
+  { value: "created_asc", label: "Oldest created" },
+  { value: "remaining_desc", label: "Highest remaining" },
+  { value: "remaining_asc", label: "Lowest remaining" },
+  { value: "paid_desc", label: "Highest paid so far" },
+  { value: "paid_asc", label: "Lowest paid so far" },
+];
 
 export interface PartiallyPaidQuoteRow {
   id: string;
   quote_number: string;
   currency: string;
   invoice_number: string | null;
+  created_at: string;
   customers: { company_name: string | null; contact_name: string } | null;
   enquiries: { enquiry_legs: { pickup_address: string; destination_address: string }[] } | null;
   quote_versions: { selling_price: number } | null;
@@ -62,6 +75,7 @@ export function PartiallyPaidQuotesPage({
       <Panel className="mt-6 min-w-0">
         <div className="flex flex-col gap-3 border-b pb-4 md:flex-row md:items-center">
           <SearchInput placeholder="Search quotes (number or invoice)" />
+          <SortSelect options={SORT_OPTIONS} />
         </div>
 
         <div className="mt-4 space-y-3 sm:hidden">

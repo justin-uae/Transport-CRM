@@ -427,6 +427,10 @@ export interface Quote {
   cancelled_by: string | null;
   /** True when OpenAI priced and sent this quote itself via the ai-auto-quote sweep (see lib/aiAutoQuote.ts), rather than a human via quotes/new/actions.ts. created_by stays null on these. */
   ai_generated: boolean;
+  /** An on-demand OpenAI price benchmark for this quote's journey (Master Admin only, see lib/aiPriceEstimate.ts) — an internal pricing sanity check, cached here so re-viewing it doesn't re-call OpenAI. Unrelated to ai_generated: any quote, human or AI-priced, can have one computed. */
+  ai_estimated_price: number | null;
+  ai_estimated_price_currency: string | null;
+  ai_estimated_price_computed_at: string | null;
   created_at: string;
   updated_at: string;
 }

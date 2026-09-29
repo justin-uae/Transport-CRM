@@ -12,6 +12,8 @@ import { generateInvoicePdf } from "@/lib/invoicePdf";
 import { cancelAllocation } from "@/lib/dispatchAllocations";
 import { persistGeneratedPdf } from "@/lib/documentArchive";
 import { sendWhatsAppTemplate, normalizeWhatsAppNumber, WHATSAPP_TEMPLATE_HEADER_IMAGE_URL } from "@/lib/whatsapp360";
+import { estimateQuoteTripPrice } from "@/lib/aiPriceEstimate";
+import { computeHistoricalRatePerKm } from "@/lib/quotePricingBenchmark";
 
 /**
  * Manual bank-transfer payment recording, for a deposit, the remaining
@@ -1063,5 +1065,80 @@ export async function processRefundAction(refundId: string) {
   revalidatePath(`/quotes/${refund.quote_id}`);
   revalidatePath("/accounting/customer-payments");
   return { error: null };
+}
+
+/**
+ * On-demand OpenAI price benchmark for an existing quote — Master Admin
+ * only, full stop (not permission-key-gated like everything else in this
+ * file, since this is Master-Admin tooling for auditing pricing decisions,
+ * not a role-assignable capability). Computes from the journey's own
+ * details (pickup/destination/date/passengers/vehicle) and caches the
+ * result on the quote row so viewing it again doesn't re-call OpenAI —
+ * only clicking "Estimate" again does.
+ */
+export async function estimateQuotePriceAction(quoteId: string) {
+  const actor = await requireProfile();
+  if (!actor.is_master_admin) return { error: "Only a Master Admin can request an AI price estimate." };
+
+  const supabase = await createClient();
+  const { data: quote } = await supabase
+    .from("quotes")
+    .select(
+      "id, currency, brands(name), enquiries(enquiry_legs(pickup_address, destination_address, pickup_date, passenger_count)), quote_versions!quotes_current_version_id_fkey(vehicle_description)",
+    )
+    .eq("id", quoteId)
+    .single();
+  if (!quote) return { error: "Quote not found." };
+
+  const brand = quote.brands as unknown as { name: string } | null;
+  const leg = (quote.enquiries as unknown as { enquiry_legs: { pickup_address: string; destination_address: string; pickup_date: string | null; passenger_count: number | null }[] } | null)?.enquiry_legs?.[0];
+  const version = quote.quote_versions as unknown as { vehicle_description: string | null } | null;
+
+  const historicalRatePerKm = await computeHistoricalRatePerKm(supabase, {
+    tenantId: actor.tenant_id,
+    currency: quote.currency,
+    passengerCount: leg?.passenger_count ?? null,
+    excludeQuoteId: quoteId,
+  });
+
+  let result;
+  try {
+    result = await estimateQuoteTripPrice({
+      brandName: brand?.name ?? "the company",
+      pickup: leg?.pickup_address ?? null,
+      destination: leg?.destination_address ?? null,
+      travelDate: leg?.pickup_date ?? null,
+      passengerCount: leg?.passenger_count ?? null,
+      vehicleDescription: version?.vehicle_description ?? null,
+      historicalRatePerKm,
+    });
+  } catch (err) {
+    console.error(`estimateQuotePriceAction: failed for quote ${quoteId}:`, err);
+    return { error: "Could not get an AI price estimate right now — try again shortly." };
+  }
+
+  const computedAt = new Date().toISOString();
+  await supabase
+    .from("quotes")
+    .update({
+      ai_estimated_price: result.estimatedPrice,
+      ai_estimated_price_currency: result.currency,
+      ai_estimated_price_computed_at: computedAt,
+    })
+    .eq("id", quoteId);
+
+  revalidatePath("/quotes");
+  revalidatePath(`/quotes/${quoteId}`);
+
+  return {
+    error: null,
+    estimatedPrice: result.estimatedPrice,
+    currency: result.currency,
+    distanceKm: result.distanceKm,
+    pricePerKm: result.pricePerKm,
+    usedHistoricalRate: result.usedHistoricalRate,
+    historicalSampleSize: result.historicalSampleSize,
+    computedAt,
+  };
 }
 

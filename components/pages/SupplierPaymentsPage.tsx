@@ -93,6 +93,46 @@ function balance(row: SupplierInvoiceRow) {
   return effectiveAmount(row) - netPaid(row);
 }
 
+export type SupplierPaymentsSortKey = "forwarded_desc" | "forwarded_asc" | "amount_desc" | "amount_asc" | "balance_desc" | "balance_asc";
+
+const SORT_OPTIONS: { value: SupplierPaymentsSortKey; label: string }[] = [
+  { value: "forwarded_desc", label: "Recently forwarded" },
+  { value: "forwarded_asc", label: "Oldest forwarded" },
+  { value: "amount_desc", label: "Highest invoice amount" },
+  { value: "amount_asc", label: "Lowest invoice amount" },
+  { value: "balance_desc", label: "Highest balance owed" },
+  { value: "balance_asc", label: "Lowest balance owed" },
+];
+
+function time(value: string | null | undefined): number {
+  return value ? new Date(value).getTime() : 0;
+}
+
+function sortInvoices(rows: SupplierInvoiceRow[], sort: SupplierPaymentsSortKey): SupplierInvoiceRow[] {
+  const sorted = rows.slice();
+  switch (sort) {
+    case "forwarded_asc":
+      sorted.sort((a, b) => time(a.forwarded_at) - time(b.forwarded_at));
+      break;
+    case "amount_desc":
+      sorted.sort((a, b) => b.amount - a.amount);
+      break;
+    case "amount_asc":
+      sorted.sort((a, b) => a.amount - b.amount);
+      break;
+    case "balance_desc":
+      sorted.sort((a, b) => Math.abs(balance(b)) - Math.abs(balance(a)));
+      break;
+    case "balance_asc":
+      sorted.sort((a, b) => Math.abs(balance(a)) - Math.abs(balance(b)));
+      break;
+    case "forwarded_desc":
+    default:
+      sorted.sort((a, b) => time(b.forwarded_at) - time(a.forwarded_at));
+  }
+  return sorted;
+}
+
 export function SupplierPaymentsPage({
   invoices,
   invoiceUrls,
@@ -121,6 +161,7 @@ export function SupplierPaymentsPage({
   const [supplierFilter, setSupplierFilter] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
+  const [sort, setSort] = useState<SupplierPaymentsSortKey>("forwarded_desc");
 
   // A row counts as outstanding as long as there's a non-zero balance in
   // EITHER direction — still owed to the supplier, or a refund still owed
@@ -146,7 +187,7 @@ export function SupplierPaymentsPage({
   const filtered = useMemo(() => {
     const base = tab === "outstanding" ? outstanding : paidHistory;
     const q = search.trim().toLowerCase();
-    return base.filter((row) => {
+    const matched = base.filter((row) => {
       if (supplierFilter && row.suppliers?.name !== supplierFilter) return false;
       if (q) {
         const haystack = [
@@ -165,7 +206,8 @@ export function SupplierPaymentsPage({
       if (dateTo && (!relevantDate || relevantDate > `${dateTo}T23:59:59`)) return false;
       return true;
     });
-  }, [tab, outstanding, paidHistory, search, supplierFilter, dateFrom, dateTo]);
+    return sortInvoices(matched, sort);
+  }, [tab, outstanding, paidHistory, search, supplierFilter, dateFrom, dateTo, sort]);
 
   const visible = filtered;
 
@@ -368,7 +410,7 @@ export function SupplierPaymentsPage({
           Export CSV
         </button>
       </div>
-      <div className="mb-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="mb-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
         <input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
@@ -401,6 +443,17 @@ export function SupplierPaymentsPage({
           aria-label={tab === "outstanding" ? "Forwarded to" : "Paid to"}
           className="rounded-xl border bg-slate-50 px-3 py-2.5 text-sm outline-none"
         />
+        <select
+          value={sort}
+          onChange={(e) => setSort(e.target.value as SupplierPaymentsSortKey)}
+          className="rounded-xl border bg-slate-50 px-3 py-2.5 text-sm outline-none"
+        >
+          {SORT_OPTIONS.map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
+          ))}
+        </select>
       </div>
       <Panel>
         <div className="space-y-3">

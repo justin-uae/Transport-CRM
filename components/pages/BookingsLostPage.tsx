@@ -2,6 +2,7 @@ import Link from "next/link";
 import { PageHead } from "@/components/ui/PageHead";
 import { Panel } from "@/components/ui/Panel";
 import { SortSelect } from "@/components/ui/SortSelect";
+import { AiBadge } from "@/components/ui/AiBadge";
 import { BookingTabs, BookingsGuideButton } from "@/components/pages/BookingTabs";
 import { formatDate, formatDateTime } from "@/lib/formatDate";
 import type { QuoteStatus } from "@/lib/supabase/database.types";
@@ -33,6 +34,7 @@ export interface LostBookingQuote {
   quote_versions: { selling_price: number } | null;
   quote_decisions: { decision: string; reason: string | null; free_text: string | null }[];
   profiles: { full_name: string } | null;
+  ai_generated: boolean;
 }
 
 export interface ExpiredLead {
@@ -124,7 +126,10 @@ export function BookingsLostPage({ quotes, expiredLeads }: { quotes: LostBooking
                       {q.quote_number} · Sales rep: {q.profiles?.full_name || "—"}
                     </div>
                   </div>
-                  <span className={"rounded-full px-2.5 py-1 text-xs font-bold " + badgeStyle}>{badgeLabel}</span>
+                  <div className="flex shrink-0 items-center gap-1.5">
+                    {q.ai_generated && <AiBadge />}
+                    <span className={"rounded-full px-2.5 py-1 text-xs font-bold " + badgeStyle}>{badgeLabel}</span>
+                  </div>
                 </div>
                 <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-sm text-slate-600">
                   <span>

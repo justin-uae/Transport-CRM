@@ -24,7 +24,6 @@ import {
   MessageSquareWarning,
   TriangleAlert,
   Settings,
-  Bot,
   type LucideIcon,
 } from "lucide-react";
 import { PERMISSIONS, type PermissionKey } from "@/lib/permissionKeys";
@@ -116,19 +115,6 @@ export const NAV: NavItem[] = [
     // enquiries.view_all (Master Admin, Sales Manager), no separate
     // permission needed for the nav item itself.
     anyOf: [PERMISSIONS.QUOTES_CREATE, PERMISSIONS.QUOTES_VIEW_SELLING_PRICE],
-  },
-  {
-    label: "AI Created Quotes",
-    href: "/quotes/ai-created",
-    icon: Bot,
-    group: "sales",
-    // Master Admin (via its usual permission bypass) plus the AI role — the
-    // AI role's dashboard/landing page (see ROLE_LANDING_OVERRIDE below).
-    // The underlying RLS (can_view_assignment) still scopes the actual rows
-    // per viewer — the AI role only holds enquiries.view_own, so it only
-    // ever sees quotes attributed to it, never another tenant's or another
-    // AI user's; the page itself also self-gates, not just this nav entry.
-    anyOf: [PERMISSIONS.QUOTES_VIEW_AI_GENERATED],
   },
   {
     label: "Customers",
@@ -289,7 +275,11 @@ export function defaultLandingHref(granted: Set<PermissionKey>, isMasterAdmin = 
 const ROLE_LANDING_OVERRIDE: Record<string, string> = {
   "Sales User": "/leads",
   "Finance Manager": "/accounting",
-  "AI": "/quotes/ai-created",
+  // AI Created Quotes (a standalone page) was folded back into Pending
+  // Quotes — every quote it creates already shows there (or in whichever
+  // Bookings tab it's since moved to) with an "AI" badge instead of living
+  // on its own list.
+  "AI": "/quotes",
 };
 
 /** Full landing-page decision: role-specific override (for anyone but Master Admin) falling back to the first visible nav item. */

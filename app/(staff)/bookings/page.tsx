@@ -58,7 +58,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ s
   const { data: jobs } = await supabase
     .from("jobs")
     .select(
-      `id, status, region, created_at, quotes(quote_number, currency, customers(company_name, contact_name), ${legsSelect}, ${versionSelect}, ${salesRepSelect}), job_allocations(status, offered_at, suppliers(name))`,
+      `id, status, region, created_at, quotes(quote_number, currency, ai_generated, customers(company_name, contact_name), ${legsSelect}, ${versionSelect}, ${salesRepSelect}), job_allocations(status, offered_at, suppliers(name))`,
     )
     .in("status", ["unassigned", "offered", "accepted_by_supplier", "confirmed", "rejected_by_supplier", "pending_reapproval"]);
 

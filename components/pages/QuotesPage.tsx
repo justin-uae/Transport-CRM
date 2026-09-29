@@ -2,6 +2,8 @@
 
 import { useEffect, useState, useTransition } from "react";
 import { Send, CheckCircle2, Timer, FileText, RefreshCw } from "lucide-react";
+import { AiBadge } from "@/components/ui/AiBadge";
+import { OverdueBadge } from "@/components/ui/OverdueBadge";
 import Link from "next/link";
 import clsx from "clsx";
 import { Panel } from "@/components/ui/Panel";
@@ -15,10 +17,10 @@ import { ConfirmDetailModal } from "@/components/ui/ConfirmDetailModal";
 import { useToast } from "@/components/ui/Toast";
 import { PageGuide } from "@/components/ui/PageGuide";
 import { QuotesDiagram } from "@/components/ui/guide-diagrams/QuotesDiagram";
-import { resendQuoteEmailAction, resendQuoteEmailsBulkAction } from "@/app/(staff)/quotes/actions";
+import { resendQuoteEmailAction, resendQuoteEmailsBulkAction, estimateQuotePriceAction } from "@/app/(staff)/quotes/actions";
 import type { QuoteStatus } from "@/lib/supabase/database.types";
 import { QUOTE_STATUS_LABEL, QUOTE_STATUS_STYLE } from "@/lib/quoteStatus";
-import { formatDateTime, formatDateAndTime } from "@/lib/formatDate";
+import { formatDateTime, formatDateAndTime, isPastDate } from "@/lib/formatDate";
 
 export type QuoteSortKey =
   | "created_desc"
@@ -60,6 +62,9 @@ export interface QuoteRow {
   } | null;
   quote_versions: { selling_price: number } | null;
   profiles: { full_name: string } | null;
+  ai_generated: boolean;
+  ai_estimated_price: number | null;
+  ai_estimated_price_currency: string | null;
 }
 
 // A resend only makes sense once a quote has actually been sent at least
@@ -98,10 +103,19 @@ function pickupInfo(q: QuoteRow) {
   return formatDateAndTime(leg.pickup_date, leg.pickup_time);
 }
 
+// Every row on this page is already draft/sent/viewed/accepted (Pending
+// Quotes' own status filter) — none of those are a terminal state, so a
+// row whose travel date has already gone by is, by definition, a trip that
+// never got paid/actioned in time and needs a human's attention.
+function isOverdue(q: QuoteRow) {
+  return isPastDate(journeyOf(q)?.pickup_date);
+}
+
 export function QuotesPage({
   quotes,
   canCreateQuote,
   canResend,
+  canViewAiEstimate,
   page,
   pageSize,
   total,
@@ -115,6 +129,7 @@ export function QuotesPage({
   quotes: QuoteRow[];
   canCreateQuote: boolean;
   canResend: boolean;
+  canViewAiEstimate: boolean;
   page: number;
   pageSize: number;
   total: number;
@@ -132,6 +147,45 @@ export function QuotesPage({
   const [confirmBulkOpen, setConfirmBulkOpen] = useState(false);
   const [pending, startTransition] = useTransition();
   const [bulkPending, startBulkTransition] = useTransition();
+  const [estimatingId, setEstimatingId] = useState<string | null>(null);
+  const [estimatePending, startEstimateTransition] = useTransition();
+  // Overrides what the server rendered, per quote id, the moment a fresh
+  // estimate comes back — without this, "Get AI estimate" would need a full
+  // page reload (router.refresh()) to show its own result.
+  const [estimateOverrides, setEstimateOverrides] = useState<
+    Record<string, { price: number; currency: string; distanceKm: number | null; usedHistoricalRate: boolean; historicalSampleSize: number | null }>
+  >({});
+
+  function aiEstimateFor(q: QuoteRow) {
+    return (
+      estimateOverrides[q.id] ??
+      (q.ai_estimated_price != null
+        ? { price: q.ai_estimated_price, currency: q.ai_estimated_price_currency!, distanceKm: null, usedHistoricalRate: false, historicalSampleSize: null }
+        : null)
+    );
+  }
+
+  function runEstimate(id: string) {
+    setEstimatingId(id);
+    startEstimateTransition(async () => {
+      const result = await estimateQuotePriceAction(id);
+      if (result.error) {
+        notify(result.error);
+      } else {
+        setEstimateOverrides((prev) => ({
+          ...prev,
+          [id]: {
+            price: result.estimatedPrice!,
+            currency: result.currency!,
+            distanceKm: result.distanceKm ?? null,
+            usedHistoricalRate: result.usedHistoricalRate ?? false,
+            historicalSampleSize: result.historicalSampleSize ?? null,
+          },
+        }));
+      }
+      setEstimatingId(null);
+    });
+  }
 
   // The quotes on screen change on every page/search/sort navigation — drop
   // any selected id that's no longer visible instead of carrying stale
@@ -347,9 +401,13 @@ export function QuotesPage({
                       {q.invoice_number && <div className="text-xs font-normal text-slate-400">Inv {q.invoice_number}</div>}
                     </div>
                   </div>
-                  <span className={"shrink-0 rounded-full px-2.5 py-1 text-xs font-bold " + QUOTE_STATUS_STYLE[q.status]}>
-                    {QUOTE_STATUS_LABEL[q.status]}
-                  </span>
+                  <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
+                    {q.ai_generated && <AiBadge />}
+                    {isOverdue(q) && <OverdueBadge />}
+                    <span className={"rounded-full px-2.5 py-1 text-xs font-bold " + QUOTE_STATUS_STYLE[q.status]}>
+                      {QUOTE_STATUS_LABEL[q.status]}
+                    </span>
+                  </div>
                 </div>
 
                 {/* Every field renders through the same Field tile, in one
@@ -379,6 +437,55 @@ export function QuotesPage({
                   <Field label="Customer Viewed">
                     {q.viewed_at ? formatDateTime(q.viewed_at) : <span className="text-slate-400">Not viewed yet</span>}
                   </Field>
+
+                  {/* Master Admin only — an internal pricing benchmark, not
+                      anything a customer or regular staff should see. Its
+                      own full-width row rather than folded into the 4-col
+                      grid above, since it's conditional and would otherwise
+                      throw off that grid's column count. */}
+                  {canViewAiEstimate && (
+                    <Field label="AI Est. Price" className="sm:col-span-4">
+                      {(() => {
+                        const estimate = aiEstimateFor(q);
+                        const isEstimating = estimatePending && estimatingId === q.id;
+                        const sellingPrice = q.quote_versions?.selling_price;
+                        const seemsUnderpriced = estimate && sellingPrice !== undefined && sellingPrice < estimate.price * 0.9;
+                        return (
+                          <div>
+                            <div className="flex items-center gap-2">
+                              {estimate ? (
+                                <span className={clsx("font-black", seemsUnderpriced ? "text-amber-600" : "text-slate-900")}>
+                                  {money(estimate.price, estimate.currency)}
+                                  {estimate.distanceKm != null && (
+                                    <span className="ml-1.5 text-xs font-normal text-slate-400">(≈{estimate.distanceKm} km)</span>
+                                  )}
+                                  {seemsUnderpriced && <span className="ml-1.5 text-xs font-normal">(quoted below AI estimate)</span>}
+                                </span>
+                              ) : (
+                                <span className="text-slate-400">Not estimated yet</span>
+                              )}
+                              <button
+                                onClick={() => runEstimate(q.id)}
+                                disabled={isEstimating}
+                                title="Estimate this trip's price with AI, from its journey details"
+                                className="flex items-center gap-1 rounded-lg border px-2 py-1 text-xs font-bold hover:bg-slate-50 disabled:opacity-60"
+                              >
+                                <RefreshCw size={11} className={isEstimating ? "animate-spin" : undefined} />
+                                {isEstimating ? "Estimating…" : estimate ? "Re-estimate" : "Get AI estimate"}
+                              </button>
+                            </div>
+                            {estimate && (
+                              <p className="mt-1 text-xs text-slate-400">
+                                {estimate.usedHistoricalRate
+                                  ? `Based on your own rate from ${estimate.historicalSampleSize} similar past booking${estimate.historicalSampleSize === 1 ? "" : "s"} — not a model guess.`
+                                  : "No comparable past bookings yet — this is the AI's own market-rate guess, not calibrated to your real pricing history."}
+                              </p>
+                            )}
+                          </div>
+                        );
+                      })()}
+                    </Field>
+                  )}
                 </div>
 
                 {/* Actions */}

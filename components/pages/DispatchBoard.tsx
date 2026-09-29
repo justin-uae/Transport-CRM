@@ -4,18 +4,46 @@ import Link from "next/link";
 import { Panel } from "@/components/ui/Panel";
 import { PageHead } from "@/components/ui/PageHead";
 import { Pagination } from "@/components/ui/Pagination";
+import { SortSelect } from "@/components/ui/SortSelect";
 import { PageGuide } from "@/components/ui/PageGuide";
 import { DispatchDiagram } from "@/components/ui/guide-diagrams/DispatchDiagram";
+import { formatDate, isPastDate } from "@/lib/formatDate";
+import { OverdueBadge } from "@/components/ui/OverdueBadge";
+import { AiBadge } from "@/components/ui/AiBadge";
 import type { JobStatus } from "@/lib/supabase/database.types";
+
+// completed/cancelled are the two dead-end states — a job still sitting in
+// any other status past its own travel date needs a human's attention
+// (never got run, or never got closed out), so those are the only two
+// statuses excluded from the "overdue" flag.
+const TERMINAL_JOB_STATUSES: JobStatus[] = ["completed", "cancelled"];
+
+function isOverdue(job: JobRow) {
+  return !TERMINAL_JOB_STATUSES.includes(job.status) && isPastDate(job.quotes?.enquiries?.enquiry_legs?.[0]?.pickup_date);
+}
+
+export type DispatchSortKey = "pickup_asc" | "pickup_desc" | "created_desc" | "created_asc";
+
+// Pickup date: soonest first — the default, since dispatch naturally cares
+// about what's coming up next.
+const SORT_OPTIONS = [
+  { value: "pickup_asc", label: "Pickup date: soonest" },
+  { value: "pickup_desc", label: "Pickup date: latest" },
+  { value: "created_desc", label: "Newest created" },
+  { value: "created_asc", label: "Oldest created" },
+];
 
 export interface JobRow {
   id: string;
   status: JobStatus;
   region: string | null;
+  created_at: string;
   quotes: {
     quote_number: string;
     customers: { company_name: string | null; contact_name: string } | null;
     profiles: { full_name: string } | null;
+    enquiries: { enquiry_legs: { pickup_date: string | null }[] } | null;
+    ai_generated: boolean;
   } | null;
   job_allocations: { id: string; status: JobStatus; suppliers: { name: string } | null }[];
 }
@@ -59,6 +87,8 @@ function JobCard({ job }: { job: JobRow }) {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          {job.quotes?.ai_generated && <AiBadge />}
+          {isOverdue(job) && <OverdueBadge />}
           <span className={`rounded-full px-2.5 py-1 text-xs font-bold capitalize ${STATUS_STYLE[job.status]}`}>
             {job.status.replaceAll("_", " ")}
           </span>
@@ -72,6 +102,9 @@ function JobCard({ job }: { job: JobRow }) {
       </div>
 
       <p className="mt-2 text-xs text-slate-500">{allocationSummary(job)}</p>
+      <p className="mt-1 text-xs text-slate-500">
+        Travel date: {job.quotes?.enquiries?.enquiry_legs?.[0]?.pickup_date ? formatDate(job.quotes.enquiries.enquiry_legs[0].pickup_date!) : "—"}
+      </p>
     </div>
   );
 }
@@ -140,7 +173,10 @@ export function DispatchBoard({
         }
       />
       <Panel>
-        <div className="space-y-3">
+        <div className="flex justify-end border-b pb-4">
+          <SortSelect options={SORT_OPTIONS} />
+        </div>
+        <div className="mt-4 space-y-3">
           {jobs.map((job) => (
             <JobCard key={job.id} job={job} />
           ))}

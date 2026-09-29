@@ -2,8 +2,10 @@ import Link from "next/link";
 import { PageHead } from "@/components/ui/PageHead";
 import { Panel } from "@/components/ui/Panel";
 import { SortSelect } from "@/components/ui/SortSelect";
+import { AiBadge } from "@/components/ui/AiBadge";
+import { OverdueBadge } from "@/components/ui/OverdueBadge";
 import { BookingTabs, BookingsGuideButton } from "@/components/pages/BookingTabs";
-import { formatDate, formatDateTime } from "@/lib/formatDate";
+import { formatDate, formatDateTime, isPastDate } from "@/lib/formatDate";
 import type { JobStatus } from "@/lib/supabase/database.types";
 
 export type BookingSortKey = "created_desc" | "created_asc" | "pickup_asc" | "pickup_desc" | "value_desc" | "value_asc";
@@ -36,6 +38,7 @@ export interface ConfirmedBookingJob {
     enquiries: LegsRef;
     quote_versions: VersionRef;
     profiles: { full_name: string } | null;
+    ai_generated: boolean;
   } | null;
   job_allocations: { status: JobStatus; offered_at: string | null; suppliers: { name: string } | null }[];
 }
@@ -112,9 +115,13 @@ export function BookingsConfirmedPage({ jobs }: { jobs: ConfirmedBookingJob[] })
                       {job.quotes?.quote_number} · {job.region ?? "No region"} · Sales rep: {job.quotes?.profiles?.full_name || "—"}
                     </div>
                   </div>
-                  <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${JOB_STATUS_STYLE[job.status]}`}>
-                    {JOB_STATUS_LABEL[job.status]}
-                  </span>
+                  <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
+                    {job.quotes?.ai_generated && <AiBadge />}
+                    {isPastDate(leg?.pickup_date) && <OverdueBadge />}
+                    <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${JOB_STATUS_STYLE[job.status]}`}>
+                      {JOB_STATUS_LABEL[job.status]}
+                    </span>
+                  </div>
                 </div>
                 <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-sm text-slate-600">
                   <span>{journeySummary(job.quotes?.enquiries ?? null)}</span>

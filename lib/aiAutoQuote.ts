@@ -97,6 +97,11 @@ async function estimatePricing(lead: LeadForSweep, brandName: string): Promise<P
   const response = await client.responses.create(
     {
       model: "gpt-4o-mini",
+      // Pinned rather than left at the default — an unpinned temperature is
+      // what made the same, unchanged trip in lib/aiPriceEstimate.ts's price
+      // benchmark swing wildly between calls (MXN 25,000 vs MXN 4,500). This
+      // path sends a real customer-facing price, so it's worth the same fix.
+      temperature: 0,
       instructions:
         `You are a pricing analyst for ${brandName}, a coach and transport hire company. A lead has gone unquoted too ` +
         `long, so you're pricing and quoting the trip yourself based on typical market rates for private transport hire. ` +
@@ -161,9 +166,11 @@ const asPgTime = (value: string | null) => (value && /^\d{2}:\d{2}(:\d{2})?$/.te
  * The tenant's AI-role profile, if one's been invited (Settings -> Users,
  * role "AI") — enquiries/quotes the sweep creates get attributed to it
  * (created_by, assigned_user_id) so they show up on that profile's own
- * dashboard (/quotes/ai-created, gated on quotes.view_ai_generated) via the
- * normal can_view_assignment RLS, the same way a human Sales User's quotes
- * show up on theirs. Permission-driven rather than a hardcoded role name,
+ * dashboard (/quotes, the same Pending Quotes list everyone else uses —
+ * there's no separate AI-only list any more, just an "AI" badge on the
+ * quote) via the normal can_view_assignment RLS, the same way a human Sales
+ * User's quotes show up on theirs. Permission-driven rather than a hardcoded
+ * role name,
  * matching getAssignableSalesUsers (lib/leadAssignees.ts) — stays correct if
  * the role is renamed. Falls back to null (today's behaviour, Master-Admin-
  * only visibility) if no tenant profile holds it yet.

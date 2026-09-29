@@ -152,3 +152,19 @@ export function formatTimeOnly(value: string): string {
 export function formatDateAndTime(dateValue: string, timeValue: string | null | undefined): string {
   return timeValue ? `${formatDate(dateValue)}, ${formatTimeOnly(timeValue)}` : formatDate(dateValue);
 }
+
+/**
+ * True once a bare journey `date` column (e.g. enquiry_legs.pickup_date) is
+ * strictly in the past — for flagging a quote/job whose travel date has
+ * gone by while it's still sitting open (not yet paid/dispatched/completed).
+ * "Today" is taken in this app's display timezone (Europe/London, see the
+ * module comment above), not the server process's own local/UTC time, so a
+ * job doesn't flip to "overdue" up to several hours early/late depending on
+ * where this runs — same reasoning as every other date in this file.
+ */
+export function isPastDate(value: string | null | undefined): boolean {
+  if (!value) return false;
+  const { year, month, day } = londonParts(new Date());
+  const todayIso = `${year}-${pad2(month)}-${pad2(day)}`;
+  return value.slice(0, 10) < todayIso;
+}
