@@ -1,9 +1,24 @@
 import Link from "next/link";
 import { PageHead } from "@/components/ui/PageHead";
 import { Panel } from "@/components/ui/Panel";
+import { SortSelect } from "@/components/ui/SortSelect";
 import { BookingTabs, BookingsGuideButton } from "@/components/pages/BookingTabs";
 import { formatDate, formatDateTime } from "@/lib/formatDate";
 import type { JobStatus } from "@/lib/supabase/database.types";
+
+export type BookingSortKey = "created_desc" | "created_asc" | "pickup_asc" | "pickup_desc" | "value_desc" | "value_asc";
+
+// Pickup date: soonest is first — that's this page's default (dispatch
+// naturally cares about what's coming up next), so it's also what
+// SortSelect falls back to whenever there's no ?sort= in the URL.
+const SORT_OPTIONS = [
+  { value: "pickup_asc", label: "Pickup date: soonest" },
+  { value: "pickup_desc", label: "Pickup date: latest" },
+  { value: "created_desc", label: "Newest created" },
+  { value: "created_asc", label: "Oldest created" },
+  { value: "value_desc", label: "Highest value" },
+  { value: "value_asc", label: "Lowest value" },
+];
 
 type CustomerRef = { company_name: string | null; contact_name: string } | null;
 type LegsRef = { enquiry_legs: { pickup_address: string; destination_address: string; pickup_date: string | null }[] } | null;
@@ -81,7 +96,10 @@ export function BookingsConfirmedPage({ jobs }: { jobs: ConfirmedBookingJob[] })
       />
       <BookingTabs active="confirmed" />
       <Panel>
-        <div className="space-y-3">
+        <div className="flex justify-end border-b pb-4">
+          <SortSelect options={SORT_OPTIONS} />
+        </div>
+        <div className="mt-4 space-y-3">
           {jobs.map((job) => {
             const customer = job.quotes?.customers;
             const leg = job.quotes?.enquiries?.enquiry_legs?.[0];
@@ -99,12 +117,10 @@ export function BookingsConfirmedPage({ jobs }: { jobs: ConfirmedBookingJob[] })
                   </span>
                 </div>
                 <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-sm text-slate-600">
-                  <span>
-                    {journeySummary(job.quotes?.enquiries ?? null)}
-                    {leg?.pickup_date && <span className="text-slate-400"> · {formatDate(leg.pickup_date)}</span>}
-                  </span>
+                  <span>{journeySummary(job.quotes?.enquiries ?? null)}</span>
                   <span className="font-bold">{money(job.quotes?.quote_versions?.selling_price, job.quotes?.currency ?? "EUR")}</span>
                 </div>
+                <p className="mt-1 text-xs text-slate-500">Travel date: {leg?.pickup_date ? formatDate(leg.pickup_date) : "—"}</p>
                 {allocationSummary(job.job_allocations) && (
                   <p className="mt-1 text-xs text-slate-500">{allocationSummary(job.job_allocations)}</p>
                 )}

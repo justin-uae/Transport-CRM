@@ -250,6 +250,21 @@ export async function resendQuoteEmailAction(quoteId: string) {
 }
 
 /**
+ * Bulk version of resendQuoteEmailAction for the Pending Quotes table's
+ * multi-select resend — reuses that same action per quote (same permission
+ * check, same PDF regeneration, same audit log entry) rather than
+ * duplicating its logic, since a handful of individual sends is cheap
+ * enough not to need a batched/optimized path.
+ */
+export async function resendQuoteEmailsBulkAction(quoteIds: string[]) {
+  const outcomes = await Promise.all(
+    quoteIds.map(async (id) => ({ id, result: await resendQuoteEmailAction(id) })),
+  );
+  const failed = outcomes.filter((o) => o.result?.error).map((o) => ({ id: o.id, error: o.result!.error as string }));
+  return { sent: outcomes.length - failed.length, failed };
+}
+
+/**
  * Resends the quote_sent_customer WhatsApp template — a separate action
  * (not folded into resendQuoteEmailAction) so staff can retry whichever
  * channel actually failed rather than always resending both. Unlike the

@@ -9,6 +9,7 @@ import { Kpi } from "@/components/ui/Kpi";
 import { JourneyCell } from "@/components/ui/JourneyCell";
 import { PageHead } from "@/components/ui/PageHead";
 import { SearchInput } from "@/components/ui/SearchInput";
+import { SortSelect } from "@/components/ui/SortSelect";
 import { Pagination } from "@/components/ui/Pagination";
 import { useToast } from "@/components/ui/Toast";
 import { ConfirmDetailModal } from "@/components/ui/ConfirmDetailModal";
@@ -22,6 +23,13 @@ import type { LeadSource, LeadStatus } from "@/lib/supabase/database.types";
 import type { AssignableUser } from "@/components/pages/LeadDetailPage";
 
 export type LeadTab = "mine" | "pool" | "all" | "quoted";
+
+const SORT_OPTIONS = [
+  { value: "created_desc", label: "Newest created" },
+  { value: "created_asc", label: "Oldest created" },
+  { value: "travel_asc", label: "Travel date: soonest" },
+  { value: "travel_desc", label: "Travel date: latest" },
+];
 
 export interface LeadRow {
   id: string;
@@ -350,6 +358,7 @@ export function LeadsPage({
               ))}
           </div>
           <SearchInput placeholder="Search leads…" />
+          <SortSelect options={SORT_OPTIONS} />
         </div>
         <div className="space-y-3 py-4 sm:hidden">
           {leads.map((l) => (

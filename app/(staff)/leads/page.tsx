@@ -7,10 +7,25 @@ import { getAssignableSalesUsers } from "@/lib/leadAssignees";
 
 const PAGE_SIZE = 25;
 
+export type LeadSortKey = "created_desc" | "created_asc" | "travel_asc" | "travel_desc";
+
+const SORT_KEYS: LeadSortKey[] = ["created_desc", "created_asc", "travel_asc", "travel_desc"];
+
+// travel_date and created_at are plain columns on the leads table itself
+// (unlike Quotes' pickup date, which lives on a joined table) — so, unlike
+// QuotesPage, this can sort at the DB level with a normal `.order()` and
+// keep its existing range()-based pagination as-is.
+const SORT_COLUMN: Record<LeadSortKey, { column: "created_at" | "travel_date"; ascending: boolean }> = {
+  created_desc: { column: "created_at", ascending: false },
+  created_asc: { column: "created_at", ascending: true },
+  travel_asc: { column: "travel_date", ascending: true },
+  travel_desc: { column: "travel_date", ascending: false },
+};
+
 export default async function Page({
   searchParams,
 }: {
-  searchParams: Promise<{ tab?: string; q?: string; page?: string }>;
+  searchParams: Promise<{ tab?: string; q?: string; page?: string; sort?: string }>;
 }) {
   const params = await searchParams;
   const profile = await requireProfile();
@@ -23,6 +38,8 @@ export default async function Page({
   const page = Math.max(1, Number(params.page) || 1);
   const from = (page - 1) * PAGE_SIZE;
   const to = from + PAGE_SIZE - 1;
+  const sort: LeadSortKey = (SORT_KEYS as string[]).includes(params.sort ?? "") ? (params.sort as LeadSortKey) : "created_desc";
+  const { column: sortColumn, ascending: sortAscending } = SORT_COLUMN[sort];
 
   let listQuery = supabase
     .from("leads")
@@ -59,7 +76,7 @@ export default async function Page({
     canViewAll,
     canAssign,
   ] = await Promise.all([
-    listQuery.order("created_at", { ascending: false }).range(from, to),
+    listQuery.order(sortColumn, { ascending: sortAscending, nullsFirst: false }).range(from, to),
     supabase
       .from("leads")
       .select("id", { count: "exact", head: true })

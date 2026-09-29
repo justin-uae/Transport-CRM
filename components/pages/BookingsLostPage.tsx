@@ -1,9 +1,25 @@
 import Link from "next/link";
 import { PageHead } from "@/components/ui/PageHead";
 import { Panel } from "@/components/ui/Panel";
+import { SortSelect } from "@/components/ui/SortSelect";
 import { BookingTabs, BookingsGuideButton } from "@/components/pages/BookingTabs";
 import { formatDate, formatDateTime } from "@/lib/formatDate";
 import type { QuoteStatus } from "@/lib/supabase/database.types";
+
+export type LeadSortKey = "travel_desc" | "travel_asc";
+export type LostQuoteSortKey = "decided_desc" | "decided_asc" | "value_desc" | "value_asc";
+
+const LEAD_SORT_OPTIONS = [
+  { value: "travel_desc", label: "Most recently expired" },
+  { value: "travel_asc", label: "Oldest first" },
+];
+
+const QUOTE_SORT_OPTIONS = [
+  { value: "decided_desc", label: "Most recently lost" },
+  { value: "decided_asc", label: "Oldest first" },
+  { value: "value_desc", label: "Highest value" },
+  { value: "value_asc", label: "Lowest value" },
+];
 
 export interface LostBookingQuote {
   id: string;
@@ -48,7 +64,11 @@ export function BookingsLostPage({ quotes, expiredLeads }: { quotes: LostBooking
       />
       <BookingTabs active="lost" />
       <Panel>
-        <div className="space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b pb-4">
+          <h3 className="text-sm font-black uppercase tracking-wide text-slate-500">Expired Leads</h3>
+          <SortSelect options={LEAD_SORT_OPTIONS} paramName="leadSort" />
+        </div>
+        <div className="mt-4 space-y-3">
           {expiredLeads.map((l) => (
             <div key={l.id} className="rounded-2xl border p-4">
               <div className="flex flex-wrap items-center justify-between gap-2">
@@ -75,6 +95,14 @@ export function BookingsLostPage({ quotes, expiredLeads }: { quotes: LostBooking
               </Link>
             </div>
           ))}
+          {expiredLeads.length === 0 && <p className="py-4 text-center text-sm text-slate-500">No expired leads.</p>}
+        </div>
+
+        <div className="mt-6 flex flex-wrap items-center justify-between gap-2 border-b pb-4">
+          <h3 className="text-sm font-black uppercase tracking-wide text-slate-500">Lost Quotes</h3>
+          <SortSelect options={QUOTE_SORT_OPTIONS} paramName="quoteSort" />
+        </div>
+        <div className="mt-4 space-y-3">
           {quotes.map((q) => {
             const customer = q.customers;
             const leg = q.enquiries?.enquiry_legs?.[0];
@@ -127,7 +155,7 @@ export function BookingsLostPage({ quotes, expiredLeads }: { quotes: LostBooking
               </div>
             );
           })}
-          {quotes.length === 0 && expiredLeads.length === 0 && <p className="py-8 text-center text-sm text-slate-500">No lost bookings yet.</p>}
+          {quotes.length === 0 && <p className="py-4 text-center text-sm text-slate-500">No lost quotes.</p>}
         </div>
       </Panel>
     </div>

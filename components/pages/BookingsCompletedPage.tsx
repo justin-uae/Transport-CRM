@@ -2,17 +2,30 @@ import Link from "next/link";
 import { PageHead } from "@/components/ui/PageHead";
 import { Panel } from "@/components/ui/Panel";
 import { Pagination } from "@/components/ui/Pagination";
+import { SortSelect } from "@/components/ui/SortSelect";
 import { BookingTabs, BookingsGuideButton } from "@/components/pages/BookingTabs";
-import { formatDateTime } from "@/lib/formatDate";
+import { formatDate, formatDateTime } from "@/lib/formatDate";
+
+export type CompletedSortKey = "created_desc" | "created_asc" | "completed_desc" | "value_desc" | "value_asc";
+
+const SORT_OPTIONS = [
+  { value: "created_desc", label: "Newest created" },
+  { value: "created_asc", label: "Oldest created" },
+  { value: "completed_desc", label: "Recently completed" },
+  { value: "value_desc", label: "Highest value" },
+  { value: "value_asc", label: "Lowest value" },
+];
 
 export interface CompletedBookingJob {
   id: string;
   status: string;
   region: string | null;
+  created_at: string;
   quotes: {
     quote_number: string;
     currency: string;
     customers: { company_name: string | null; contact_name: string } | null;
+    enquiries: { enquiry_legs: { pickup_date: string | null }[] } | null;
     quote_versions: { selling_price: number } | null;
   } | null;
   job_allocations: { status: string; completed_at: string | null; suppliers: { name: string } | null }[];
@@ -54,7 +67,10 @@ export function BookingsCompletedPage({
       />
       <BookingTabs active="completed" />
       <Panel>
-        <div className="space-y-3">
+        <div className="flex justify-end border-b pb-4">
+          <SortSelect options={SORT_OPTIONS} />
+        </div>
+        <div className="mt-4 space-y-3">
           {jobs.map((job) => {
             const customer = job.quotes?.customers;
             return (
@@ -72,6 +88,9 @@ export function BookingsCompletedPage({
                   <span>{supplierSummary(job.job_allocations)}</span>
                   <span className="font-bold">{money(job.quotes?.quote_versions?.selling_price, job.quotes?.currency ?? "EUR")}</span>
                 </div>
+                <p className="mt-1 text-xs text-slate-500">
+                  Travel date: {job.quotes?.enquiries?.enquiry_legs?.[0]?.pickup_date ? formatDate(job.quotes.enquiries.enquiry_legs[0].pickup_date!) : "—"}
+                </p>
                 {latestCompletion(job.job_allocations) && (
                   <p className="mt-1 text-xs text-slate-400">Completed {formatDateTime(latestCompletion(job.job_allocations)!)}</p>
                 )}

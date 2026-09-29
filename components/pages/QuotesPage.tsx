@@ -1,19 +1,47 @@
 "use client";
 
-import { Send, CheckCircle2, Timer, FileText } from "lucide-react";
+import { useEffect, useState, useTransition } from "react";
+import { Send, CheckCircle2, Timer, FileText, RefreshCw } from "lucide-react";
 import Link from "next/link";
+import clsx from "clsx";
 import { Panel } from "@/components/ui/Panel";
 import { Kpi } from "@/components/ui/Kpi";
 import { PageHead } from "@/components/ui/PageHead";
 import { SearchInput } from "@/components/ui/SearchInput";
+import { SortSelect } from "@/components/ui/SortSelect";
 import { Pagination } from "@/components/ui/Pagination";
 import { JourneyCell } from "@/components/ui/JourneyCell";
+import { ConfirmDetailModal } from "@/components/ui/ConfirmDetailModal";
 import { useToast } from "@/components/ui/Toast";
 import { PageGuide } from "@/components/ui/PageGuide";
 import { QuotesDiagram } from "@/components/ui/guide-diagrams/QuotesDiagram";
+import { resendQuoteEmailAction, resendQuoteEmailsBulkAction } from "@/app/(staff)/quotes/actions";
 import type { QuoteStatus } from "@/lib/supabase/database.types";
 import { QUOTE_STATUS_LABEL, QUOTE_STATUS_STYLE } from "@/lib/quoteStatus";
-import { formatDateTime } from "@/lib/formatDate";
+import { formatDateTime, formatDateAndTime } from "@/lib/formatDate";
+
+export type QuoteSortKey =
+  | "created_desc"
+  | "created_asc"
+  | "pickup_asc"
+  | "pickup_desc"
+  | "sent_desc"
+  | "viewed_desc"
+  | "value_desc"
+  | "value_asc"
+  | "expiry_asc";
+
+const SORT_OPTIONS: { value: QuoteSortKey; label: string }[] = [
+  { value: "created_desc", label: "Newest created" },
+  { value: "created_asc", label: "Oldest created" },
+  { value: "pickup_asc", label: "Pickup date: soonest" },
+  { value: "pickup_desc", label: "Pickup date: latest" },
+  { value: "sent_desc", label: "Recently sent" },
+  { value: "viewed_desc", label: "Recently viewed by customer" },
+  { value: "value_desc", label: "Highest value" },
+  { value: "value_asc", label: "Lowest value" },
+  { value: "expiry_asc", label: "Expiring soonest" },
+];
 
 export interface QuoteRow {
   id: string;
@@ -25,12 +53,22 @@ export interface QuoteRow {
   public_token: string;
   created_at: string;
   sent_at: string | null;
+  viewed_at: string | null;
   customers: { company_name: string | null; contact_name: string } | null;
-  enquiries: { enquiry_legs: { pickup_address: string; destination_address: string }[] } | null;
+  enquiries: {
+    enquiry_legs: { pickup_address: string; destination_address: string; pickup_date: string | null; pickup_time: string | null }[];
+  } | null;
   quote_versions: { selling_price: number } | null;
   profiles: { full_name: string } | null;
 }
 
+// A resend only makes sense once a quote has actually been sent at least
+// once — mirrors QuoteDetailActions' EMAILABLE gate, and every status past
+// "sent" (viewed/accepted) still has sent_at set, so this one check covers
+// all of them without importing the status list.
+function canResendQuote(q: QuoteRow) {
+  return !!q.sent_at;
+}
 
 function money(amount: number | undefined, currency: string) {
   if (amount === undefined) return "—";
@@ -41,9 +79,29 @@ function journeyOf(q: QuoteRow) {
   return q.enquiries?.enquiry_legs?.[0] ?? null;
 }
 
+// One label/value tile — every field in a quote card renders through this,
+// so they all share the same box, spacing and label style instead of each
+// section improvising its own layout (which is what made the card feel
+// scattered: three different grids that didn't line up with each other).
+function Field({ label, className, children }: { label: string; className?: string; children: React.ReactNode }) {
+  return (
+    <div className={clsx("min-w-0 rounded-lg bg-slate-50 px-3 py-2", className)}>
+      <div className="text-[10px] font-bold uppercase tracking-wide text-slate-400">{label}</div>
+      <div className="mt-0.5 min-w-0 text-sm font-semibold text-slate-800">{children}</div>
+    </div>
+  );
+}
+
+function pickupInfo(q: QuoteRow) {
+  const leg = journeyOf(q);
+  if (!leg?.pickup_date) return "—";
+  return formatDateAndTime(leg.pickup_date, leg.pickup_time);
+}
+
 export function QuotesPage({
   quotes,
   canCreateQuote,
+  canResend,
   page,
   pageSize,
   total,
@@ -56,6 +114,7 @@ export function QuotesPage({
 }: {
   quotes: QuoteRow[];
   canCreateQuote: boolean;
+  canResend: boolean;
   page: number;
   pageSize: number;
   total: number;
@@ -67,10 +126,69 @@ export function QuotesPage({
   pipelineCurrency: string;
 }) {
   const notify = useToast();
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [resendingId, setResendingId] = useState<string | null>(null);
+  const [confirmSingle, setConfirmSingle] = useState<QuoteRow | null>(null);
+  const [confirmBulkOpen, setConfirmBulkOpen] = useState(false);
+  const [pending, startTransition] = useTransition();
+  const [bulkPending, startBulkTransition] = useTransition();
+
+  // The quotes on screen change on every page/search/sort navigation — drop
+  // any selected id that's no longer visible instead of carrying stale
+  // selections across pages.
+  useEffect(() => {
+    setSelected((prev) => {
+      const visible = new Set(quotes.map((q) => q.id));
+      const next = new Set([...prev].filter((id) => visible.has(id)));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [quotes]);
+
+  const eligibleIds = quotes.filter(canResendQuote).map((q) => q.id);
+  const allEligibleSelected = eligibleIds.length > 0 && eligibleIds.every((id) => selected.has(id));
 
   function copyLink(token: string) {
     const link = `${window.location.origin}/q/${token}`;
     navigator.clipboard.writeText(link).then(() => notify("Quote link copied"));
+  }
+
+  function toggleOne(id: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleAll() {
+    setSelected(allEligibleSelected ? new Set() : new Set(eligibleIds));
+  }
+
+  function confirmResendOne() {
+    const quote = confirmSingle;
+    if (!quote) return;
+    setResendingId(quote.id);
+    startTransition(async () => {
+      const result = await resendQuoteEmailAction(quote.id);
+      notify(result?.error ? `Could not resend: ${result.error}` : "Quote email resent");
+      setResendingId(null);
+      setConfirmSingle(null);
+    });
+  }
+
+  function confirmResendBulk() {
+    const ids = [...selected];
+    startBulkTransition(async () => {
+      const result = await resendQuoteEmailsBulkAction(ids);
+      notify(
+        result.failed.length === 0
+          ? `Resent ${result.sent} quote${result.sent === 1 ? "" : "s"}`
+          : `Resent ${result.sent} · ${result.failed.length} failed`,
+      );
+      setSelected(new Set());
+      setConfirmBulkOpen(false);
+    });
   }
 
   return (
@@ -111,6 +229,7 @@ export function QuotesPage({
                     "Add New Quote starts a fresh quote (normally reached from a lead via Create Quote).",
                     "View opens the full quote detail — pricing, versions and customer activity.",
                     "Copy Link grabs the customer-facing link for a Sent/Viewed quote so you can share it directly (e.g. over WhatsApp or email).",
+                    "Resend re-sends the quote email (with a freshly generated PDF) — select several with their checkboxes to resend them all at once.",
                   ],
                 },
                 {
@@ -157,118 +276,174 @@ export function QuotesPage({
       <Panel className="mt-6 min-w-0">
         <div className="flex flex-col gap-3 border-b pb-4 md:flex-row md:items-center">
           <SearchInput placeholder="Search quotes (number or invoice)" />
+          <SortSelect options={SORT_OPTIONS} />
         </div>
 
-        <div className="mt-4 space-y-3 sm:hidden">
-          {quotes.map((q) => (
-            <div key={q.id} className="rounded-2xl border p-4">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div>
-                  <Link href={`/quotes/${q.id}`} className="font-black text-primary-600 hover:underline">
-                    {q.quote_number}
-                  </Link>
-                  {q.invoice_number && <div className="text-xs text-slate-400">Inv {q.invoice_number}</div>}
-                </div>
-                <span className={"rounded-full px-2.5 py-1 text-xs font-bold " + QUOTE_STATUS_STYLE[q.status]}>{QUOTE_STATUS_LABEL[q.status]}</span>
-              </div>
-              <div className="mt-2 text-sm font-semibold">{q.customers?.company_name || q.customers?.contact_name || "—"}</div>
-              <div className="mt-1 text-sm text-slate-600">
-                <JourneyCell pickup={journeyOf(q)?.pickup_address} destination={journeyOf(q)?.destination_address} maxWidth="100%" />
-              </div>
-              <div className="mt-2 font-black">{money(q.quote_versions?.selling_price, q.currency)}</div>
-              <div className="mt-1 text-xs text-slate-400">
-                Sales rep: {q.profiles?.full_name || "—"}
-              </div>
-              <div className="mt-0.5 text-xs text-slate-400">
-                Sent Date: {q.sent_at ? formatDateTime(q.sent_at) : "—"}
-              </div>
-              <div className="mt-3 flex flex-wrap gap-2">
-                <Link
-                  href={`/quotes/${q.id}`}
-                  className="rounded-lg border border-primary-300 px-3 py-2 text-xs font-bold text-primary-700"
-                >
-                  View
-                </Link>
-                {(q.status === "sent" || q.status === "viewed") && (
-                  <button onClick={() => copyLink(q.public_token)} className="rounded-lg border px-3 py-2 text-xs font-bold">
-                    Copy Link
-                  </button>
-                )}
-              </div>
+        {canResend && selected.size > 0 && (
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-primary-200 bg-primary-50 px-4 py-3">
+            <span className="text-sm font-bold text-primary-700">
+              {selected.size} quote{selected.size === 1 ? "" : "s"} selected
+            </span>
+            <div className="flex gap-2">
+              <button onClick={() => setSelected(new Set())} className="rounded-lg border px-3 py-2 text-xs font-bold">
+                Clear
+              </button>
+              <button
+                onClick={() => setConfirmBulkOpen(true)}
+                disabled={bulkPending}
+                className="flex items-center gap-1.5 rounded-lg bg-primary-500 px-3 py-2 text-xs font-bold text-white disabled:opacity-60"
+              >
+                <RefreshCw size={14} />
+                {bulkPending ? "Resending…" : `Resend ${selected.size} Quote${selected.size === 1 ? "" : "s"}`}
+              </button>
             </div>
-          ))}
-          {quotes.length === 0 && <p className="py-8 text-center text-sm text-slate-500">No quotes yet — build one from an enquiry.</p>}
-        </div>
+          </div>
+        )}
 
-        <div className="hidden overflow-x-auto sm:block">
-          <table className="w-full min-w-[1120px] text-left text-sm">
-            <thead>
-              <tr className="border-b text-slate-500">
-                <th className="px-3 py-4">Quote</th>
-                <th className="px-3 py-4">Customer</th>
-                <th className="px-3 py-4">Journey</th>
-                <th className="px-3 py-4">Sales Rep</th>
-                <th className="px-3 py-4">Sent Date</th>
-                <th className="px-3 py-4">Value</th>
-                <th className="px-3 py-4">Status</th>
-                <th className="px-3 py-4"></th>
-              </tr>
-            </thead>
-            <tbody>
-              {quotes.map((q) => (
-                <tr key={q.id} className="border-b last:border-0">
-                  <td className="whitespace-nowrap px-3 py-4 font-black text-primary-600">
-                    <Link href={`/quotes/${q.id}`} className="hover:underline">
-                      {q.quote_number}
-                    </Link>
-                    {q.invoice_number && <div className="text-xs font-normal text-slate-400">Inv {q.invoice_number}</div>}
-                  </td>
-                  <td className="max-w-[220px] truncate px-3 py-4 font-semibold" title={q.customers?.company_name || q.customers?.contact_name || undefined}>
-                    {q.customers?.company_name || q.customers?.contact_name || "—"}
-                  </td>
-                  <td className="px-3 py-4 text-slate-600">
-                    <JourneyCell pickup={journeyOf(q)?.pickup_address} destination={journeyOf(q)?.destination_address} />
-                  </td>
-                  <td className="whitespace-nowrap px-3 py-4 text-slate-600">{q.profiles?.full_name || "—"}</td>
-                  <td className="whitespace-nowrap px-3 py-4 text-slate-600">{q.sent_at ? formatDateTime(q.sent_at) : "—"}</td>
-                  <td className="whitespace-nowrap px-3 py-4 font-black">{money(q.quote_versions?.selling_price, q.currency)}</td>
-                  <td className="whitespace-nowrap px-3 py-4">
-                    <span className={"rounded-full px-2.5 py-1 text-xs font-bold " + QUOTE_STATUS_STYLE[q.status]}>
-                      {QUOTE_STATUS_LABEL[q.status]}
-                    </span>
-                  </td>
-                  <td className="whitespace-nowrap px-3 py-4 text-right">
-                    <div className="flex items-center justify-end gap-2">
-                      <Link
-                        href={`/quotes/${q.id}`}
-                        className="shrink-0 whitespace-nowrap rounded-lg border border-primary-300 px-3 py-2 text-xs font-bold text-primary-700"
-                      >
-                        View
+        <div className="mt-4 space-y-4">
+          {canResend && quotes.length > 0 && (
+            <label className="flex items-center gap-2 px-1 text-xs font-bold text-slate-400">
+              <input
+                type="checkbox"
+                checked={allEligibleSelected}
+                onChange={toggleAll}
+                disabled={eligibleIds.length === 0}
+                className="h-4 w-4 rounded border-slate-300"
+              />
+              Select all sent quotes on this page
+            </label>
+          )}
+
+          {quotes.map((q) => {
+            const leg = journeyOf(q);
+            const isResendable = canResendQuote(q);
+            const isSelected = selected.has(q.id);
+            const customerLabel = q.customers?.company_name || q.customers?.contact_name || "—";
+            return (
+              <div
+                key={q.id}
+                className={clsx(
+                  "rounded-2xl border p-4 shadow-sm transition-colors sm:p-5",
+                  isSelected ? "border-primary-300 bg-primary-50/40" : "border-slate-200 bg-white",
+                )}
+              >
+                {/* Header: quote number + status */}
+                <div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-100 pb-3">
+                  <div className="flex items-start gap-3">
+                    {canResend && (
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={() => toggleOne(q.id)}
+                        disabled={!isResendable}
+                        title={isResendable ? "Select for bulk resend" : "This quote hasn't been sent yet"}
+                        className="mt-1 h-4 w-4 shrink-0 rounded border-slate-300 disabled:opacity-30"
+                      />
+                    )}
+                    <div>
+                      <Link href={`/quotes/${q.id}`} className="font-black text-primary-600 hover:underline">
+                        {q.quote_number}
                       </Link>
-                      {(q.status === "sent" || q.status === "viewed") && (
-                        <button
-                          onClick={() => copyLink(q.public_token)}
-                          className="shrink-0 whitespace-nowrap rounded-lg border px-3 py-2 text-xs font-bold"
-                        >
-                          Copy Link
-                        </button>
-                      )}
+                      {q.invoice_number && <div className="text-xs font-normal text-slate-400">Inv {q.invoice_number}</div>}
                     </div>
-                  </td>
-                </tr>
-              ))}
-              {quotes.length === 0 && (
-                <tr>
-                  <td colSpan={8} className="py-8 text-center text-sm text-slate-500">
-                    No quotes yet — build one from an enquiry.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+                  </div>
+                  <span className={"shrink-0 rounded-full px-2.5 py-1 text-xs font-bold " + QUOTE_STATUS_STYLE[q.status]}>
+                    {QUOTE_STATUS_LABEL[q.status]}
+                  </span>
+                </div>
+
+                {/* Every field renders through the same Field tile, in one
+                    grid, so nothing drifts out of alignment with anything
+                    else on the card. Row 1 (customer / journey / value) and
+                    row 2 (rep / pickup / sent / viewed) both add up to 4
+                    columns on sm+, so the two rows line up with each other;
+                    on mobile every tile is simply full-width and stacked. */}
+                <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-4">
+                  <Field label="Customer">
+                    <span className="block truncate" title={customerLabel}>
+                      {customerLabel}
+                    </span>
+                  </Field>
+                  <Field label="Journey" className="sm:col-span-2">
+                    <JourneyCell pickup={leg?.pickup_address} destination={leg?.destination_address} maxWidth="100%" />
+                  </Field>
+                  <Field label="Value" className="sm:text-right">
+                    <span className="text-base font-black text-slate-900">{money(q.quote_versions?.selling_price, q.currency)}</span>
+                  </Field>
+
+                  <Field label="Sales Rep">
+                    <span className="block truncate">{q.profiles?.full_name || "—"}</span>
+                  </Field>
+                  <Field label="Pickup Date">{pickupInfo(q)}</Field>
+                  <Field label="Sent">{q.sent_at ? formatDateTime(q.sent_at) : "—"}</Field>
+                  <Field label="Customer Viewed">
+                    {q.viewed_at ? formatDateTime(q.viewed_at) : <span className="text-slate-400">Not viewed yet</span>}
+                  </Field>
+                </div>
+
+                {/* Actions */}
+                <div className="mt-3 flex flex-wrap gap-2 border-t border-slate-100 pt-3">
+                  <Link
+                    href={`/quotes/${q.id}`}
+                    className="rounded-lg border border-primary-300 px-3 py-2 text-xs font-bold text-primary-700 hover:bg-primary-50"
+                  >
+                    View
+                  </Link>
+                  {(q.status === "sent" || q.status === "viewed") && (
+                    <button
+                      onClick={() => copyLink(q.public_token)}
+                      className="rounded-lg border px-3 py-2 text-xs font-bold hover:bg-slate-50"
+                    >
+                      Copy Link
+                    </button>
+                  )}
+                  {canResend && isResendable && (
+                    <button
+                      onClick={() => setConfirmSingle(q)}
+                      disabled={pending && resendingId === q.id}
+                      className="flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-bold hover:bg-slate-50 disabled:opacity-60"
+                    >
+                      <RefreshCw size={13} />
+                      {pending && resendingId === q.id ? "Resending…" : "Resend"}
+                    </button>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+          {quotes.length === 0 && <p className="py-8 text-center text-sm text-slate-500">No quotes yet — build one from an enquiry.</p>}
         </div>
         <Pagination page={page} pageSize={pageSize} total={total} />
       </Panel>
+
+      <ConfirmDetailModal
+        open={!!confirmSingle}
+        onClose={() => !pending && setConfirmSingle(null)}
+        title="Resend this quote?"
+        description="This resends the quote email, with a freshly generated PDF, to the customer."
+        details={
+          confirmSingle
+            ? [
+                { label: "Quote", value: confirmSingle.quote_number },
+                { label: "Customer", value: confirmSingle.customers?.company_name || confirmSingle.customers?.contact_name || "—" },
+                { label: "Value", value: money(confirmSingle.quote_versions?.selling_price, confirmSingle.currency) },
+              ]
+            : []
+        }
+        confirmLabel="Resend"
+        pending={pending}
+        onConfirm={confirmResendOne}
+      />
+
+      <ConfirmDetailModal
+        open={confirmBulkOpen}
+        onClose={() => !bulkPending && setConfirmBulkOpen(false)}
+        title={`Resend ${selected.size} quote${selected.size === 1 ? "" : "s"}?`}
+        description="This resends the quote email, with a freshly generated PDF, to the customer on each selected quote."
+        confirmLabel={`Resend ${selected.size}`}
+        pending={bulkPending}
+        onConfirm={confirmResendBulk}
+      />
     </div>
   );
 }

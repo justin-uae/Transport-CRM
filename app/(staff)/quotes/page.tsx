@@ -2,11 +2,61 @@ import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { hasPermission, PERMISSIONS } from "@/lib/permissions";
 import { healExpiredQuotes } from "@/lib/quoteExpiry";
-import { QuotesPage, type QuoteRow } from "@/components/pages/QuotesPage";
+import { QuotesPage, type QuoteRow, type QuoteSortKey } from "@/components/pages/QuotesPage";
 
 const PAGE_SIZE = 25;
 
-export default async function Page({ searchParams }: { searchParams: Promise<{ q?: string; page?: string }> }) {
+function time(value: string | null | undefined): number {
+  return value ? new Date(value).getTime() : 0;
+}
+
+// Sorted in JS rather than via `.order()` at the DB level: pickup date and
+// selling price both live on joined tables (enquiry_legs / quote_versions),
+// and PostgREST can't order top-level rows by an embedded resource's column.
+// The Pending Quotes set is already bounded to draft/sent/viewed/accepted
+// (not the full historical quotes table), and this same page already does
+// one unpaginated fetch of the whole quotes table for its KPI cards, so
+// fetching this already-filtered subset in one shot to sort/paginate in JS
+// doesn't add a new performance concern.
+function comparatorFor(sort: QuoteSortKey): (a: QuoteRow, b: QuoteRow) => number {
+  const pickupDateOf = (q: QuoteRow) => q.enquiries?.enquiry_legs?.[0]?.pickup_date ?? null;
+  const valueOf = (q: QuoteRow) => q.quote_versions?.selling_price ?? null;
+  switch (sort) {
+    case "created_asc":
+      return (a, b) => time(a.created_at) - time(b.created_at);
+    case "pickup_asc":
+      return (a, b) => (pickupDateOf(a) ? time(pickupDateOf(a)) : Infinity) - (pickupDateOf(b) ? time(pickupDateOf(b)) : Infinity);
+    case "pickup_desc":
+      return (a, b) => (pickupDateOf(b) ? time(pickupDateOf(b)) : -Infinity) - (pickupDateOf(a) ? time(pickupDateOf(a)) : -Infinity);
+    case "sent_desc":
+      return (a, b) => time(b.sent_at) - time(a.sent_at);
+    case "viewed_desc":
+      return (a, b) => time(b.viewed_at) - time(a.viewed_at);
+    case "value_desc":
+      return (a, b) => (valueOf(b) ?? -Infinity) - (valueOf(a) ?? -Infinity);
+    case "value_asc":
+      return (a, b) => (valueOf(a) ?? Infinity) - (valueOf(b) ?? Infinity);
+    case "expiry_asc":
+      return (a, b) => (a.expiry_at ? time(a.expiry_at) : Infinity) - (b.expiry_at ? time(b.expiry_at) : Infinity);
+    case "created_desc":
+    default:
+      return (a, b) => time(b.created_at) - time(a.created_at);
+  }
+}
+
+const SORT_KEYS: QuoteSortKey[] = [
+  "created_desc",
+  "created_asc",
+  "pickup_asc",
+  "pickup_desc",
+  "sent_desc",
+  "viewed_desc",
+  "value_desc",
+  "value_asc",
+  "expiry_asc",
+];
+
+export default async function Page({ searchParams }: { searchParams: Promise<{ q?: string; page?: string; sort?: string }> }) {
   const params = await searchParams;
   const profile = await requireProfile();
   const supabase = await createClient();
@@ -16,7 +66,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ q
   const q = params.q?.trim() || "";
   const page = Math.max(1, Number(params.page) || 1);
   const from = (page - 1) * PAGE_SIZE;
-  const to = from + PAGE_SIZE - 1;
+  const sort: QuoteSortKey = (SORT_KEYS as string[]).includes(params.sort ?? "") ? (params.sort as QuoteSortKey) : "created_desc";
 
   // Pending Quotes covers everything up to customer payment — draft/sent/
   // viewed (no decision yet) and accepted (decided, but not yet paid at
@@ -27,8 +77,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ q
   let listQuery = supabase
     .from("quotes")
     .select(
-      "id, quote_number, status, currency, expiry_at, invoice_number, public_token, created_at, sent_at, customers(company_name, contact_name), enquiries(enquiry_legs(pickup_address, destination_address)), quote_versions!quotes_current_version_id_fkey(selling_price), profiles!quotes_created_by_fkey(full_name)",
-      { count: "exact" },
+      "id, quote_number, status, currency, expiry_at, invoice_number, public_token, created_at, sent_at, viewed_at, customers(company_name, contact_name), enquiries(enquiry_legs(pickup_address, destination_address, pickup_date, pickup_time)), quote_versions!quotes_current_version_id_fkey(selling_price), profiles!quotes_created_by_fkey(full_name)",
     )
     .in("status", ["draft", "sent", "viewed", "accepted"]);
   if (q) {
@@ -42,11 +91,16 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ q
   // KPI from that single result set cuts this page from 7 concurrent
   // queries to 3, which is what was pushing Postgres into a statement
   // timeout (57014) under load.
-  const [{ data: quotes, count }, canCreateQuote, { data: statsRows }] = await Promise.all([
-    listQuery.order("created_at", { ascending: false }).range(from, to),
+  const [{ data: allMatching }, canCreateQuote, canResend, { data: statsRows }] = await Promise.all([
+    listQuery,
     hasPermission(profile, PERMISSIONS.QUOTES_CREATE),
+    hasPermission(profile, PERMISSIONS.QUOTES_SEND),
     supabase.from("quotes").select("status, currency, quote_versions!quotes_current_version_id_fkey(selling_price)"),
   ]);
+
+  const sorted = ((allMatching ?? []) as unknown as QuoteRow[]).slice().sort(comparatorFor(sort));
+  const total = sorted.length;
+  const quotes = sorted.slice(from, from + PAGE_SIZE);
 
   const rows = statsRows ?? [];
   const draftCount = rows.filter((r) => r.status === "draft").length;
@@ -63,11 +117,12 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ q
 
   return (
     <QuotesPage
-      quotes={(quotes ?? []) as unknown as QuoteRow[]}
+      quotes={quotes}
       canCreateQuote={canCreateQuote}
+      canResend={canResend}
       page={page}
       pageSize={PAGE_SIZE}
-      total={count ?? 0}
+      total={total}
       draftCount={draftCount}
       sentCount={sentCount}
       acceptedCount={acceptedCount}
