@@ -7,8 +7,7 @@ import {
   runIntakeTurn,
   hasRequiredTripFields,
   mergeCollected,
-  isClosingAcknowledgement,
-  closingAckReply,
+  handlePostDoneMessage,
   MAX_INTAKE_MESSAGES,
   type CollectedTrip,
   type ConversationMessage,
@@ -271,32 +270,38 @@ async function handleInboundMessage(admin: AdminClient, brand: Brand, waId: stri
     .maybeSingle();
   let session = lastSession as IntakeSession | null;
 
+  // A returning contact's name/email is often already on file from a
+  // previous completed booking. Guarded against the placeholder case where
+  // contact_name was only ever set to the raw wa_id (no real name was ever
+  // actually captured) — that's not a known name, it's a fallback.
+  const knownName = existingCustomer?.contact_name && existingCustomer.contact_name !== waId ? existingCustomer.contact_name : null;
+  const knownEmail = existingCustomer?.email?.trim() || null;
+
   // A finished or handed-off conversation never continues automatically —
   // "done" always starts a brand new enquiry, and "handed_off" means a human
   // is already handling this contact, so the bot stays quiet rather than
   // stepping on a staff reply typed from app/(staff)/whatsapp.
   if (session?.step === "handed_off") return;
 
-  // A trivial "thanks"/"ok"/👍 reply to an already-finished conversation gets
-  // a warm one-line sign-off instead of spinning up a whole new intake
-  // around it — that's what made the bot feel broken ("I said thanks and it
-  // asked for my name again"). Anything more substantive than that still
-  // starts a fresh enquiry below, same as before.
-  if (session?.step === "done" && isClosingAcknowledgement(inboundText)) {
-    const reply = closingAckReply(existingCustomer?.contact_name && existingCustomer.contact_name !== waId ? existingCustomer.contact_name : null);
-    await sendWhatsAppText(waId, reply);
-    await logWhatsAppMessage(admin, brand, waId, customerId, "outbound", reply);
-    return;
+  // A trivial "thanks"/"okey"/👍/etc. reply to an already-finished
+  // conversation gets a warm one-line reply instead of spinning up a whole
+  // new intake around it — that's what made the bot feel broken ("I said
+  // okey and it asked for my pickup address again"). An AI classification
+  // call decides this (see handlePostDoneMessage's doc comment for why a
+  // plain word-list regex wasn't reliable enough). Anything that's actually
+  // a new trip request falls through to start a fresh enquiry below.
+  if (session?.step === "done") {
+    const postDone = await handlePostDoneMessage(brand.name, knownName, inboundText);
+    if (!postDone.isNewTripRequest) {
+      await sendWhatsAppText(waId, postDone.reply);
+      await logWhatsAppMessage(admin, brand, waId, customerId, "outbound", postDone.reply);
+      return;
+    }
   }
 
   if (!session || session.step === "done") {
-    // A returning contact's name/email is often already on file from a
-    // previous completed booking — seed them into the new session so the AI
-    // doesn't re-ask for them. Guarded against the placeholder case where
-    // contact_name was only ever set to the raw wa_id (no real name was ever
-    // actually captured) — that's not a known name, it's a fallback.
-    const knownName = existingCustomer?.contact_name && existingCustomer.contact_name !== waId ? existingCustomer.contact_name : null;
-    const knownEmail = existingCustomer?.email?.trim() || null;
+    // Seed the returning contact's known name/email into the new session so
+    // the AI doesn't re-ask for them on this second trip.
     const seedCollected: Partial<CollectedTrip> = {};
     if (knownName) seedCollected.name = knownName;
     if (knownEmail) seedCollected.email = knownEmail;

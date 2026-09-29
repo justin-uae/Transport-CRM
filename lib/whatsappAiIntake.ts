@@ -48,26 +48,66 @@ const EMPTY_COLLECTED: CollectedTrip = {
     twice against this cap. */
 export const MAX_INTAKE_MESSAGES = 40;
 
-// A short "thanks"/"ok"/"👍"-style reply to an already-finished conversation
-// doesn't need a full new intake spun up around it — that's what produced
-// the "AI starts over from scratch just because I said thanks" complaint.
-// Caught here with a cheap regex (no OpenAI call) rather than an AI
-// classification step, since the whole point is to avoid firing the model
-// (and opening a new session/lead) for something this trivial.
-const CLOSING_ACK_RE =
-  /^[\s!.?,]*(thanks(\s*(a lot|so much|very much))?|thank\s?(you|u)(\s*(so much|very much))?|thx|ty|ok(ay)?|k+|cool|great|perfect(o)?|awesome|nice|noted|got\s?it|sounds good|appreciate it|cheers|good|alright|sure( thing)?|no problem|np|👍|🙏|❤️|😊|🙂|😀)[\s!.?,👍🙏❤️😊🙂😀]*$/i;
+const POST_DONE_SCHEMA = {
+  type: "object",
+  properties: {
+    is_new_trip_request: {
+      type: "boolean",
+      description:
+        "True only if this message is actually describing or requesting a NEW or different trip (mentions a place, a date, wants to book again, etc.). False for anything that's just a casual reply with no new trip information — \"thanks\", \"ok\", \"okey\", \"cool\", \"👍\", small talk, or a quick question about what happens next.",
+    },
+    reply: {
+      type: "string",
+      description:
+        "Only used when is_new_trip_request is false. A short (1 sentence, occasionally 2), warm WhatsApp reply from a real person on the team responding naturally to what the customer just said. Never ask about pickup, destination, travel date, passengers, or anything else — their trip is already confirmed and being handled, so nothing further needs asking.",
+    },
+  },
+  required: ["is_new_trip_request", "reply"],
+  additionalProperties: false,
+} as const;
 
-export function isClosingAcknowledgement(text: string): boolean {
-  return CLOSING_ACK_RE.test(text.trim());
-}
-
-/** Warm, human sign-off for that case — never re-opens the conversation or
-    asks anything further. */
-export function closingAckReply(customerName: string | null): string {
+/** Runs once a contact messages again after their last conversation was
+    already marked "done" — decides whether this is a genuine new trip
+    request (which should start a brand new intake) or just a trivial
+    follow-up ("thanks", "okey", "👍", a quick question, ...), which gets one
+    warm human reply and nothing else. Replaces an earlier plain-regex
+    version: a hardcoded word list ("thanks|ok|...") reliably misses real
+    variants customers actually type — e.g. "okey" wasn't in the list, so it
+    fell through to a brand new intake and re-asked for the pickup address
+    that had just been confirmed two messages earlier. An AI classification
+    call handles arbitrary phrasing instead of an ever-growing word list. */
+export async function handlePostDoneMessage(
+  brandName: string,
+  customerName: string | null,
+  text: string,
+): Promise<{ isNewTripRequest: boolean; reply: string }> {
+  const client = getOpenAIClient();
   const name = customerName?.trim();
-  return name
-    ? `You're welcome, ${name}! Our team will be in touch shortly to confirm everything. 🙂`
-    : `You're welcome! Our team will be in touch shortly to confirm everything. 🙂`;
+  try {
+    const response = await client.responses.create(
+      {
+        model: "gpt-4o-mini",
+        instructions:
+          `You're texting on WhatsApp for ${brandName}, a coach and transport hire company. A customer's trip request was ` +
+          `already fully confirmed and closed out${name ? ` (their name is ${name})` : ""}. They've now sent one more ` +
+          `message. Work out whether it's a new/different trip request or just a casual follow-up, and reply accordingly ` +
+          `per the schema. If it's a follow-up, sound like a real person on the team, not a bot — brief, warm, natural.`,
+        input: [{ role: "user" as const, content: text }],
+        text: { format: { type: "json_schema", name: "whatsapp_post_done_reply", strict: true, schema: POST_DONE_SCHEMA } },
+      },
+      { timeout: 15000 },
+    );
+    const raw = response.output_text;
+    if (!raw) throw new Error("OpenAI returned no output for a post-done classification.");
+    const parsed = JSON.parse(raw) as { is_new_trip_request: boolean; reply: string };
+    return { isNewTripRequest: Boolean(parsed.is_new_trip_request), reply: parsed.reply };
+  } catch (err) {
+    console.error("handlePostDoneMessage failed — failing open toward a fresh intake:", err);
+    // Fail open toward treating it as a new trip request rather than
+    // silently swallowing a message we couldn't classify — worse case is an
+    // unnecessary re-ask, not a dropped enquiry.
+    return { isNewTripRequest: true, reply: "" };
+  }
 }
 
 const TURN_SCHEMA = {
