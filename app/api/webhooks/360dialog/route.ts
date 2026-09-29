@@ -6,6 +6,9 @@ import { reverseGeocode } from "@/lib/reverseGeocode";
 import {
   runIntakeTurn,
   hasRequiredTripFields,
+  mergeCollected,
+  isClosingAcknowledgement,
+  closingAckReply,
   MAX_INTAKE_MESSAGES,
   type CollectedTrip,
   type ConversationMessage,
@@ -239,7 +242,7 @@ async function handleInboundMessage(admin: AdminClient, brand: Brand, waId: stri
 
   const { data: existingCustomer } = await admin
     .from("customers")
-    .select("id")
+    .select("id, contact_name, email")
     .eq("tenant_id", brand.tenant_id)
     .eq("whatsapp", waId)
     .maybeSingle();
@@ -274,10 +277,41 @@ async function handleInboundMessage(admin: AdminClient, brand: Brand, waId: stri
   // stepping on a staff reply typed from app/(staff)/whatsapp.
   if (session?.step === "handed_off") return;
 
+  // A trivial "thanks"/"ok"/👍 reply to an already-finished conversation gets
+  // a warm one-line sign-off instead of spinning up a whole new intake
+  // around it — that's what made the bot feel broken ("I said thanks and it
+  // asked for my name again"). Anything more substantive than that still
+  // starts a fresh enquiry below, same as before.
+  if (session?.step === "done" && isClosingAcknowledgement(inboundText)) {
+    const reply = closingAckReply(existingCustomer?.contact_name && existingCustomer.contact_name !== waId ? existingCustomer.contact_name : null);
+    await sendWhatsAppText(waId, reply);
+    await logWhatsAppMessage(admin, brand, waId, customerId, "outbound", reply);
+    return;
+  }
+
   if (!session || session.step === "done") {
+    // A returning contact's name/email is often already on file from a
+    // previous completed booking — seed them into the new session so the AI
+    // doesn't re-ask for them. Guarded against the placeholder case where
+    // contact_name was only ever set to the raw wa_id (no real name was ever
+    // actually captured) — that's not a known name, it's a fallback.
+    const knownName = existingCustomer?.contact_name && existingCustomer.contact_name !== waId ? existingCustomer.contact_name : null;
+    const knownEmail = existingCustomer?.email?.trim() || null;
+    const seedCollected: Partial<CollectedTrip> = {};
+    if (knownName) seedCollected.name = knownName;
+    if (knownEmail) seedCollected.email = knownEmail;
+
     const { data: created } = await admin
       .from("whatsapp_intake_sessions")
-      .insert({ tenant_id: brand.tenant_id, brand_id: brand.id, wa_id: waId, customer_id: customerId, step: "active", messages: [], collected: {} })
+      .insert({
+        tenant_id: brand.tenant_id,
+        brand_id: brand.id,
+        wa_id: waId,
+        customer_id: customerId,
+        step: "active",
+        messages: [],
+        collected: seedCollected,
+      })
       .select("id, step, messages, collected, lead_id, created_at")
       .single();
     session = created as IntakeSession | null;
@@ -306,15 +340,19 @@ async function handleInboundMessage(admin: AdminClient, brand: Brand, waId: stri
   }
 
   const updatedMessages: ConversationMessage[] = [...history, { role: "user", content: inboundText }, { role: "assistant", content: result.reply }];
-  const readyForLead = result.ready && hasRequiredTripFields(result.collected);
+  // Merged, not the model's raw output — a field the model already nailed
+  // down on an earlier turn must never silently revert to null just because
+  // this turn's re-summarize of the whole transcript missed it.
+  const mergedCollected = mergeCollected(session.collected ?? {}, result.collected);
+  const readyForLead = result.ready && hasRequiredTripFields(mergedCollected);
 
   await admin
     .from("whatsapp_intake_sessions")
-    .update({ messages: updatedMessages, collected: result.collected, updated_at: new Date().toISOString() })
+    .update({ messages: updatedMessages, collected: mergedCollected, updated_at: new Date().toISOString() })
     .eq("id", session.id);
 
   if (readyForLead) {
-    await createLeadFromSession(admin, brand, waId, customerId, session.id, result.collected);
+    await createLeadFromSession(admin, brand, waId, customerId, session.id, mergedCollected);
   }
 
   await sendWhatsAppText(waId, result.reply);
