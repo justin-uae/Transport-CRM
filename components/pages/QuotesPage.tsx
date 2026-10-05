@@ -45,6 +45,13 @@ const SORT_OPTIONS: { value: QuoteSortKey; label: string }[] = [
   { value: "expiry_asc", label: "Expiring soonest" },
 ];
 
+const STATUS_OPTIONS = [
+  { value: "all", label: "All statuses" },
+  { value: "draft", label: "Draft" },
+  { value: "awaiting_response", label: "Awaiting response" },
+  { value: "accepted", label: "Accepted — awaiting payment" },
+];
+
 export interface QuoteRow {
   id: string;
   quote_number: string;
@@ -333,14 +340,24 @@ export function QuotesPage({
         }
       />
       <div className="grid gap-4 md:grid-cols-4">
-        <Kpi title="Draft" value={String(draftCount)} icon={FileText} />
-        <Kpi title="Awaiting response" value={String(sentCount)} delta={money(pipelineValue, pipelineCurrency) + " pipeline"} icon={Send} />
-        <Kpi title="Accepted — awaiting payment" value={String(acceptedCount)} icon={CheckCircle2} />
+        <Kpi title="Draft" value={String(draftCount)} icon={FileText} href="/quotes?status=draft" />
+        <Kpi
+          title="Awaiting response"
+          value={String(sentCount)}
+          delta={money(pipelineValue, pipelineCurrency) + " pipeline"}
+          icon={Send}
+          href="/quotes?status=awaiting_response"
+        />
+        <Kpi title="Accepted — awaiting payment" value={String(acceptedCount)} icon={CheckCircle2} href="/quotes?status=accepted" />
+        {/* Not clickable: this list structurally never includes paid/lost quotes
+            (they live on Confirmed/Lost Booking), so there's no view on this
+            page that honestly shows "all quotes ever" behind this number. */}
         <Kpi title="Total quotes (all time)" value={String(totalCount)} icon={Timer} />
       </div>
       <Panel className="mt-6 min-w-0">
         <div className="flex flex-col gap-3 border-b pb-4 md:flex-row md:items-center">
           <SearchInput placeholder="Search quotes (number or invoice)" />
+          <SortSelect options={STATUS_OPTIONS} paramName="status" />
           <SortSelect options={SORT_OPTIONS} />
         </div>
 

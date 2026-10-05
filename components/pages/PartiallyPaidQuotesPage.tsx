@@ -69,8 +69,8 @@ export function PartiallyPaidQuotesPage({
         text="Quotes with a deposit or part-payment in, still waiting on the rest of the balance."
       />
       <div className="grid gap-4 md:grid-cols-2">
-        <Kpi title="Partially paid quotes" value={String(total)} icon={Wallet} />
-        <Kpi title="Outstanding balance" value={money(outstandingTotal, outstandingCurrency)} icon={Wallet} />
+        <Kpi title="Partially paid quotes" value={String(total)} icon={Wallet} href="/quotes/partially-paid" />
+        <Kpi title="Outstanding balance" value={money(outstandingTotal, outstandingCurrency)} icon={Wallet} href="/quotes/partially-paid" />
       </div>
       <Panel className="mt-6 min-w-0">
         <div className="flex flex-col gap-3 border-b pb-4 md:flex-row md:items-center">

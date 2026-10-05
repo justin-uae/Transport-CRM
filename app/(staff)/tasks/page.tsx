@@ -27,20 +27,28 @@ interface TaskListRow {
 export default async function TasksRoutePage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; view?: string; priority?: string; includeCancelled?: string }>;
+  searchParams: Promise<{ q?: string; view?: string; priority?: string; includeCancelled?: string; due?: string }>;
 }) {
   const params = await searchParams;
   const profile = await requireProfile();
   const supabase = await createClient();
 
   const q = params.q?.trim() || "";
-  const view = params.view === "mine" || params.view === "team" ? params.view : "all";
+  // "Overdue" and "Due this week" (the Tasks KPI cards) are always scoped to
+  // the signed-in user's own tasks — the counts they link here were never
+  // computed any other way — so either one forces view=mine regardless of
+  // whatever ?view= was also passed.
+  const due = params.due === "overdue" || params.due === "soon" ? params.due : null;
+  const view = due ? "mine" : params.view === "mine" || params.view === "team" ? params.view : "all";
   const priority: TaskPriority | null = (["low", "medium", "high", "urgent"] as const).includes(
     params.priority as TaskPriority,
   )
     ? (params.priority as TaskPriority)
     : null;
   const includeCancelled = params.includeCancelled === "1";
+
+  const today = new Date().toISOString().slice(0, 10);
+  const weekAhead = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
 
   let query = supabase
     .from("tasks")
@@ -52,9 +60,8 @@ export default async function TasksRoutePage({
   if (priority) query = query.eq("priority", priority);
   if (!includeCancelled) query = query.neq("status", "cancelled");
   if (q) query = query.or(`title.ilike.%${q}%,description.ilike.%${q}%`);
-
-  const today = new Date().toISOString().slice(0, 10);
-  const weekAhead = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  if (due === "overdue") query = query.lt("due_date", today).not("status", "in", "(done,cancelled)");
+  if (due === "soon") query = query.gte("due_date", today).lte("due_date", weekAhead).not("status", "in", "(done,cancelled)");
 
   const [{ data, error }, { data: profiles }, { data: customers }, { data: suppliers }, { data: quotes }, overdue, dueSoon, myOpen] =
     await Promise.all([

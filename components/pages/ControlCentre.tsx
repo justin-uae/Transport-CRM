@@ -81,6 +81,9 @@ export function ControlCentre({
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        {/* Revenue/profit aren't clickable: they're totals rolled up from
+            today's completed jobs across every brand — there's no single
+            list page that shows exactly that set. */}
         <Kpi title="Revenue today" value={compactGbp(kpis.revenueTodayGbp)} icon={CircleDollarSign} />
         <Kpi title="Gross profit today" value={compactGbp(kpis.profitTodayGbp)} icon={TrendingUp} />
         <Kpi
@@ -89,6 +92,7 @@ export function ControlCentre({
           delta={`${kpis.openPoolCount} waiting`}
           icon={Users}
           warn={kpis.openPoolCount > 0}
+          href="/leads?tab=all&sort=created_desc"
         />
         <Kpi
           title="Jobs operating"
@@ -96,6 +100,7 @@ export function ControlCentre({
           delta={`${kpis.jobsNeedingAttention} need attention`}
           icon={Bus}
           warn={kpis.jobsNeedingAttention > 0}
+          href="/dispatch"
         />
       </div>
 

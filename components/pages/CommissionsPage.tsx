@@ -241,19 +241,25 @@ export function CommissionsPage({
           delta={`${summary.pendingApprovalCount} job${summary.pendingApprovalCount === 1 ? "" : "s"}`}
           icon={Clock3}
           warn={summary.pendingApprovalCount > 0}
+          href={tabHref("pending_approval", q)}
         />
         <Kpi
           title="Approved, unpaid"
           value={compactGbp(summary.approvedUnpaidGbp)}
           delta={`${summary.approvedUnpaidCount} job${summary.approvedUnpaidCount === 1 ? "" : "s"}`}
           icon={FileCheck2}
+          href={tabHref("approved", q)}
         />
-        <Kpi title="Paid this month" value={compactGbp(summary.paidThisMonthGbp)} delta="Payroll" icon={CheckCircle2} />
+        {/* Links to the Paid tab, which is every paid commission ever, not
+            just this month — the page has no month filter to narrow it
+            further, so this is the closest honest match. */}
+        <Kpi title="Paid this month" value={compactGbp(summary.paidThisMonthGbp)} delta="Payroll" icon={CheckCircle2} href={tabHref("paid", q)} />
         <Kpi
           title="Estimated pipeline"
           value={compactGbp(summary.estimatedPipelineGbp)}
           delta={`${summary.estimatedPipelineCount} in-flight`}
           icon={CircleGauge}
+          href="#pipeline"
         />
       </div>
 
@@ -327,7 +333,7 @@ export function CommissionsPage({
         <Pagination page={page} pageSize={pageSize} total={total} />
       </Panel>
 
-      <Panel className="mt-5">
+      <Panel id="pipeline" className="mt-5 scroll-mt-24">
         <SectionTitle title="Pipeline" sub="In-flight jobs not yet completed — estimated, not final" />
         <div className="mt-4 space-y-2">
           {pipeline.map((p) => (

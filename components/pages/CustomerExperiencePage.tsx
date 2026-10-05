@@ -126,6 +126,11 @@ export function CustomerExperiencePage({
         }
       />
 
+      {/* None of these 4 are clickable: each is a computed rate/score (NPS,
+          a response percentage, a resolution percentage, a repeat-booking
+          percentage) rather than a count of rows in the list below, so
+          there's no single filtered view of `rows` that corresponds to
+          "what's behind this number". */}
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <Kpi title="NPS Score" value={nps === null ? "—" : String(nps)} icon={Gauge} />
         <Kpi title="Response Rate" value={pct(responseRate)} icon={Reply} />

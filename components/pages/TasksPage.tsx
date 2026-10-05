@@ -162,6 +162,12 @@ export function TasksPage({
     return paramsHref((p) => (next ? p.set("includeCancelled", "1") : p.delete("includeCancelled")));
   }
 
+  function dueHref(next: "overdue" | "soon") {
+    const params = new URLSearchParams();
+    params.set("due", next);
+    return `${pathname}?${params.toString()}`;
+  }
+
   function openNew() {
     setForm(emptyForm());
     setChecklistDraft("");
@@ -324,9 +330,9 @@ export function TasksPage({
       />
 
       <div className="grid gap-4 sm:grid-cols-3">
-        <Kpi title="My open tasks" value={String(myOpenCount)} icon={ListChecks} />
-        <Kpi title="Overdue" value={String(overdueCount)} icon={AlertTriangle} warn={overdueCount > 0} />
-        <Kpi title="Due this week" value={String(dueSoonCount)} icon={CalendarClock} />
+        <Kpi title="My open tasks" value={String(myOpenCount)} icon={ListChecks} href={viewHref("mine")} />
+        <Kpi title="Overdue" value={String(overdueCount)} icon={AlertTriangle} warn={overdueCount > 0} href={dueHref("overdue")} />
+        <Kpi title="Due this week" value={String(dueSoonCount)} icon={CalendarClock} href={dueHref("soon")} />
       </div>
 
       <Panel className="mt-6">

@@ -333,11 +333,20 @@ export function LeadsPage({
         }
       />
       <div className="mb-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
-        <Kpi title="My new leads" value={String(mineCount)} icon={UserCheck} />
-        <Kpi title="My quoted leads" value={String(quotedCount)} icon={FileText} />
-        <Kpi title="Open pool" value={String(poolCount)} delta="Claimable now" icon={UserPlus} />
+        <Kpi title="My new leads" value={String(mineCount)} icon={UserCheck} href={tabHref("mine")} />
+        <Kpi title="My quoted leads" value={String(quotedCount)} icon={FileText} href={tabHref("quoted")} />
+        <Kpi title="Open pool" value={String(poolCount)} delta="Claimable now" icon={UserPlus} href={tabHref("pool")} />
+        {/* Not clickable: enquiries are a pre-quote working record with no
+            list page of their own — they either stall or become the quote
+            below, so there's nothing this number could open. */}
         <Kpi title="My open enquiries" value={String(myOpenEnquiries)} icon={TrendingUp} />
-        <Kpi title="Quotes awaiting response" value={String(quotesAwaitingResponse)} icon={FileText} warn={quotesAwaitingResponse > 0} />
+        <Kpi
+          title="Quotes awaiting response"
+          value={String(quotesAwaitingResponse)}
+          icon={FileText}
+          warn={quotesAwaitingResponse > 0}
+          href="/quotes?status=awaiting_response"
+        />
       </div>
       <Panel>
         <div className="flex flex-col gap-3 border-b pb-4 md:flex-row md:items-center">

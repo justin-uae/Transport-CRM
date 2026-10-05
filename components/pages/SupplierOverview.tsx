@@ -28,18 +28,16 @@ export function SupplierOverview({
         text="Your jobs at a glance — open a card below to jump straight to that list."
       />
       <div className="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <Link href="/supplier/dashboard/new">
-          <Kpi title="New offers" value={String(newOffers)} icon={Inbox} warn={newOffers > 0} />
-        </Link>
-        <Link href="/supplier/dashboard/active">
-          <Kpi title="Active jobs" value={String(activeJobs)} icon={Truck} />
-        </Link>
-        <Link href="/supplier/dashboard/history">
-          <Kpi title="Completed jobs" value={String(completedJobs)} icon={CalendarCheck2} />
-        </Link>
-        <Link href="/supplier/dashboard/history?status=completed">
-          <Kpi title="Pending invoices" value={String(pendingInvoices)} icon={Receipt} warn={pendingInvoices > 0} />
-        </Link>
+        <Kpi title="New offers" value={String(newOffers)} icon={Inbox} warn={newOffers > 0} href="/supplier/dashboard/new" />
+        <Kpi title="Active jobs" value={String(activeJobs)} icon={Truck} href="/supplier/dashboard/active" />
+        <Kpi title="Completed jobs" value={String(completedJobs)} icon={CalendarCheck2} href="/supplier/dashboard/history" />
+        <Kpi
+          title="Pending invoices"
+          value={String(pendingInvoices)}
+          icon={Receipt}
+          warn={pendingInvoices > 0}
+          href="/supplier/dashboard/history?status=completed"
+        />
       </div>
 
       <Panel>

@@ -56,7 +56,17 @@ const SORT_KEYS: QuoteSortKey[] = [
   "expiry_asc",
 ];
 
-export default async function Page({ searchParams }: { searchParams: Promise<{ q?: string; page?: string; sort?: string }> }) {
+const STATUS_FILTER_TO_STATUSES: Record<string, string[]> = {
+  draft: ["draft"],
+  awaiting_response: ["sent", "viewed"],
+  accepted: ["accepted"],
+};
+
+export default async function Page({
+  searchParams,
+}: {
+  searchParams: Promise<{ q?: string; page?: string; sort?: string; status?: string }>;
+}) {
   const params = await searchParams;
   const profile = await requireProfile();
   const supabase = await createClient();
@@ -67,6 +77,11 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ q
   const page = Math.max(1, Number(params.page) || 1);
   const from = (page - 1) * PAGE_SIZE;
   const sort: QuoteSortKey = (SORT_KEYS as string[]).includes(params.sort ?? "") ? (params.sort as QuoteSortKey) : "created_desc";
+  // KPI cards link here with a status filter (e.g. "Accepted — awaiting
+  // payment" -> ?status=accepted) so clicking one narrows the list to
+  // exactly what it counted, on top of the page's normal draft/sent/
+  // viewed/accepted scope — an unrecognised value just falls back to "all".
+  const statusFilter = STATUS_FILTER_TO_STATUSES[params.status ?? ""] ?? null;
 
   // Pending Quotes covers everything up to customer payment — draft/sent/
   // viewed (no decision yet) and accepted (decided, but not yet paid at
@@ -79,7 +94,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ q
     .select(
       "id, quote_number, status, currency, expiry_at, invoice_number, public_token, created_at, sent_at, viewed_at, ai_generated, ai_estimated_price, ai_estimated_price_currency, customers(company_name, contact_name), enquiries(enquiry_legs(pickup_address, destination_address, pickup_date, pickup_time)), quote_versions!quotes_current_version_id_fkey(selling_price), profiles!quotes_created_by_fkey(full_name)",
     )
-    .in("status", ["draft", "sent", "viewed", "accepted"]);
+    .in("status", statusFilter ?? ["draft", "sent", "viewed", "accepted"]);
   if (q) {
     listQuery = listQuery.or(`quote_number.ilike.%${q}%,invoice_number.ilike.%${q}%`);
   }
