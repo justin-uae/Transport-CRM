@@ -156,13 +156,32 @@ export function QuotesPage({
   const [bulkPending, startBulkTransition] = useTransition();
   const [estimatingId, setEstimatingId] = useState<string | null>(null);
   const [estimatePending, startEstimateTransition] = useTransition();
+  // The quote id whose AI response popup is currently open — separate from
+  // estimateOverrides below so reopening it (the "View AI response" link)
+  // doesn't need another round trip once an estimate's already in state.
+  const [aiEstimateModalId, setAiEstimateModalId] = useState<string | null>(null);
   // Overrides what the server rendered, per quote id, the moment a fresh
   // estimate comes back — without this, "Get AI estimate" would need a full
   // page reload (router.refresh()) to show its own result.
   const [estimateOverrides, setEstimateOverrides] = useState<
     Record<
       string,
-      { price: number; currency: string; distanceKm: number | null; legCount: number | null; usedHistoricalRate: boolean; historicalSampleSize: number | null }
+      {
+        price: number;
+        currency: string;
+        supplierCost: number | null;
+        // Set only when the AI priced this in a different currency than the
+        // quote's own and it got converted for display — see
+        // estimateQuotePriceAction.
+        originalPrice: number | null;
+        originalCurrency: string | null;
+        vehicleDescription: string | null;
+        rationale: string | null;
+        distanceKm: number | null;
+        legCount: number | null;
+        historicalRatePerKm: number | null;
+        historicalSampleSize: number | null;
+      }
     >
   >({});
 
@@ -173,9 +192,14 @@ export function QuotesPage({
         ? {
             price: q.ai_estimated_price,
             currency: q.ai_estimated_price_currency!,
+            supplierCost: null,
+            originalPrice: null,
+            originalCurrency: null,
+            vehicleDescription: null,
+            rationale: null,
             distanceKm: null,
             legCount: null,
-            usedHistoricalRate: false,
+            historicalRatePerKm: null,
             historicalSampleSize: null,
           }
         : null)
@@ -194,12 +218,20 @@ export function QuotesPage({
           [id]: {
             price: result.estimatedPrice!,
             currency: result.currency!,
+            supplierCost: result.supplierEstimatedCost ?? null,
+            originalPrice: result.originalPrice ?? null,
+            originalCurrency: result.originalCurrency ?? null,
+            vehicleDescription: result.vehicleDescription ?? null,
+            rationale: result.rationale ?? null,
             distanceKm: result.distanceKm ?? null,
             legCount: result.legCount ?? null,
-            usedHistoricalRate: result.usedHistoricalRate ?? false,
+            historicalRatePerKm: result.historicalRatePerKm ?? null,
             historicalSampleSize: result.historicalSampleSize ?? null,
           },
         }));
+        // Pop up the full AI response immediately — a bare number with no
+        // reasoning behind it was the whole complaint this replaces.
+        setAiEstimateModalId(id);
       }
       setEstimatingId(null);
     });
@@ -262,6 +294,9 @@ export function QuotesPage({
       setConfirmBulkOpen(false);
     });
   }
+
+  const aiEstimateModalQuote = quotes.find((q) => q.id === aiEstimateModalId) ?? null;
+  const aiEstimateModalData = aiEstimateModalQuote ? aiEstimateFor(aiEstimateModalQuote) : null;
 
   return (
     <div>
@@ -479,38 +514,37 @@ export function QuotesPage({
                         const sellingPrice = q.quote_versions?.selling_price;
                         const seemsUnderpriced = estimate && sellingPrice !== undefined && sellingPrice < estimate.price * 0.9;
                         return (
-                          <div>
-                            <div className="flex items-center gap-2">
-                              {estimate ? (
-                                <span className={clsx("font-black", seemsUnderpriced ? "text-amber-600" : "text-slate-900")}>
-                                  {money(estimate.price, estimate.currency)}
-                                  {estimate.distanceKm != null && (
-                                    <span className="ml-1.5 text-xs font-normal text-slate-400">
-                                      (≈{estimate.distanceKm} km{estimate.legCount && estimate.legCount > 1 ? ` across ${estimate.legCount} legs` : ""})
-                                    </span>
-                                  )}
-                                  {seemsUnderpriced && <span className="ml-1.5 text-xs font-normal">(quoted below AI estimate)</span>}
-                                </span>
-                              ) : (
-                                <span className="text-slate-400">Not estimated yet</span>
-                              )}
-                              <button
-                                onClick={() => runEstimate(q.id)}
-                                disabled={isEstimating}
-                                title="Estimate this trip's price with AI, from its journey details"
-                                className="flex items-center gap-1 rounded-lg border px-2 py-1 text-xs font-bold hover:bg-slate-50 disabled:opacity-60"
-                              >
-                                <RefreshCw size={11} className={isEstimating ? "animate-spin" : undefined} />
-                                {isEstimating ? "Estimating…" : estimate ? "Re-estimate" : "Get AI estimate"}
-                              </button>
-                            </div>
-                            {estimate && (
-                              <p className="mt-1 text-xs text-slate-400">
-                                {estimate.usedHistoricalRate
-                                  ? `Based on your own rate from ${estimate.historicalSampleSize} similar past booking${estimate.historicalSampleSize === 1 ? "" : "s"} — not a model guess.`
-                                  : "No comparable past bookings yet — this is the AI's own market-rate guess, not calibrated to your real pricing history."}
-                              </p>
+                          <div className="flex flex-wrap items-center gap-2">
+                            {estimate ? (
+                              <span className={clsx("font-black", seemsUnderpriced ? "text-amber-600" : "text-slate-900")}>
+                                {money(estimate.price, estimate.currency)}
+                                {estimate.distanceKm != null && (
+                                  <span className="ml-1.5 text-xs font-normal text-slate-400">
+                                    (≈{estimate.distanceKm} km{estimate.legCount && estimate.legCount > 1 ? ` across ${estimate.legCount} legs` : ""})
+                                  </span>
+                                )}
+                                {seemsUnderpriced && <span className="ml-1.5 text-xs font-normal">(quoted below AI estimate)</span>}
+                              </span>
+                            ) : (
+                              <span className="text-slate-400">Not estimated yet</span>
                             )}
+                            {estimate?.rationale && (
+                              <button
+                                onClick={() => setAiEstimateModalId(q.id)}
+                                className="text-xs font-bold text-primary-600 hover:underline"
+                              >
+                                View AI response
+                              </button>
+                            )}
+                            <button
+                              onClick={() => runEstimate(q.id)}
+                              disabled={isEstimating}
+                              title="Estimate this trip's price with AI, from its journey details"
+                              className="flex items-center gap-1 rounded-lg border px-2 py-1 text-xs font-bold hover:bg-slate-50 disabled:opacity-60"
+                            >
+                              <RefreshCw size={11} className={isEstimating ? "animate-spin" : undefined} />
+                              {isEstimating ? "Estimating…" : estimate ? "Re-estimate" : "Get AI estimate"}
+                            </button>
                           </div>
                         );
                       })()}
@@ -581,6 +615,54 @@ export function QuotesPage({
         pending={bulkPending}
         onConfirm={confirmResendBulk}
       />
+
+      <ConfirmDetailModal
+        open={!!aiEstimateModalQuote && !!aiEstimateModalData}
+        onClose={() => setAiEstimateModalId(null)}
+        title={`AI response — ${aiEstimateModalQuote?.quote_number ?? ""}`}
+        description="What the AI model actually said when it priced this trip — not just the headline number."
+        cancelLabel="Close"
+        details={
+          aiEstimateModalData
+            ? [
+                { label: "Recommended vehicle", value: aiEstimateModalData.vehicleDescription ?? "—" },
+                { label: "Supplier cost estimate", value: money(aiEstimateModalData.supplierCost ?? undefined, aiEstimateModalData.currency) },
+                { label: "Suggested selling price", value: money(aiEstimateModalData.price, aiEstimateModalData.currency) },
+                ...(aiEstimateModalData.originalPrice != null && aiEstimateModalData.originalCurrency != null
+                  ? [
+                      {
+                        label: "AI's own currency",
+                        value: `Priced at ${money(aiEstimateModalData.originalPrice, aiEstimateModalData.originalCurrency)} based on local market rates, converted to ${aiEstimateModalData.currency} above at today's exchange rate`,
+                      },
+                    ]
+                  : []),
+                ...(aiEstimateModalData.distanceKm != null
+                  ? [
+                      {
+                        label: "Distance",
+                        value: `${aiEstimateModalData.distanceKm} km${aiEstimateModalData.legCount && aiEstimateModalData.legCount > 1 ? ` across ${aiEstimateModalData.legCount} legs` : ""}`,
+                      },
+                    ]
+                  : []),
+                ...(aiEstimateModalData.historicalRatePerKm != null
+                  ? [
+                      {
+                        label: "Your own historical rate",
+                        value: `${money(aiEstimateModalData.historicalRatePerKm, aiEstimateModalData.currency)}/km, from ${aiEstimateModalData.historicalSampleSize} similar past booking${aiEstimateModalData.historicalSampleSize === 1 ? "" : "s"} — shown for comparison only, not used in the price above`,
+                      },
+                    ]
+                  : []),
+              ]
+            : []
+        }
+      >
+        {aiEstimateModalData?.rationale && (
+          <div>
+            <div className="text-xs font-bold uppercase text-slate-400">AI&apos;s reasoning</div>
+            <p className="mt-1 text-sm text-slate-700">{aiEstimateModalData.rationale}</p>
+          </div>
+        )}
+      </ConfirmDetailModal>
     </div>
   );
 }

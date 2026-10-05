@@ -86,7 +86,9 @@ export async function handlePostDoneMessage(
   try {
     const response = await client.responses.create(
       {
-        model: "gpt-4o-mini",
+        // Same model as every other AI task in this CRM (lib/aiAutoQuote.ts,
+        // lib/emailLeadIntake.ts, lib/complexBookingExtraction.ts).
+        model: "gpt-5.5",
         instructions:
           `You're texting on WhatsApp for ${brandName}, a coach and transport hire company. A customer's trip request was ` +
           `already fully confirmed and closed out${name ? ` (their name is ${name})` : ""}. They've now sent one more ` +
@@ -95,7 +97,10 @@ export async function handlePostDoneMessage(
         input: [{ role: "user" as const, content: text }],
         text: { format: { type: "json_schema", name: "whatsapp_post_done_reply", strict: true, schema: POST_DONE_SCHEMA } },
       },
-      { timeout: 15000 },
+      // maxRetries: 0 — this is a live WhatsApp conversation; a retry-
+      // stacked multi-minute wait (the bug fixed in lib/aiAutoQuote.ts)
+      // would be far worse here than the existing fail-open fallback below.
+      { timeout: 20000, maxRetries: 0 },
     );
     const raw = response.output_text;
     if (!raw) throw new Error("OpenAI returned no output for a post-done classification.");
@@ -211,7 +216,9 @@ export async function runIntakeTurn(
   const todayIso = new Date().toISOString().slice(0, 10);
   const response = await client.responses.create(
     {
-      model: "gpt-4o-mini",
+      // Same model as every other AI task in this CRM — see the note on
+      // handlePostDoneMessage above.
+      model: "gpt-5.5",
       instructions: `${systemPrompt(brandName, todayIso)}\n\nData already collected (do not drop a value unless the customer corrects it): ${JSON.stringify(
         collectedSoFar,
       )}`,
@@ -225,7 +232,10 @@ export async function runIntakeTurn(
         },
       },
     },
-    { timeout: 20000 },
+    // maxRetries: 0 — same reasoning as handlePostDoneMessage above: this is
+    // a live conversation, not something that should silently retry into a
+    // multi-minute wait before the customer gets a reply.
+    { timeout: 20000, maxRetries: 0 },
   );
 
   const raw = response.output_text;

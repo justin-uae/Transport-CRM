@@ -27,7 +27,7 @@ export async function computeHistoricalRatePerKm(
   const { data } = await supabase
     .from("quotes")
     .select(
-      "id, quote_versions!quotes_current_version_id_fkey(selling_price), enquiries(enquiry_legs(pickup_address, destination_address, passenger_count))",
+      "id, quote_versions!quotes_current_version_id_fkey(selling_price), enquiries(enquiry_legs(pickup_address, destination_address, passenger_count, journey_type))",
     )
     .eq("tenant_id", params.tenantId)
     .eq("currency", params.currency)
@@ -42,11 +42,17 @@ export async function computeHistoricalRatePerKm(
   // (only leg 1 measured) against its FULL selling price, silently
   // inflating the computed rate/km for every quote that happens to be
   // multi-leg.
-  const candidates: { sellingPrice: number; legs: { pickup: string; destination: string }[]; maxPassengerCount: number | null }[] = [];
+  const candidates: {
+    sellingPrice: number;
+    legs: { pickup: string; destination: string; isReturn: boolean }[];
+    maxPassengerCount: number | null;
+  }[] = [];
   for (const row of data) {
     const version = row.quote_versions as unknown as { selling_price: number } | null;
     const legs = (
-      row.enquiries as unknown as { enquiry_legs: { pickup_address: string; destination_address: string; passenger_count: number | null }[] } | null
+      row.enquiries as unknown as {
+        enquiry_legs: { pickup_address: string; destination_address: string; passenger_count: number | null; journey_type: string | null }[];
+      } | null
     )?.enquiry_legs;
     if (!version?.selling_price || !legs || legs.length === 0) continue;
     const usableLegs = legs.filter((l) => l.pickup_address && l.destination_address);
@@ -63,7 +69,7 @@ export async function computeHistoricalRatePerKm(
 
     candidates.push({
       sellingPrice: version.selling_price,
-      legs: usableLegs.map((l) => ({ pickup: l.pickup_address, destination: l.destination_address })),
+      legs: usableLegs.map((l) => ({ pickup: l.pickup_address, destination: l.destination_address, isReturn: l.journey_type === "return" })),
       maxPassengerCount,
     });
     if (candidates.length >= 8) break; // caps how many Distance Matrix calls this can trigger
@@ -73,7 +79,19 @@ export async function computeHistoricalRatePerKm(
   const rates = (
     await Promise.all(
       candidates.map(async (c) => {
-        const legDistances = await Promise.all(c.legs.map((l) => estimateTripDistance(l.pickup, l.destination)));
+        // Same fix as estimateQuoteTripPrice (lib/aiPriceEstimate.ts): a
+        // round trip is one leg row carrying its own return time, so the
+        // measured pickup->destination distance only covers the outbound
+        // half — left uncorrected, a tenant whose history is mostly return
+        // trips would get a rate/km roughly double the real one (full
+        // round-trip price ÷ half the real distance).
+        const legDistances = await Promise.all(
+          c.legs.map(async (l) => {
+            const d = await estimateTripDistance(l.pickup, l.destination);
+            if (!d) return null;
+            return l.isReturn ? { ...d, distanceKm: d.distanceKm * 2 } : d;
+          }),
+        );
         const resolved = legDistances.filter((d): d is NonNullable<typeof d> => d !== null && d.distanceKm >= 1);
         if (resolved.length === 0) return null;
         const totalDistanceKm = resolved.reduce((sum, d) => sum + d.distanceKm, 0);

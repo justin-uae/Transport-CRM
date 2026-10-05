@@ -150,19 +150,32 @@ export async function extractComplexBooking(input: {
   }
 
   const client = getOpenAIClient();
-  const response = await client.responses.create({
-    model: "gpt-4o",
-    instructions: SYSTEM_PROMPT,
-    input: [{ role: "user", content }],
-    text: {
-      format: {
-        type: "json_schema",
-        name: "complex_booking_extraction",
-        strict: true,
-        schema: EXTRACTION_SCHEMA,
+  const response = await client.responses.create(
+    {
+      // Same model as every other AI task in this CRM (lib/aiAutoQuote.ts,
+      // lib/whatsappAiIntake.ts, lib/emailLeadIntake.ts) — the strongest
+      // model on the account that's still fast enough for a staff member to
+      // sit and wait on, and confirmed to handle image/PDF input the same
+      // way gpt-4o did.
+      model: "gpt-5.5",
+      instructions: SYSTEM_PROMPT,
+      input: [{ role: "user", content }],
+      text: {
+        format: {
+          type: "json_schema",
+          name: "complex_booking_extraction",
+          strict: true,
+          schema: EXTRACTION_SCHEMA,
+        },
       },
     },
-  });
+    // No timeout/maxRetries here before — the client's own defaults (10min
+    // timeout, 2 retries) mean a single slow/failed call could silently
+    // stack into a very long wait with no feedback, the same bug fixed in
+    // lib/aiAutoQuote.ts. A document upload can be a multi-page PDF, so this
+    // gets more headroom than the short text-only classification calls.
+    { timeout: 90000, maxRetries: 0 },
+  );
 
   const raw = response.output_text;
   if (!raw) throw new Error("The AI didn't return any extracted data — try again or enter this booking manually.");

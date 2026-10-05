@@ -13,6 +13,7 @@ import { cancelAllocation } from "@/lib/dispatchAllocations";
 import { persistGeneratedPdf } from "@/lib/documentArchive";
 import { sendWhatsAppTemplate, normalizeWhatsAppNumber, WHATSAPP_TEMPLATE_HEADER_IMAGE_URL } from "@/lib/whatsapp360";
 import { estimateQuoteTripPrice } from "@/lib/aiPriceEstimate";
+import { convertCurrency } from "@/lib/fxRates";
 import { computeHistoricalRatePerKm } from "@/lib/quotePricingBenchmark";
 
 /**
@@ -1084,7 +1085,7 @@ export async function estimateQuotePriceAction(quoteId: string) {
   const { data: quote } = await supabase
     .from("quotes")
     .select(
-      "id, currency, brands(name), enquiries(enquiry_legs(sequence, pickup_address, destination_address, pickup_date, passenger_count, luggage_count, special_requirements)), quote_versions!quotes_current_version_id_fkey(vehicle_description)",
+      "id, currency, brands(name), enquiries(enquiry_legs(sequence, pickup_address, destination_address, via_points, pickup_date, pickup_time, journey_type, return_date, return_time, passenger_count, luggage_count, special_requirements, wheelchair_required, child_seats)), quote_versions!quotes_current_version_id_fkey(vehicle_description)",
     )
     .eq("id", quoteId)
     .single();
@@ -1097,10 +1098,17 @@ export async function estimateQuotePriceAction(quoteId: string) {
         sequence: number;
         pickup_address: string;
         destination_address: string;
+        via_points: string[] | null;
         pickup_date: string | null;
+        pickup_time: string | null;
+        journey_type: string | null;
+        return_date: string | null;
+        return_time: string | null;
         passenger_count: number | null;
         luggage_count: number | null;
         special_requirements: string | null;
+        wheelchair_required: boolean | null;
+        child_seats: number | null;
       }[];
     } | null
   )?.enquiry_legs;
@@ -1131,9 +1139,16 @@ export async function estimateQuotePriceAction(quoteId: string) {
         sequence: l.sequence,
         pickup: l.pickup_address,
         destination: l.destination_address,
+        pickupTime: l.pickup_time,
+        returnDate: l.return_date,
+        returnTime: l.return_time,
+        isReturn: l.journey_type === "return",
         passengerCount: l.passenger_count,
         luggageCount: l.luggage_count,
         specialRequirements: l.special_requirements,
+        wheelchairRequired: l.wheelchair_required ?? false,
+        childSeats: l.child_seats ?? 0,
+        viaPoints: l.via_points ?? [],
       })),
       historicalRatePerKm,
     });
@@ -1142,12 +1157,38 @@ export async function estimateQuotePriceAction(quoteId: string) {
     return { error: "Could not get an AI price estimate right now — try again shortly." };
   }
 
+  // The AI prices a trip in whatever currency it judges the route actually
+  // trades in (worked out from the pickup/destination, e.g. GHS for a route
+  // in Ghana) — that can differ from the quote's own currency (e.g. a UK
+  // brand quoting in USD), making the two numbers shown side by side on
+  // screen not directly comparable, and the "quoted below AI estimate" flag
+  // actively misleading. Convert to the quote's own currency for display;
+  // if the conversion itself fails (an unsupported/unrecognised code), fall
+  // back to showing the AI's own currency unconverted rather than losing
+  // the estimate entirely.
+  let displayPrice = result.estimatedPrice;
+  let displaySupplierCost = result.supplierEstimatedCost;
+  let displayCurrency = result.currency;
+  let originalPrice: number | null = null;
+  let originalCurrency: string | null = null;
+  if (result.currency.toUpperCase() !== quote.currency.toUpperCase()) {
+    try {
+      displayPrice = Math.round((await convertCurrency(result.estimatedPrice, result.currency, quote.currency)) * 100) / 100;
+      displaySupplierCost = Math.round((await convertCurrency(result.supplierEstimatedCost, result.currency, quote.currency)) * 100) / 100;
+      displayCurrency = quote.currency;
+      originalPrice = result.estimatedPrice;
+      originalCurrency = result.currency;
+    } catch (err) {
+      console.error(`estimateQuotePriceAction: currency conversion failed for quote ${quoteId}:`, err);
+    }
+  }
+
   const computedAt = new Date().toISOString();
   await supabase
     .from("quotes")
     .update({
-      ai_estimated_price: result.estimatedPrice,
-      ai_estimated_price_currency: result.currency,
+      ai_estimated_price: displayPrice,
+      ai_estimated_price_currency: displayCurrency,
       ai_estimated_price_computed_at: computedAt,
     })
     .eq("id", quoteId);
@@ -1157,12 +1198,20 @@ export async function estimateQuotePriceAction(quoteId: string) {
 
   return {
     error: null,
-    estimatedPrice: result.estimatedPrice,
-    currency: result.currency,
+    estimatedPrice: displayPrice,
+    currency: displayCurrency,
+    supplierEstimatedCost: displaySupplierCost,
+    // Set only when a conversion actually happened — the popup uses this to
+    // show "AI priced this at {originalPrice} {originalCurrency}, converted
+    // at today's rate" instead of silently hiding that a conversion occurred.
+    originalPrice,
+    originalCurrency,
+    vehicleDescription: result.vehicleDescription,
+    rationale: result.rationale,
     distanceKm: result.distanceKm,
     pricePerKm: result.pricePerKm,
     legCount: result.legCount,
-    usedHistoricalRate: result.usedHistoricalRate,
+    historicalRatePerKm: result.historicalRatePerKm,
     historicalSampleSize: result.historicalSampleSize,
     computedAt,
   };

@@ -50,3 +50,27 @@ export async function convertToGbp(amount: number, currency: string): Promise<nu
   }
   return amount / rate;
 }
+
+/**
+ * Converts `amount` from one currency to another via GBP as the common
+ * anchor (the only rate table this source gives us) — e.g. the AI price
+ * estimate tool (lib/aiPriceEstimate.ts) prices a trip in whatever currency
+ * the model judges the route actually trades in (a Ghana route in GHS),
+ * which can differ from the quote's own currency (priced in USD by staff) —
+ * without converting, the two figures shown side by side on screen aren't
+ * comparable at all. Throws if either currency isn't recognised; callers
+ * decide the fallback.
+ */
+export async function convertCurrency(amount: number, from: string, to: string): Promise<number> {
+  const fromCode = from.toUpperCase();
+  const toCode = to.toUpperCase();
+  if (fromCode === toCode) return amount;
+  const gbp = await convertToGbp(amount, fromCode);
+  if (toCode === "GBP") return gbp;
+  const rates = await getGbpRates();
+  const rate = rates[toCode];
+  if (!rate) {
+    throw new Error(`No GBP exchange rate available for ${toCode}.`);
+  }
+  return gbp * rate;
+}

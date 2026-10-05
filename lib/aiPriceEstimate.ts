@@ -27,17 +27,30 @@ import type { PricingBenchmark } from "./quotePricingBenchmark";
 //    WhatsApp-lead and manual-assign triggers) don't pass this, so this is
 //    currently the one caller that does.
 // 3. This tenant's own real historical rate/km for a similarly-sized
-//    vehicle (lib/quotePricingBenchmark.ts), when there's enough of it to
-//    trust — overrides the model's own price entirely in that case, since
-//    real accepted-quote data beats any LLM's guess, however well-reasoned.
+//    vehicle (lib/quotePricingBenchmark.ts), shown alongside the model's
+//    own price as context — it used to silently REPLACE the model's number
+//    whenever there was enough of it to trust, which meant clicking
+//    "Get AI estimate" could show a figure the model never actually
+//    reasoned about. The button is specifically for seeing what the AI
+//    model thinks, so the estimate shown is always estimatePricing's own
+//    selling_price now; the historical rate is surfaced only as an
+//    informational comparison.
 
 export interface QuoteEstimateLeg {
   sequence: number;
   pickup: string | null;
   destination: string | null;
+  pickupTime: string | null;
+  returnDate: string | null;
+  returnTime: string | null;
+  isReturn: boolean;
   passengerCount: number | null;
   luggageCount: number | null;
   specialRequirements: string | null;
+  wheelchairRequired: boolean;
+  childSeats: number;
+  /** Extra stops between pickup and destination — e.g. a multi-stop city tour leg — folded into notes so the model knows this isn't a direct point-to-point drive. */
+  viaPoints: string[];
 }
 
 export interface QuoteEstimateInput {
@@ -47,24 +60,29 @@ export interface QuoteEstimateInput {
   legs: QuoteEstimateLeg[];
   /** This tenant's own real historical rate/km for a similarly-sized
       vehicle, if lib/quotePricingBenchmark.ts found enough comparable past
-      bookings to trust — overrides estimatePricing's own selling price
-      (recomputed as total distance × this rate) when present. */
+      bookings to trust — shown alongside the model's own figure as context,
+      never substituted for it (see note above). */
   historicalRatePerKm: PricingBenchmark | null;
 }
 
 export interface QuoteEstimateResult {
   currency: string;
   estimatedPrice: number;
+  /** Always the AI model's own supplier-cost estimate, for full transparency on the popup — never shown to customers. */
+  supplierEstimatedCost: number;
+  vehicleDescription: string;
+  /** The model's own one-sentence explanation of how it reasoned about this price — shown verbatim on the popup, not a canned string. */
+  rationale: string;
   /** Sum across every leg that resolved a real distance — null only if none
       of them did (e.g. Distance Matrix unavailable/addresses too vague). */
   distanceKm: number | null;
   pricePerKm: number | null;
   legCount: number;
-  /** True when the price came from this tenant's own quote history rather
-      than estimatePricing's own figure — surfaced so the UI can say which. */
-  usedHistoricalRate: boolean;
+  /** This tenant's own historical rate/km for comparison only — the
+      estimate above is always the AI model's own number regardless of
+      whether this is present. */
+  historicalRatePerKm: number | null;
   historicalSampleSize: number | null;
-  rationale: string;
 }
 
 /** Turns however many legs a quote has into the single pickup/destination/
@@ -81,6 +99,7 @@ function aggregateLegs(legs: QuoteEstimateLeg[]) {
   // through needs pricing for its peak load.
   const passengerCount = legs.reduce<number | null>((max, l) => (l.passengerCount != null ? Math.max(max ?? 0, l.passengerCount) : max), null);
   const luggageCount = legs.reduce<number | null>((max, l) => (l.luggageCount != null ? Math.max(max ?? 0, l.luggageCount) : max), null);
+  const returnLeg = legs.find((l) => l.isReturn) ?? null;
 
   const notesParts: string[] = [];
   if (legs.length > 1) {
@@ -90,14 +109,20 @@ function aggregateLegs(legs: QuoteEstimateLeg[]) {
     );
   }
   for (const l of legs) {
-    if (l.specialRequirements?.trim()) {
-      notesParts.push(legs.length > 1 ? `Leg ${l.sequence} special requirements: ${l.specialRequirements.trim()}` : l.specialRequirements.trim());
-    }
+    const legLabel = legs.length > 1 ? `Leg ${l.sequence}: ` : "";
+    if (l.specialRequirements?.trim()) notesParts.push(`${legLabel}${l.specialRequirements.trim()}`);
+    if (l.viaPoints.length > 0) notesParts.push(`${legLabel}Via: ${l.viaPoints.join(", ")}`);
+    if (l.wheelchairRequired) notesParts.push(`${legLabel}Wheelchair access required`);
+    if (l.childSeats > 0) notesParts.push(`${legLabel}${l.childSeats} child seat${l.childSeats === 1 ? "" : "s"} required`);
   }
 
   return {
     pickup: first?.pickup ?? null,
     destination: last?.destination ?? null,
+    pickupTime: first?.pickupTime ?? null,
+    returnTrip: returnLeg !== null,
+    returnDate: returnLeg?.returnDate ?? null,
+    returnTime: returnLeg?.returnTime ?? null,
     passengerCount,
     luggageCount,
     notes: notesParts.length ? notesParts.join(" | ") : null,
@@ -105,15 +130,44 @@ function aggregateLegs(legs: QuoteEstimateLeg[]) {
 }
 
 export async function estimateQuoteTripPrice(input: QuoteEstimateInput): Promise<QuoteEstimateResult> {
-  const legs = input.legs.length > 0 ? input.legs : [{ sequence: 1, pickup: null, destination: null, passengerCount: null, luggageCount: null, specialRequirements: null }];
+  const legs =
+    input.legs.length > 0
+      ? input.legs
+      : [
+          {
+            sequence: 1,
+            pickup: null,
+            destination: null,
+            pickupTime: null,
+            returnDate: null,
+            returnTime: null,
+            isReturn: false,
+            passengerCount: null,
+            luggageCount: null,
+            specialRequirements: null,
+            wheelchairRequired: false,
+            childSeats: 0,
+            viaPoints: [],
+          },
+        ];
   const aggregated = aggregateLegs(legs);
 
   // Real distance for EVERY leg, summed — a 3-leg tour's true distance is
   // leg 1 + leg 2 + leg 3, not just the first leg's, which is what a plain
   // pickup-to-destination lookup on the whole trip would otherwise measure
   // (cutting straight across intermediate stops, or missing a return leg
-  // entirely).
-  const legDistances = await Promise.all(legs.map((l) => estimateTripDistance(l.pickup, l.destination)));
+  // entirely). A round trip is modelled as ONE leg row carrying its own
+  // return_date/return_time rather than a separate return leg (see
+  // estimateQuotePriceAction) — estimateTripDistance only ever measures the
+  // pickup->destination direction, so that leg's distance/duration is
+  // doubled to cover the drive back too, not just counted once.
+  const legDistances = await Promise.all(
+    legs.map(async (l) => {
+      const d = await estimateTripDistance(l.pickup, l.destination);
+      if (!d) return null;
+      return l.isReturn ? { distanceKm: d.distanceKm * 2, durationMinutes: d.durationMinutes * 2 } : d;
+    }),
+  );
   const resolvedDistances = legDistances.filter((d): d is NonNullable<typeof d> => d !== null);
   const totalDistanceKm = resolvedDistances.length > 0 ? Math.round(resolvedDistances.reduce((sum, d) => sum + d.distanceKm, 0) * 10) / 10 : null;
   const totalDurationMinutes = resolvedDistances.length > 0 ? resolvedDistances.reduce((sum, d) => sum + d.durationMinutes, 0) : undefined;
@@ -135,10 +189,10 @@ export async function estimateQuoteTripPrice(input: QuoteEstimateInput): Promise
     pickup_text: aggregated.pickup,
     destination_text: aggregated.destination,
     travel_date: input.travelDate,
-    pickup_time: null,
-    return_trip: false,
-    return_date: null,
-    return_time: null,
+    pickup_time: aggregated.pickupTime,
+    return_trip: aggregated.returnTrip,
+    return_date: aggregated.returnDate,
+    return_time: aggregated.returnTime,
     passenger_count: aggregated.passengerCount,
     luggage_count: aggregated.luggageCount,
     vehicle_requested: input.vehicleDescription,
@@ -151,28 +205,18 @@ export async function estimateQuoteTripPrice(input: QuoteEstimateInput): Promise
     realDurationMinutes: totalDurationMinutes,
   });
 
-  const usedHistoricalRate = !!input.historicalRatePerKm;
-
-  // Real historical data beats estimatePricing's own figure whenever
-  // there's enough of it — recomputed from the total distance rather than
-  // trusted as a flat override, since the historical rate is per-km.
-  const estimatedPrice =
-    usedHistoricalRate && totalDistanceKm
-      ? Math.round(totalDistanceKm * input.historicalRatePerKm!.ratePerKm * 100) / 100
-      : pricing.selling_price;
-
-  const pricePerKm = totalDistanceKm ? Math.round((estimatedPrice / totalDistanceKm) * 100) / 100 : null;
+  const pricePerKm = totalDistanceKm ? Math.round((pricing.selling_price / totalDistanceKm) * 100) / 100 : null;
 
   return {
     currency: pricing.currency,
-    estimatedPrice,
+    estimatedPrice: pricing.selling_price,
+    supplierEstimatedCost: pricing.supplier_estimated_cost,
+    vehicleDescription: pricing.vehicle_description,
+    rationale: pricing.pricing_rationale,
     distanceKm: totalDistanceKm,
     pricePerKm,
     legCount: legs.length,
-    usedHistoricalRate,
+    historicalRatePerKm: input.historicalRatePerKm?.ratePerKm ?? null,
     historicalSampleSize: input.historicalRatePerKm?.sampleSize ?? null,
-    rationale: usedHistoricalRate
-      ? `Based on this tenant's own historical rate (${input.historicalRatePerKm!.sampleSize} comparable bookings) rather than the model's own figure. Model's own reasoning: ${pricing.pricing_rationale}`
-      : pricing.pricing_rationale,
   };
 }

@@ -2,6 +2,7 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { ImapFlow } from "imapflow";
 import { simpleParser } from "mailparser";
+import { htmlToText } from "html-to-text";
 import type { Database } from "./supabase/database.types";
 import { getOpenAIClient } from "./openai";
 import { recordAudit } from "./audit";
@@ -126,7 +127,12 @@ async function classifyEnquiryEmail(subject: string, bodyText: string, emailDate
   const client = getOpenAIClient();
   const response = await client.responses.create(
     {
-      model: "gpt-4o-mini",
+      // Same model as every other AI task in this CRM (lib/aiAutoQuote.ts,
+      // lib/whatsappAiIntake.ts, lib/complexBookingExtraction.ts) — this
+      // sweep runs unattended over a batch of emails, not something a
+      // person is watching, so there's no reason to hold it back on a
+      // "mini" model.
+      model: "gpt-5.5",
       instructions:
         `You are screening inbound emails forwarded from company transport-hire websites into one shared inbox. This ` +
         `email's own date is ${emailDateIso} — use that as "today" when resolving relative dates. Decide whether it's a ` +
@@ -142,7 +148,12 @@ async function classifyEnquiryEmail(subject: string, bodyText: string, emailDate
         },
       },
     },
-    { timeout: 20000 },
+    // maxRetries: 0 — a timed-out/failed call retrying up to 2 more times
+    // by default could stack several minutes of delay into one email in the
+    // middle of a sweep over many messages, same bug fixed in
+    // lib/aiAutoQuote.ts. A clear failure for this one message (counted in
+    // SweepResult.failed, retried on the next hourly run) beats that.
+    { timeout: 30000, maxRetries: 0 },
   );
 
   const raw = response.output_text;
@@ -209,10 +220,17 @@ async function processMessage(
   admin: Admin,
   tenantId: string,
   brand: { id: string; name: string },
-  parsed: { subject: string | null; text: string | null; date: Date | null; fromAddress: string | null; fromName: string | null },
+  parsed: { subject: string | null; text: string | null; html: string | null; date: Date | null; fromAddress: string | null; fromName: string | null },
 ): Promise<ProcessResult> {
   const subject = parsed.subject ?? "(no subject)";
-  const bodyText = (parsed.text ?? "").trim();
+  // mailparser only fills in `.text` from the HTML part when there's no
+  // separate text/plain alternative AND the HTML node is the literal root of
+  // the message tree — a plain multipart/alternative message with just a
+  // text/html part (iPhone Mail does this) doesn't qualify, so `.text` comes
+  // back empty even though the email clearly has real content. Fall back to
+  // converting `.html` ourselves rather than discarding a genuine enquiry as
+  // "empty" just because it only came with an HTML body.
+  const bodyText = parsed.text?.trim() || (parsed.html ? htmlToText(parsed.html, { wordwrap: false }).trim() : "");
   if (!bodyText) return { decision: "discarded_not_travel", detail: "Empty body." };
 
   const extraction = await classifyEnquiryEmail(subject, bodyText, (parsed.date ?? new Date()).toISOString());
@@ -366,6 +384,7 @@ export async function runEmailLeadIntakeSweep(admin: Admin): Promise<SweepResult
             outcome = await processMessage(admin, tenant.id, brand, {
               subject: parsed.subject ?? null,
               text: parsed.text ?? null,
+              html: parsed.html || null,
               date: parsed.date ?? null,
               fromAddress: parsed.from?.value?.[0]?.address ?? null,
               fromName: parsed.from?.value?.[0]?.name ?? null,
