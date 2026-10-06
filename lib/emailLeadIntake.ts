@@ -184,6 +184,14 @@ function looksLikeSamePlace(a: string | null, b: string | null): boolean {
  * the one shared inbox this sweep polls. Without this check, that forwarded
  * copy would create a second lead for the same enquiry.
  *
+ * Deliberately NOT scoped by brand_id — a website-sourced lead gets its
+ * site's actual brand (from the webhook's brandSlug), while its forwarded-
+ * email counterpart always lands on the tenant's fixed
+ * default_lead_inbox_brand_id (there's no reliable way to tell which of
+ * 300+ sites a forwarded email came from), so the two NEVER share a
+ * brand_id. Filtering on it here would guarantee this exact website+email
+ * pair — the main case this function exists for — could never match.
+ *
  * Matched on the SAME customer (resolveCustomerId already dedupes identity
  * by email/phone across every channel) plus overlapping trip details (same
  * travel date, or either pickup/destination looking like the same place) —
@@ -194,7 +202,6 @@ function looksLikeSamePlace(a: string | null, b: string | null): boolean {
 async function findRecentDuplicateLead(
   admin: Admin,
   tenantId: string,
-  brandId: string,
   customerId: string,
   extraction: EnquiryExtraction,
 ): Promise<string | null> {
@@ -203,7 +210,6 @@ async function findRecentDuplicateLead(
     .from("leads")
     .select("id, pickup_text, destination_text, travel_date")
     .eq("tenant_id", tenantId)
-    .eq("brand_id", brandId)
     .eq("customer_id", customerId)
     .gte("created_at", since);
 
@@ -258,7 +264,7 @@ async function processMessage(
   const customerId = await resolveCustomerId(admin, tenantId, brand.id, { name, email, phone });
   if (!customerId) return { decision: "error", detail: "Could not resolve/create a customer." };
 
-  const duplicateLeadId = await findRecentDuplicateLead(admin, tenantId, brand.id, customerId, extraction);
+  const duplicateLeadId = await findRecentDuplicateLead(admin, tenantId, customerId, extraction);
   if (duplicateLeadId) return { decision: "discarded_duplicate", leadId: duplicateLeadId, detail: `Matches existing lead ${duplicateLeadId}` };
 
   const { data: lead, error: leadError } = await admin
