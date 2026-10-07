@@ -109,13 +109,33 @@ async function handleContactSubmission(json: unknown) {
 
   const notes = [body.serviceNeeded ? `Service needed: ${body.serviceNeeded}` : null, body.message].filter(Boolean).join("\n");
 
+  // Duplicate guard, mirroring handleQuoteSubmission's — but keyed on
+  // customer identity rather than an exact route match, since the contact
+  // form has no pickup/destination to compare and a resubmitted message is
+  // rarely byte-identical (e.g. "4 cities" vs "four cities"). Any customer
+  // resubmitting to the same brand within 24h is treated as a duplicate —
+  // a false positive here just means a mislabeled status, not lost data
+  // (still visible under All, same as every other duplicate-flagged lead).
+  const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  const { data: possibleDuplicate } = customerId
+    ? await admin
+        .from("leads")
+        .select("id")
+        .eq("brand_id", brand.id)
+        .eq("customer_id", customerId)
+        .eq("source", "website_contact")
+        .gte("created_at", since)
+        .limit(1)
+        .maybeSingle()
+    : { data: null };
+
   const { data: lead, error: leadError } = await admin
     .from("leads")
     .insert({
       tenant_id: brand.tenant_id,
       brand_id: brand.id,
       source: "website_contact",
-      status: "new",
+      status: possibleDuplicate ? "duplicate" : "new",
       customer_id: customerId,
       travel_date: body.travelDate ?? null,
       pickup_time: body.pickupTime ?? null,
