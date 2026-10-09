@@ -8,6 +8,7 @@ import { PageHead } from "@/components/ui/PageHead";
 import { Breadcrumb } from "@/components/ui/Breadcrumb";
 import { BackLink } from "@/components/ui/BackLink";
 import { SectionTitle } from "@/components/ui/SectionTitle";
+import { RichText } from "@/components/ui/RichText";
 import { QuoteDetailActions, type AmendableLeg, type QuoteRefund } from "@/components/pages/QuoteDetailActions";
 import { BookingEditHistory, type BookingEditRecord } from "@/components/pages/BookingEditHistory";
 import { JourneyLegDetail, type JourneyLeg } from "@/components/pages/JourneyLegDetail";
@@ -151,6 +152,7 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
     pickupTime: l.pickup_time,
     passengerCount: l.passenger_count,
     luggageCount: l.luggage_count,
+    specialRequirements: l.special_requirements,
   }));
   const amendments = (amendmentsRaw ?? []) as unknown as BookingEditRecord[];
   const versions = [...(quote.quote_versions ?? [])].sort((a, b) => b.version_number - a.version_number);
@@ -232,7 +234,7 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
                 ))}
               </div>
             )}
-            {currentVersion?.customer_notes && <p className="mt-4 text-sm text-slate-600">{currentVersion.customer_notes}</p>}
+            {currentVersion?.customer_notes && <RichText text={currentVersion.customer_notes} className="mt-4 text-sm text-slate-600" />}
           </Panel>
 
           {milestones.length > 0 && (

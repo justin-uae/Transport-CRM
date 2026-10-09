@@ -525,6 +525,7 @@ interface AmendBookingLegChange {
   pickupTime?: string | null;
   passengerCount?: number | null;
   luggageCount?: number | null;
+  specialRequirements?: string | null;
 }
 
 export interface AmendBookingInput {
@@ -638,11 +639,12 @@ export async function amendBookingAction(quoteId: string, input: AmendBookingInp
     pickup_time: string | null;
     passenger_count: number | null;
     luggage_count: number | null;
+    special_requirements: string | null;
   } | null = null;
   if (hasLegChange) {
     const legQuery = supabase
       .from("enquiry_legs")
-      .select("id, pickup_address, destination_address, pickup_date, pickup_time, passenger_count, luggage_count")
+      .select("id, pickup_address, destination_address, pickup_date, pickup_time, passenger_count, luggage_count, special_requirements")
       .eq("enquiry_id", quote.enquiry_id);
     const { data: leg } = input.legId ? await legQuery.eq("id", input.legId).maybeSingle() : await legQuery.eq("sequence", 1).maybeSingle();
     if (!leg) return { error: "Journey leg not found." };
@@ -737,6 +739,10 @@ export async function amendBookingAction(quoteId: string, input: AmendBookingInp
     if (lc.luggageCount !== undefined && lc.luggageCount !== leg.luggage_count) {
       changes.luggage_count = { from: leg.luggage_count, to: lc.luggageCount };
       legUpdate.luggage_count = lc.luggageCount;
+    }
+    if (lc.specialRequirements !== undefined && lc.specialRequirements !== leg.special_requirements) {
+      changes.special_requirements = { from: leg.special_requirements, to: lc.specialRequirements };
+      legUpdate.special_requirements = lc.specialRequirements;
     }
 
     if (Object.keys(legUpdate).length > 0) {

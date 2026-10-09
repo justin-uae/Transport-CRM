@@ -438,7 +438,7 @@ export function NewEnquiryForm({
               </div>
               <div className="flex flex-wrap justify-between gap-x-3 gap-y-1 py-2">
                 <span className="text-slate-500">Internal notes</span>
-                <b>{requirements.internalNotes || "—"}</b>
+                <b className="whitespace-pre-wrap">{requirements.internalNotes || "—"}</b>
               </div>
             </div>
           </div>

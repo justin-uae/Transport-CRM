@@ -62,7 +62,7 @@ function Row({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div className="flex flex-wrap justify-between gap-x-3 gap-y-1 border-b py-2 last:border-0">
       <span className="text-slate-500">{label}</span>
-      <b>{value ?? "—"}</b>
+      <b className="whitespace-pre-wrap">{value ?? "—"}</b>
     </div>
   );
 }

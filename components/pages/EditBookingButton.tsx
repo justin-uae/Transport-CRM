@@ -15,6 +15,7 @@ export interface EditableLeg {
   pickupTime: string | null;
   passengerCount: number | null;
   luggageCount: number | null;
+  specialRequirements: string | null;
 }
 
 // Editable from a fresh draft right through to paid — only a dead-end quote
@@ -66,6 +67,7 @@ export function EditBookingButton({
   const [pickupTime, setPickupTime] = useState(legs[0]?.pickupTime ?? "");
   const [passengerCount, setPassengerCount] = useState(legs[0]?.passengerCount != null ? String(legs[0].passengerCount) : "");
   const [luggageCount, setLuggageCount] = useState(legs[0]?.luggageCount != null ? String(legs[0].luggageCount) : "");
+  const [specialRequirements, setSpecialRequirements] = useState(legs[0]?.specialRequirements ?? "");
   const [chargeAmount, setChargeAmount] = useState("");
   const [supplierAmount, setSupplierAmount] = useState("");
   const [supplierNote, setSupplierNote] = useState("");
@@ -85,6 +87,7 @@ export function EditBookingButton({
     setPickupTime(leg?.pickupTime ?? "");
     setPassengerCount(leg?.passengerCount != null ? String(leg.passengerCount) : "");
     setLuggageCount(leg?.luggageCount != null ? String(leg.luggageCount) : "");
+    setSpecialRequirements(leg?.specialRequirements ?? "");
   }
 
   function submit() {
@@ -105,6 +108,8 @@ export function EditBookingButton({
       if (passengerNum !== currentLeg.passengerCount) legChanges.passengerCount = passengerNum;
       const luggageNum = luggageCount === "" ? null : Number(luggageCount);
       if (luggageNum !== currentLeg.luggageCount) legChanges.luggageCount = luggageNum;
+      const specialRequirementsValue = specialRequirements.trim() || null;
+      if (specialRequirementsValue !== (currentLeg.specialRequirements ?? null)) legChanges.specialRequirements = specialRequirementsValue;
       if (Object.keys(legChanges).length > 0) input.legChanges = legChanges;
     }
 
@@ -252,6 +257,15 @@ export function EditBookingButton({
                       value={luggageCount}
                       onChange={(e) => setLuggageCount(e.target.value)}
                       className="mt-1 w-full rounded-lg border px-3 py-2 text-sm font-normal"
+                    />
+                  </label>
+                  <label className="block text-sm font-bold sm:col-span-2">
+                    Special requirements
+                    <textarea
+                      value={specialRequirements}
+                      onChange={(e) => setSpecialRequirements(e.target.value)}
+                      className="mt-1 min-h-16 w-full rounded-lg border px-3 py-2 text-sm font-normal"
+                      placeholder="e.g. wheelchair access, child seats, extra luggage space"
                     />
                   </label>
                 </div>

@@ -2,6 +2,7 @@ import "server-only";
 import { readFileSync } from "fs";
 import path from "path";
 import PDFDocument from "pdfkit";
+import { parseRichText, type RichTextRun } from "./richText";
 
 // Shared pdfkit primitives used by every generated document in this app
 // (lib/quotePdf.ts, lib/invoicePdf.ts) — factored out so the tricky
@@ -254,4 +255,58 @@ export function sanitizePdfText(text: string): string {
     .map((line) => (LEADING_BULLET_RE.test(line) ? line.replace(LEADING_BULLET_RE, "$1- ") : line))
     .join("\n")
     .replace(/[\u{E000}-\u{F8FF}]/gu, "");
+}
+
+// A faux-bold stroke width proportional to the font size (PDF units == pt),
+// tuned by eye against 9-11pt body text — thick enough to read as bold,
+// thin enough not to clog small glyphs like "e"/"a" into blobs.
+const BOLD_STROKE_RATIO = 0.028;
+
+function writeRuns(doc: PDFKit.PDFDocument, runs: RichTextRun[], x: number, width: number, fontSize: number) {
+  runs.forEach((run, i) => {
+    // No real bold weight of the embedded font exists to register (see
+    // resolveFontSources above — only one Geist weight ships, "Bold" just
+    // reuses the Regular buffer) — filling AND stroking the same glyph
+    // outlines thickens them enough to read as bold without one, the
+    // standard trick for a single-weight font. `stroke`/`lineWidth` are a
+    // no-op on a plain (non-bold) run since doc.lineWidth(0) draws nothing.
+    doc.font(FONT_REGULAR).lineWidth(run.bold ? fontSize * BOLD_STROKE_RATIO : 0);
+    const opts = { width, continued: i < runs.length - 1, fill: true, stroke: run.bold };
+    if (i === 0) {
+      doc.text(run.text, x, doc.y, opts);
+    } else {
+      doc.text(run.text, opts);
+    }
+  });
+}
+
+/**
+ * Writes bold-and-bullet-aware text (lib/richText.ts — double-asterisk
+ * markers for bold, leading dash for a bullet line) at the current pdfkit
+ * cursor — the same parsing used for the web/customer-facing render of the
+ * same field, so a note reads consistently everywhere it's shown, visual
+ * bold weight included (see writeRuns' fill+stroke trick above). Every
+ * line/bullet item is explicitly re-positioned at `x` (not left to
+ * pdfkit's cursor after the previous call) so left alignment stays correct
+ * regardless of what was drawn before; only an inline bold/plain run
+ * transition mid-line continues without repositioning. Restores
+ * FONT_REGULAR and a 0 line width when done.
+ */
+export function writeRichText(doc: PDFKit.PDFDocument, text: string, options: { x: number; width: number; fontSize?: number; color?: string }) {
+  const blocks = parseRichText(sanitizePdfText(text));
+  const fontSize = options.fontSize ?? 10;
+  const color = options.color ?? MUTED;
+  doc.fontSize(fontSize).fillColor(color).strokeColor(color);
+  for (const block of blocks) {
+    if (block.type === "bullet") {
+      for (const runs of block.items) {
+        writeRuns(doc, [{ text: "•  ", bold: false }, ...runs], options.x, options.width, fontSize);
+      }
+    } else {
+      for (const lineRuns of block.lines) {
+        writeRuns(doc, lineRuns, options.x, options.width, fontSize);
+      }
+    }
+  }
+  doc.font(FONT_REGULAR).lineWidth(0);
 }

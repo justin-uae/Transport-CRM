@@ -7,6 +7,8 @@ import { SectionTitle } from "@/components/ui/SectionTitle";
 import { useToast } from "@/components/ui/Toast";
 import { ConfirmDetailModal } from "@/components/ui/ConfirmDetailModal";
 import { SearchableSelect } from "@/components/ui/SearchableSelect";
+import { RichText } from "@/components/ui/RichText";
+import { RichTextToolbar } from "@/components/ui/RichTextToolbar";
 import { JourneyLegDetail, type JourneyLeg } from "@/components/pages/JourneyLegDetail";
 import { CURRENCIES } from "@/lib/currencies";
 import { STRIPE_PRICE_THRESHOLD, paymentMethodsForGbpValue } from "@/lib/quoteMoney";
@@ -102,6 +104,7 @@ export function NewQuoteForm({
   const [milestones, setMilestones] = useState<MilestoneRow[]>([]);
   const [lineItems, setLineItems] = useState<LineItemRow[]>([]);
   const [customerNotes, setCustomerNotes] = useState("");
+  const customerNotesRef = useRef<HTMLTextAreaElement>(null);
   const [forceBankTransfer, setForceBankTransfer] = useState(false);
   const [sendNow, setSendNow] = useState(true);
   // Holds the warning text (not just a boolean) so it can double as the
@@ -281,7 +284,7 @@ export function NewQuoteForm({
           {customerNotes && (
             <div className="col-span-2">
               <dt className="text-xs font-bold uppercase text-slate-400">Notes to customer</dt>
-              <dd className="mt-0.5 font-semibold">{customerNotes}</dd>
+              <RichText text={customerNotes} className="mt-0.5 font-semibold" />
             </div>
           )}
         </dl>
@@ -604,12 +607,24 @@ export function NewQuoteForm({
               </div>
               <label className="text-sm font-bold md:col-span-2">
                 Notes to customer
-                <textarea
-                  name="customerNotes"
-                  value={customerNotes}
-                  onChange={(e) => setCustomerNotes(e.target.value)}
-                  className="mt-2 min-h-20 w-full rounded-xl border p-3 font-normal"
-                />
+                <div className="mt-2">
+                  <RichTextToolbar textareaRef={customerNotesRef} value={customerNotes} onChange={setCustomerNotes} />
+                  <textarea
+                    ref={customerNotesRef}
+                    name="customerNotes"
+                    value={customerNotes}
+                    onChange={(e) => setCustomerNotes(e.target.value)}
+                    className="min-h-20 w-full rounded-b-xl border p-3 font-normal"
+                  />
+                </div>
+                <span className="mt-1 block text-xs font-normal text-slate-400">
+                  Line breaks are kept exactly as typed or pasted — the box above only ever shows plain text while you type (that's a plain text box's own limit), so here's how it'll actually look on the quote:
+                </span>
+                {customerNotes.trim() && (
+                  <div className="mt-2 rounded-xl border border-dashed bg-slate-50 p-3">
+                    <RichText text={customerNotes} className="text-sm font-normal text-slate-700" />
+                  </div>
+                )}
               </label>
             </div>
           </div>

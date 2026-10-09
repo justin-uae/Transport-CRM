@@ -11,6 +11,7 @@ import {
   drawKeyValueBox,
   drawFooterOnEveryPage,
   sanitizePdfText,
+  writeRichText,
   FALLBACK_COLOR,
   INK,
   MUTED,
@@ -360,7 +361,7 @@ export async function generateQuotePdf(
 
   if (version.customer_notes) {
     doc.moveDown(0.8);
-    doc.font(FONT_REGULAR).fontSize(10).fillColor(MUTED).text(version.customer_notes, PAGE_MARGIN, doc.y, { width: contentWidth });
+    writeRichText(doc, version.customer_notes, { x: PAGE_MARGIN, width: contentWidth, fontSize: 10, color: MUTED });
   }
 
   // ---- Payment details ---------------------------------------------------------

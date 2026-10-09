@@ -639,6 +639,7 @@ export function DispatchJobDetail({
     pickupTime: l.pickup_time,
     passengerCount: l.passenger_count,
     luggageCount: l.luggage_count,
+    specialRequirements: l.special_requirements,
   }));
 
   const claimedLegIds = useMemo(

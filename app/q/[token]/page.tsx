@@ -4,6 +4,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { amountDueNow } from "@/lib/quotePayments";
 import { formatDateTime, formatDate } from "@/lib/formatDate";
 import { JourneyLegDetail, type JourneyLeg } from "@/components/pages/JourneyLegDetail";
+import { RichText } from "@/components/ui/RichText";
 import { QuoteDecisionButtons } from "./QuoteDecisionButtons";
 import { PaymentChooser, type BankAccountRow } from "./PaymentChooser";
 
@@ -168,7 +169,7 @@ export default async function PublicQuotePage({ params }: { params: Promise<{ to
             )}
           </div>
 
-          {version?.customer_notes && <p className="mt-4 text-sm text-slate-600">{version.customer_notes}</p>}
+          {version?.customer_notes && <RichText text={version.customer_notes} className="mt-4 text-sm text-slate-600" />}
           {(version?.terms_snapshot?.trim() || tenant?.terms_and_conditions?.trim()) && (
             <p className="mt-4 whitespace-pre-line text-xs text-slate-400">
               {version?.terms_snapshot?.trim() || tenant?.terms_and_conditions}
