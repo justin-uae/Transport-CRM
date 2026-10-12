@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import Link from "next/link";
 import { usePathname, useSearchParams, useRouter } from "next/navigation";
-import { UserCheck, UserPlus, FileText, TrendingUp } from "lucide-react";
+import { UserCheck, UserPlus, FileText, TrendingUp, Loader2 } from "lucide-react";
 import { Panel } from "@/components/ui/Panel";
 import { Kpi } from "@/components/ui/Kpi";
 import { JourneyCell } from "@/components/ui/JourneyCell";
@@ -163,12 +163,27 @@ export function LeadsPage({
   const [assignLead, setAssignLead] = useState<LeadRow | null>(null);
   const [assigneeId, setAssigneeId] = useState("");
   const [assignError, setAssignError] = useState<string | null>(null);
+  // Separate from `pending` above (that's for claim/release/assign server
+  // actions) — this just covers the tab switch itself, which is a plain
+  // navigation re-fetching server data, not a server action. Without any
+  // feedback here, clicking a tab while the page takes a moment to respond
+  // reads as unresponsive/"not clickable" rather than "loading."
+  const [navPending, startNavTransition] = useTransition();
+  const [pendingTab, setPendingTab] = useState<LeadTab | null>(null);
 
   function tabHref(t: LeadTab) {
     const params = new URLSearchParams(searchParams.toString());
     params.set("tab", t);
     params.delete("page");
     return `${pathname}?${params.toString()}`;
+  }
+
+  function goToTab(t: LeadTab) {
+    if (t === tab) return;
+    setPendingTab(t);
+    startNavTransition(() => {
+      router.push(tabHref(t));
+    });
   }
 
   function openDetail(lead: LeadRow) {
@@ -354,21 +369,25 @@ export function LeadsPage({
             {(["mine", "quoted", "pool", "all"] as const)
               .filter((t) => t !== "all" || canViewAll)
               .map((t) => (
-                <Link
+                <button
                   key={t}
-                  href={tabHref(t)}
+                  type="button"
+                  onClick={() => goToTab(t)}
+                  disabled={navPending}
                   className={
-                    "rounded-xl px-3 py-2 text-sm font-bold " +
+                    "flex items-center gap-1.5 rounded-xl px-3 py-2 text-sm font-bold disabled:cursor-wait " +
                     (tab === t ? "bg-primary-500 text-white" : "bg-slate-100 text-slate-600")
                   }
                 >
+                  {navPending && pendingTab === t && <Loader2 size={14} className="animate-spin" />}
                   {t === "mine" ? "My Leads" : t === "quoted" ? "Quoted" : t === "pool" ? "Open Pool" : "All"}
-                </Link>
+                </button>
               ))}
           </div>
           <SearchInput placeholder="Search leads…" />
           <SortSelect options={SORT_OPTIONS} />
         </div>
+        <div className={"transition-opacity" + (navPending ? " pointer-events-none opacity-50" : "")}>
         <div className="space-y-3 py-4 sm:hidden">
           {leads.map((l) => (
             <div key={l.id} onClick={() => viewLead(l)} className={"cursor-pointer rounded-2xl border p-4 hover:bg-orange-50/30" + (l.status === "expired" ? " border-l-4 border-red-300 border-l-red-500 bg-red-100/70" : "")}>
@@ -532,6 +551,7 @@ export function LeadsPage({
               )}
             </tbody>
           </table>
+        </div>
         </div>
         <Pagination page={page} pageSize={pageSize} total={total} />
       </Panel>
