@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { recordAudit } from "@/lib/audit";
-import { getStripeClient } from "@/lib/stripe";
+import { getStripeClient, fromStripeAmount } from "@/lib/stripe";
 import { recordCustomerPayment } from "@/lib/quotePayments";
 
 // Stripe posts here with no Supabase session — authenticated by its own
@@ -31,10 +31,12 @@ export async function POST(request: Request) {
     const quoteId = session.metadata?.quoteId;
     if (quoteId && session.payment_status === "paid") {
       const admin = createAdminClient();
+      const currency = (session.currency ?? "eur").toUpperCase();
+      const amount = fromStripeAmount(session.amount_total ?? 0, currency);
       const result = await recordCustomerPayment(admin, {
         quoteId,
-        amount: (session.amount_total ?? 0) / 100,
-        currency: (session.currency ?? "eur").toUpperCase(),
+        amount,
+        currency,
         method: "stripe",
         stripeSessionId: session.id,
         stripePaymentIntentId: typeof session.payment_intent === "string" ? session.payment_intent : (session.payment_intent?.id ?? null),
@@ -50,7 +52,7 @@ export async function POST(request: Request) {
             action: "quote_payment_received_stripe",
             entityType: "quote",
             entityId: quoteId,
-            newValue: { amount: (session.amount_total ?? 0) / 100, status: result.status },
+            newValue: { amount, status: result.status },
           });
         }
       }

@@ -27,3 +27,10 @@ export function toStripeAmount(amount: number, currency: string): number {
   if (ZERO_DECIMAL_CURRENCIES.has(currency.toLowerCase())) return Math.round(amount);
   return Math.round(amount * 100);
 }
+
+// Inverse of toStripeAmount — converts a Stripe amount (smallest unit, or
+// whole units for zero-decimal currencies) back to the app's decimal amount.
+export function fromStripeAmount(amount: number, currency: string): number {
+  if (ZERO_DECIMAL_CURRENCIES.has(currency.toLowerCase())) return amount;
+  return amount / 100;
+}
