@@ -1,5 +1,6 @@
 "use client";
 
+import { useState, useTransition } from "react";
 import { Wallet } from "lucide-react";
 import Link from "next/link";
 import { Panel } from "@/components/ui/Panel";
@@ -10,6 +11,11 @@ import { SortSelect } from "@/components/ui/SortSelect";
 import { Pagination } from "@/components/ui/Pagination";
 import { JourneyCell } from "@/components/ui/JourneyCell";
 import { Breadcrumb } from "@/components/ui/Breadcrumb";
+import { ConfirmDetailModal } from "@/components/ui/ConfirmDetailModal";
+import { useToast } from "@/components/ui/Toast";
+import { assignQuoteAction } from "@/app/(staff)/quotes/actions";
+import { SOURCE_LABEL } from "@/lib/leadSource";
+import type { AssignableUser } from "@/components/pages/LeadDetailPage";
 
 export type PartiallyPaidSortKey = "created_desc" | "created_asc" | "remaining_desc" | "remaining_asc" | "paid_desc" | "paid_asc";
 
@@ -29,7 +35,11 @@ export interface PartiallyPaidQuoteRow {
   invoice_number: string | null;
   created_at: string;
   customers: { company_name: string | null; contact_name: string } | null;
-  enquiries: { enquiry_legs: { pickup_address: string; destination_address: string }[] } | null;
+  enquiries: {
+    assigned_user_id: string | null;
+    leads: { source: keyof typeof SOURCE_LABEL } | null;
+    enquiry_legs: { pickup_address: string; destination_address: string }[];
+  } | null;
   quote_versions: { selling_price: number } | null;
   profiles: { full_name: string } | null;
   paid: number;
@@ -45,6 +55,11 @@ function journeyOf(q: PartiallyPaidQuoteRow) {
   return q.enquiries?.enquiry_legs?.[0] ?? null;
 }
 
+function sourceLabel(q: PartiallyPaidQuoteRow) {
+  const source = q.enquiries?.leads?.source;
+  return source ? SOURCE_LABEL[source] : "—";
+}
+
 export function PartiallyPaidQuotesPage({
   quotes,
   page,
@@ -52,6 +67,8 @@ export function PartiallyPaidQuotesPage({
   total,
   outstandingTotal,
   outstandingCurrency,
+  canAssign,
+  assignableUsers,
 }: {
   quotes: PartiallyPaidQuoteRow[];
   page: number;
@@ -59,7 +76,56 @@ export function PartiallyPaidQuotesPage({
   total: number;
   outstandingTotal: number;
   outstandingCurrency: string;
+  canAssign: boolean;
+  assignableUsers: AssignableUser[];
 }) {
+  const notify = useToast();
+  const [assignQuote, setAssignQuote] = useState<PartiallyPaidQuoteRow | null>(null);
+  const [assigneeId, setAssigneeId] = useState("");
+  const [assignError, setAssignError] = useState<string | null>(null);
+  const [assignPending, startAssignTransition] = useTransition();
+
+  function assignedNameFor(q: PartiallyPaidQuoteRow) {
+    const id = q.enquiries?.assigned_user_id;
+    if (!id) return null;
+    return assignableUsers.find((u) => u.id === id)?.full_name ?? null;
+  }
+
+  function openAssign(q: PartiallyPaidQuoteRow) {
+    setAssignError(null);
+    setAssigneeId(q.enquiries?.assigned_user_id ?? "");
+    setAssignQuote(q);
+  }
+
+  function closeAssign() {
+    if (assignPending) return;
+    setAssignQuote(null);
+    setAssignError(null);
+  }
+
+  function doAssign() {
+    if (!assignQuote) return;
+    if (!assigneeId) {
+      setAssignError("Choose someone to assign this quote to.");
+      return;
+    }
+    if (assigneeId === assignQuote.enquiries?.assigned_user_id) {
+      setAssignError("This quote is already assigned to that person.");
+      return;
+    }
+    setAssignError(null);
+    startAssignTransition(async () => {
+      const result = await assignQuoteAction(assignQuote.id, assigneeId);
+      if (result.error) {
+        setAssignError(result.error);
+        return;
+      }
+      const name = assignableUsers.find((u) => u.id === assigneeId)?.full_name ?? "the selected user";
+      notify(`Quote assigned to ${name}`);
+      setAssignQuote(null);
+    });
+  }
+
   return (
     <div>
       <Breadcrumb items={[{ label: "Pending Quotes", href: "/quotes" }, { label: "Partially Paid" }]} />
@@ -102,13 +168,24 @@ export function PartiallyPaidQuotesPage({
                 <span className="text-slate-500">Remaining</span>
                 <b className="text-amber-700">{money(q.remaining, q.currency)}</b>
               </div>
-              <div className="mt-1 text-xs text-slate-400">Sales rep: {q.profiles?.full_name || "—"}</div>
-              <Link
-                href={`/quotes/${q.id}`}
-                className="mt-3 block w-full rounded-lg border border-primary-300 px-3 py-2 text-center text-xs font-bold text-primary-700"
-              >
-                View
-              </Link>
+              <div className="mt-1 text-xs text-slate-400">Sales rep: {assignedNameFor(q) || q.profiles?.full_name || "—"}</div>
+              <div className="mt-0.5 text-xs text-slate-400">Source: {sourceLabel(q)}</div>
+              <div className="mt-3 flex gap-2">
+                <Link
+                  href={`/quotes/${q.id}`}
+                  className="flex-1 rounded-lg border border-primary-300 px-3 py-2 text-center text-xs font-bold text-primary-700"
+                >
+                  View
+                </Link>
+                {canAssign && (
+                  <button
+                    onClick={() => openAssign(q)}
+                    className="flex-1 rounded-lg border px-3 py-2 text-center text-xs font-bold hover:bg-slate-50"
+                  >
+                    Assign
+                  </button>
+                )}
+              </div>
             </div>
           ))}
           {quotes.length === 0 && <p className="py-8 text-center text-sm text-slate-500">No partially paid quotes right now.</p>}
@@ -122,6 +199,7 @@ export function PartiallyPaidQuotesPage({
                 <th className="px-3 py-4">Customer</th>
                 <th className="px-3 py-4">Journey</th>
                 <th className="px-3 py-4">Sales Rep</th>
+                <th className="px-3 py-4">Source</th>
                 <th className="px-3 py-4">Paid</th>
                 <th className="px-3 py-4">Remaining</th>
                 <th className="px-3 py-4"></th>
@@ -142,22 +220,33 @@ export function PartiallyPaidQuotesPage({
                   <td className="px-3 py-4 text-slate-600">
                     <JourneyCell pickup={journeyOf(q)?.pickup_address} destination={journeyOf(q)?.destination_address} />
                   </td>
-                  <td className="whitespace-nowrap px-3 py-4 text-slate-600">{q.profiles?.full_name || "—"}</td>
+                  <td className="whitespace-nowrap px-3 py-4 text-slate-600">{assignedNameFor(q) || q.profiles?.full_name || "—"}</td>
+                  <td className="whitespace-nowrap px-3 py-4 text-slate-600">{sourceLabel(q)}</td>
                   <td className="whitespace-nowrap px-3 py-4 font-bold text-emerald-700">{money(q.paid, q.currency)}</td>
                   <td className="whitespace-nowrap px-3 py-4 font-black text-amber-700">{money(q.remaining, q.currency)}</td>
                   <td className="whitespace-nowrap px-3 py-4 text-right">
-                    <Link
-                      href={`/quotes/${q.id}`}
-                      className="shrink-0 whitespace-nowrap rounded-lg border border-primary-300 px-3 py-2 text-xs font-bold text-primary-700"
-                    >
-                      View
-                    </Link>
+                    <div className="flex justify-end gap-2">
+                      <Link
+                        href={`/quotes/${q.id}`}
+                        className="shrink-0 whitespace-nowrap rounded-lg border border-primary-300 px-3 py-2 text-xs font-bold text-primary-700"
+                      >
+                        View
+                      </Link>
+                      {canAssign && (
+                        <button
+                          onClick={() => openAssign(q)}
+                          className="shrink-0 whitespace-nowrap rounded-lg border px-3 py-2 text-xs font-bold hover:bg-slate-50"
+                        >
+                          Assign
+                        </button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))}
               {quotes.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="py-8 text-center text-sm text-slate-500">
+                  <td colSpan={8} className="py-8 text-center text-sm text-slate-500">
                     No partially paid quotes right now.
                   </td>
                 </tr>
@@ -167,6 +256,36 @@ export function PartiallyPaidQuotesPage({
         </div>
         <Pagination page={page} pageSize={pageSize} total={total} />
       </Panel>
+
+      {assignQuote && (
+        <ConfirmDetailModal
+          open
+          onClose={closeAssign}
+          title={`Assign ${assignQuote.quote_number}`}
+          description="Hand this quote to a specific sales user — moves it onto their list the same way reassigning its lead would."
+          pending={assignPending}
+          error={assignError}
+          details={[{ label: "Currently", value: assignedNameFor(assignQuote) || <span className="font-bold text-primary-600">Unassigned</span> }]}
+          confirmLabel="Assign"
+          onConfirm={doAssign}
+        >
+          <label className="block text-sm font-bold">
+            Assign to
+            <select
+              value={assigneeId}
+              onChange={(e) => setAssigneeId(e.target.value)}
+              className="mt-1 w-full rounded-xl border px-3 py-2 font-normal"
+            >
+              <option value="">Choose a sales user…</option>
+              {assignableUsers.map((u) => (
+                <option key={u.id} value={u.id}>
+                  {u.full_name}
+                </option>
+              ))}
+            </select>
+          </label>
+        </ConfirmDetailModal>
+      )}
     </div>
   );
 }

@@ -5,6 +5,7 @@ import { SortSelect } from "@/components/ui/SortSelect";
 import { AiBadge } from "@/components/ui/AiBadge";
 import { BookingTabs, BookingsGuideButton } from "@/components/pages/BookingTabs";
 import { formatDate, formatDateTime } from "@/lib/formatDate";
+import { SOURCE_LABEL } from "@/lib/leadSource";
 import type { QuoteStatus } from "@/lib/supabase/database.types";
 
 export type LeadSortKey = "travel_desc" | "travel_asc";
@@ -30,7 +31,10 @@ export interface LostBookingQuote {
   decided_at: string | null;
   expiry_at: string | null;
   customers: { company_name: string | null; contact_name: string } | null;
-  enquiries: { enquiry_legs: { pickup_address: string; destination_address: string; pickup_date: string | null }[] } | null;
+  enquiries: {
+    leads: { source: keyof typeof SOURCE_LABEL } | null;
+    enquiry_legs: { pickup_address: string; destination_address: string; pickup_date: string | null }[];
+  } | null;
   quote_versions: { selling_price: number } | null;
   quote_decisions: { decision: string; reason: string | null; free_text: string | null }[];
   profiles: { full_name: string } | null;
@@ -39,6 +43,7 @@ export interface LostBookingQuote {
 
 export interface ExpiredLead {
   id: string;
+  source: keyof typeof SOURCE_LABEL;
   pickup_text: string | null;
   destination_text: string | null;
   travel_date: string | null;
@@ -76,7 +81,7 @@ export function BookingsLostPage({ quotes, expiredLeads }: { quotes: LostBooking
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="min-w-0">
                   <b className="block truncate">{l.customers?.company_name || l.customers?.contact_name || "Unassigned enquiry"}</b>
-                  <div className="text-xs text-slate-500">Lead · not quoted</div>
+                  <div className="text-xs text-slate-500">Lead · not quoted · Source: {SOURCE_LABEL[l.source]}</div>
                 </div>
                 <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-600">Expired lead</span>
               </div>
@@ -123,7 +128,8 @@ export function BookingsLostPage({ quotes, expiredLeads }: { quotes: LostBooking
                   <div>
                     <b>{customer?.company_name || customer?.contact_name || "Customer"}</b>
                     <div className="text-xs text-slate-500">
-                      {q.quote_number} · Sales rep: {q.profiles?.full_name || "—"}
+                      {q.quote_number} · Sales rep: {q.profiles?.full_name || "—"} · Source:{" "}
+                      {q.enquiries?.leads?.source ? SOURCE_LABEL[q.enquiries.leads.source] : "—"}
                     </div>
                   </div>
                   <div className="flex shrink-0 items-center gap-1.5">

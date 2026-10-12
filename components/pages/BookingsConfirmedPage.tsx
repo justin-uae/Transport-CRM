@@ -6,6 +6,7 @@ import { AiBadge } from "@/components/ui/AiBadge";
 import { OverdueBadge } from "@/components/ui/OverdueBadge";
 import { BookingTabs, BookingsGuideButton } from "@/components/pages/BookingTabs";
 import { formatDate, formatDateTime, isPastDate } from "@/lib/formatDate";
+import { SOURCE_LABEL } from "@/lib/leadSource";
 import type { JobStatus } from "@/lib/supabase/database.types";
 
 export type BookingSortKey = "created_desc" | "created_asc" | "pickup_asc" | "pickup_desc" | "value_desc" | "value_asc";
@@ -23,7 +24,15 @@ const SORT_OPTIONS = [
 ];
 
 type CustomerRef = { company_name: string | null; contact_name: string } | null;
-type LegsRef = { enquiry_legs: { pickup_address: string; destination_address: string; pickup_date: string | null }[] } | null;
+type LegsRef = {
+  leads: { source: keyof typeof SOURCE_LABEL } | null;
+  enquiry_legs: { pickup_address: string; destination_address: string; pickup_date: string | null }[];
+} | null;
+
+function sourceLabel(legs: LegsRef) {
+  const source = legs?.leads?.source;
+  return source ? SOURCE_LABEL[source] : "—";
+}
 type VersionRef = { selling_price: number } | null;
 
 export interface ConfirmedBookingJob {
@@ -112,7 +121,8 @@ export function BookingsConfirmedPage({ jobs }: { jobs: ConfirmedBookingJob[] })
                   <div>
                     <b>{customer?.company_name || customer?.contact_name || "Customer"}</b>
                     <div className="text-xs text-slate-500">
-                      {job.quotes?.quote_number} · {job.region ?? "No region"} · Sales rep: {job.quotes?.profiles?.full_name || "—"}
+                      {job.quotes?.quote_number} · {job.region ?? "No region"} · Sales rep: {job.quotes?.profiles?.full_name || "—"} · Source:{" "}
+                      {sourceLabel(job.quotes?.enquiries ?? null)}
                     </div>
                   </div>
                   <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">

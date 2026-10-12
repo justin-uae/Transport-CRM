@@ -1,5 +1,6 @@
 "use client";
 
+import { useState, useTransition } from "react";
 import Link from "next/link";
 import { Panel } from "@/components/ui/Panel";
 import { PageHead } from "@/components/ui/PageHead";
@@ -10,7 +11,12 @@ import { DispatchDiagram } from "@/components/ui/guide-diagrams/DispatchDiagram"
 import { formatDate, isPastDate } from "@/lib/formatDate";
 import { OverdueBadge } from "@/components/ui/OverdueBadge";
 import { AiBadge } from "@/components/ui/AiBadge";
+import { ConfirmDetailModal } from "@/components/ui/ConfirmDetailModal";
+import { useToast } from "@/components/ui/Toast";
+import { assignQuoteAction } from "@/app/(staff)/quotes/actions";
+import { SOURCE_LABEL } from "@/lib/leadSource";
 import type { JobStatus } from "@/lib/supabase/database.types";
+import type { AssignableUser } from "@/components/pages/LeadDetailPage";
 
 // completed/cancelled are the two dead-end states — a job still sitting in
 // any other status past its own travel date needs a human's attention
@@ -39,10 +45,15 @@ export interface JobRow {
   region: string | null;
   created_at: string;
   quotes: {
+    id: string;
     quote_number: string;
     customers: { company_name: string | null; contact_name: string } | null;
     profiles: { full_name: string } | null;
-    enquiries: { enquiry_legs: { pickup_date: string | null }[] } | null;
+    enquiries: {
+      assigned_user_id: string | null;
+      leads: { source: keyof typeof SOURCE_LABEL } | null;
+      enquiry_legs: { pickup_date: string | null }[];
+    } | null;
     ai_generated: boolean;
   } | null;
   job_allocations: { id: string; status: JobStatus; suppliers: { name: string } | null }[];
@@ -65,6 +76,11 @@ const STATUS_STYLE: Record<JobStatus, string> = {
   cancelled: "bg-slate-100 text-slate-500",
 };
 
+function sourceLabel(job: JobRow) {
+  const source = job.quotes?.enquiries?.leads?.source;
+  return source ? SOURCE_LABEL[source] : "—";
+}
+
 function allocationSummary(job: JobRow) {
   const live = job.job_allocations.filter((a) => a.status !== "cancelled");
   if (live.length === 0) return "Not yet allocated";
@@ -76,14 +92,25 @@ function allocationSummary(job: JobRow) {
   return `${live.length} allocations · ${confirmedOrLater} confirmed`;
 }
 
-function JobCard({ job }: { job: JobRow }) {
+function JobCard({
+  job,
+  canAssign,
+  assignedName,
+  onAssignClick,
+}: {
+  job: JobRow;
+  canAssign: boolean;
+  assignedName: string | null;
+  onAssignClick: (job: JobRow) => void;
+}) {
   return (
     <div className="rounded-2xl border p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
           <b>{job.quotes?.customers?.company_name || job.quotes?.customers?.contact_name || "Customer"}</b>
           <div className="text-xs text-slate-500">
-            {job.quotes?.quote_number} · {job.region ?? "No region"} · Sales rep: {job.quotes?.profiles?.full_name || "—"}
+            {job.quotes?.quote_number} · {job.region ?? "No region"} · Sales rep: {assignedName || job.quotes?.profiles?.full_name || "—"}{" "}
+            · Source: {sourceLabel(job)}
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -92,6 +119,11 @@ function JobCard({ job }: { job: JobRow }) {
           <span className={`rounded-full px-2.5 py-1 text-xs font-bold capitalize ${STATUS_STYLE[job.status]}`}>
             {job.status.replaceAll("_", " ")}
           </span>
+          {canAssign && job.quotes && (
+            <button onClick={() => onAssignClick(job)} className="rounded-lg border px-3 py-2 text-xs font-bold hover:bg-slate-50">
+              Assign
+            </button>
+          )}
           <Link
             href={`/dispatch/${job.id}`}
             className="rounded-lg border border-primary-300 px-3 py-2 text-xs font-bold text-primary-700"
@@ -114,12 +146,63 @@ export function DispatchBoard({
   page,
   pageSize,
   total,
+  canAssign,
+  assignableUsers,
 }: {
   jobs: JobRow[];
   page: number;
   pageSize: number;
   total: number;
+  canAssign: boolean;
+  assignableUsers: AssignableUser[];
 }) {
+  const notify = useToast();
+  const [assignJob, setAssignJob] = useState<JobRow | null>(null);
+  const [assigneeId, setAssigneeId] = useState("");
+  const [assignError, setAssignError] = useState<string | null>(null);
+  const [assignPending, startAssignTransition] = useTransition();
+
+  function assignedNameFor(job: JobRow) {
+    const id = job.quotes?.enquiries?.assigned_user_id;
+    if (!id) return null;
+    return assignableUsers.find((u) => u.id === id)?.full_name ?? null;
+  }
+
+  function openAssign(job: JobRow) {
+    setAssignError(null);
+    setAssigneeId(job.quotes?.enquiries?.assigned_user_id ?? "");
+    setAssignJob(job);
+  }
+
+  function closeAssign() {
+    if (assignPending) return;
+    setAssignJob(null);
+    setAssignError(null);
+  }
+
+  function doAssign() {
+    if (!assignJob?.quotes) return;
+    if (!assigneeId) {
+      setAssignError("Choose someone to assign this job to.");
+      return;
+    }
+    if (assigneeId === assignJob.quotes.enquiries?.assigned_user_id) {
+      setAssignError("This job is already assigned to that person.");
+      return;
+    }
+    setAssignError(null);
+    startAssignTransition(async () => {
+      const result = await assignQuoteAction(assignJob.quotes!.id, assigneeId);
+      if (result.error) {
+        setAssignError(result.error);
+        return;
+      }
+      const name = assignableUsers.find((u) => u.id === assigneeId)?.full_name ?? "the selected user";
+      notify(`Job assigned to ${name}`);
+      setAssignJob(null);
+    });
+  }
+
   return (
     <div>
       <PageHead
@@ -178,12 +261,42 @@ export function DispatchBoard({
         </div>
         <div className="mt-4 space-y-3">
           {jobs.map((job) => (
-            <JobCard key={job.id} job={job} />
+            <JobCard key={job.id} job={job} canAssign={canAssign} assignedName={assignedNameFor(job)} onAssignClick={openAssign} />
           ))}
           {jobs.length === 0 && <p className="py-8 text-center text-sm text-slate-500">No jobs yet — they appear once a quote is marked as paid.</p>}
         </div>
         <Pagination page={page} pageSize={pageSize} total={total} />
       </Panel>
+
+      {assignJob && (
+        <ConfirmDetailModal
+          open
+          onClose={closeAssign}
+          title={`Assign ${assignJob.quotes?.quote_number ?? "this job"}`}
+          description="Hand this job's quote to a specific sales user — moves it onto their list the same way reassigning its lead would."
+          pending={assignPending}
+          error={assignError}
+          details={[{ label: "Currently", value: assignedNameFor(assignJob) || <span className="font-bold text-primary-600">Unassigned</span> }]}
+          confirmLabel="Assign"
+          onConfirm={doAssign}
+        >
+          <label className="block text-sm font-bold">
+            Assign to
+            <select
+              value={assigneeId}
+              onChange={(e) => setAssigneeId(e.target.value)}
+              className="mt-1 w-full rounded-xl border px-3 py-2 font-normal"
+            >
+              <option value="">Choose a sales user…</option>
+              {assignableUsers.map((u) => (
+                <option key={u.id} value={u.id}>
+                  {u.full_name}
+                </option>
+              ))}
+            </select>
+          </label>
+        </ConfirmDetailModal>
+      )}
     </div>
   );
 }

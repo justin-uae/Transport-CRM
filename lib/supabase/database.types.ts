@@ -281,7 +281,7 @@ export type QuoteDecisionType = "accepted" | "rejected";
 
 export type CustomerPaymentMethod = "stripe" | "bank_transfer";
 
-export type QuoteEventType = "sent" | "viewed" | "accepted" | "rejected" | "expired" | "cancelled" | "partially_paid" | "paid";
+export type QuoteEventType = "sent" | "viewed" | "accepted" | "rejected" | "expired" | "cancelled" | "partially_paid" | "paid" | "reassigned";
 
 export interface Customer {
   id: string;
@@ -580,6 +580,7 @@ export interface QuoteEvent {
   id: string;
   quote_id: string;
   event: QuoteEventType;
+  detail: string | null;
   created_at: string;
 }
 

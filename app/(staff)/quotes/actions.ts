@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { requireProfile } from "@/lib/auth";
 import { hasPermission, PERMISSIONS } from "@/lib/permissions";
 import { recordAudit } from "@/lib/audit";
@@ -15,6 +16,57 @@ import { sendWhatsAppTemplate, normalizeWhatsAppNumber, WHATSAPP_TEMPLATE_HEADER
 import { estimateQuoteTripPrice } from "@/lib/aiPriceEstimate";
 import { convertCurrency } from "@/lib/fxRates";
 import { computeHistoricalRatePerKm } from "@/lib/quotePricingBenchmark";
+
+/**
+ * Reassign who owns a quote — admin/sales manager only (enquiries.reassign,
+ * same permission that already gates lead reassignment). Visibility for
+ * quotes, jobs and everything else downstream is all inherited from the
+ * parent enquiry's assigned_user_id (can_view_assignment, 0002_sales_crm.sql
+ * / 0009_payment_legs.sql) rather than quotes.created_by, so updating it here
+ * is what actually moves the quote (at any stage — pending, partially paid,
+ * or its Dispatch job) onto the new owner's "mine" view, not just a cosmetic
+ * label change.
+ */
+export async function assignQuoteAction(quoteId: string, targetUserId: string) {
+  const actor = await requireProfile();
+  const allowed = await hasPermission(actor, PERMISSIONS.ENQUIRIES_REASSIGN);
+  if (!allowed) return { error: "You do not have permission to assign quotes." };
+
+  const supabase = await createClient();
+
+  const { data: target } = await supabase.from("profiles").select("id, full_name").eq("id", targetUserId).maybeSingle();
+  if (!target) return { error: "That user could not be found." };
+
+  const { data: quote } = await supabase.from("quotes").select("id, enquiry_id, quote_number").eq("id", quoteId).maybeSingle();
+  if (!quote) return { error: "Quote not found." };
+
+  const { error } = await supabase.from("enquiries").update({ assigned_user_id: targetUserId }).eq("id", quote.enquiry_id);
+  if (error) return { error: error.message };
+
+  await recordAudit({
+    tenantId: actor.tenant_id,
+    actorId: actor.id,
+    action: "quote_reassigned",
+    entityType: "quote",
+    entityId: quoteId,
+    newValue: { assignedTo: targetUserId, assignedToName: target.full_name },
+  });
+
+  // quote_events has no insert RLS policy for the request-scoped client (only
+  // quote_events_select exists, 0002_sales_crm.sql/0009_payment_legs.sql) —
+  // the admin client is used here for the same reason the Stripe webhook's
+  // "paid"/"partially_paid" events already go through it, so this one
+  // actually lands on the Timeline instead of silently no-opping.
+  await createAdminClient()
+    .from("quote_events")
+    .insert({ quote_id: quoteId, event: "reassigned", detail: `Assigned to ${target.full_name}` });
+
+  revalidatePath("/quotes");
+  revalidatePath("/quotes/partially-paid");
+  revalidatePath(`/quotes/${quoteId}`);
+  revalidatePath("/dispatch");
+  return { error: null };
+}
 
 /**
  * Manual bank-transfer payment recording, for a deposit, the remaining

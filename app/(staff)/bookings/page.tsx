@@ -2,7 +2,7 @@ import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { BookingsConfirmedPage, type ConfirmedBookingJob, type BookingSortKey } from "@/components/pages/BookingsConfirmedPage";
 
-const legsSelect = "enquiries(enquiry_legs(pickup_address, destination_address, pickup_date))";
+const legsSelect = "enquiries(leads(source), enquiry_legs(pickup_address, destination_address, pickup_date))";
 const versionSelect = "quote_versions!quotes_current_version_id_fkey(selling_price)";
 const salesRepSelect = "profiles!quotes_created_by_fkey(full_name)";
 

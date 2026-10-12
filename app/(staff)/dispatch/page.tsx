@@ -1,5 +1,7 @@
 import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
+import { hasPermission, PERMISSIONS } from "@/lib/permissions";
+import { getAssignableSalesUsers } from "@/lib/leadAssignees";
 import { DispatchBoard, type JobRow, type DispatchSortKey } from "@/components/pages/DispatchBoard";
 
 const PAGE_SIZE = 25;
@@ -30,12 +32,15 @@ function comparatorFor(sort: DispatchSortKey): (a: JobRow, b: JobRow) => number 
 
 export default async function DispatchPage({ searchParams }: { searchParams: Promise<{ page?: string; sort?: string }> }) {
   const params = await searchParams;
-  await requireProfile();
+  const profile = await requireProfile();
   const supabase = await createClient();
 
   const page = Math.max(1, Number(params.page) || 1);
   const from = (page - 1) * PAGE_SIZE;
   const sort: DispatchSortKey = (SORT_KEYS as string[]).includes(params.sort ?? "") ? (params.sort as DispatchSortKey) : "pickup_asc";
+
+  const canAssign = await hasPermission(profile, PERMISSIONS.ENQUIRIES_REASSIGN);
+  const assignableUsers = canAssign ? await getAssignableSalesUsers(supabase) : [];
 
   // Unpaginated fetch (not scoped to any status — this board spans every
   // job) so pickup date can be sorted/paginated in JS; kept consistent with
@@ -44,12 +49,14 @@ export default async function DispatchPage({ searchParams }: { searchParams: Pro
   const { data: jobs } = await supabase
     .from("jobs")
     .select(
-      "id, status, region, created_at, quotes(quote_number, ai_generated, customers(company_name, contact_name), profiles!quotes_created_by_fkey(full_name), enquiries(enquiry_legs(pickup_date))), job_allocations(id, status, suppliers(name))",
+      "id, status, region, created_at, quotes(id, quote_number, ai_generated, customers(company_name, contact_name), profiles!quotes_created_by_fkey(full_name), enquiries(assigned_user_id, leads(source), enquiry_legs(pickup_date))), job_allocations(id, status, suppliers(name))",
     );
 
   const sorted = ((jobs ?? []) as unknown as JobRow[]).slice().sort(comparatorFor(sort));
   const total = sorted.length;
   const pageJobs = sorted.slice(from, from + PAGE_SIZE);
 
-  return <DispatchBoard jobs={pageJobs} page={page} pageSize={PAGE_SIZE} total={total} />;
+  return (
+    <DispatchBoard jobs={pageJobs} page={page} pageSize={PAGE_SIZE} total={total} canAssign={canAssign} assignableUsers={assignableUsers} />
+  );
 }

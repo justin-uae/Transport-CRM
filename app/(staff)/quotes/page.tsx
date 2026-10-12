@@ -2,6 +2,7 @@ import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { hasPermission, PERMISSIONS } from "@/lib/permissions";
 import { healExpiredQuotes } from "@/lib/quoteExpiry";
+import { getAssignableSalesUsers } from "@/lib/leadAssignees";
 import { QuotesPage, type QuoteRow, type QuoteSortKey } from "@/components/pages/QuotesPage";
 
 const PAGE_SIZE = 25;
@@ -92,7 +93,7 @@ export default async function Page({
   let listQuery = supabase
     .from("quotes")
     .select(
-      "id, quote_number, status, currency, expiry_at, invoice_number, public_token, created_at, sent_at, viewed_at, ai_generated, ai_estimated_price, ai_estimated_price_currency, customers(company_name, contact_name), enquiries(enquiry_legs(pickup_address, destination_address, pickup_date, pickup_time)), quote_versions!quotes_current_version_id_fkey(selling_price), profiles!quotes_created_by_fkey(full_name)",
+      "id, quote_number, status, currency, expiry_at, invoice_number, public_token, created_at, sent_at, viewed_at, ai_generated, ai_estimated_price, ai_estimated_price_currency, customers(company_name, contact_name), enquiries(assigned_user_id, leads(source), enquiry_legs(pickup_address, destination_address, pickup_date, pickup_time)), quote_versions!quotes_current_version_id_fkey(selling_price), profiles!quotes_created_by_fkey(full_name)",
     )
     .in("status", statusFilter ?? ["draft", "sent", "viewed", "accepted"]);
   if (q) {
@@ -106,12 +107,14 @@ export default async function Page({
   // KPI from that single result set cuts this page from 7 concurrent
   // queries to 3, which is what was pushing Postgres into a statement
   // timeout (57014) under load.
-  const [{ data: allMatching }, canCreateQuote, canResend, { data: statsRows }] = await Promise.all([
+  const [{ data: allMatching }, canCreateQuote, canResend, canAssign, { data: statsRows }] = await Promise.all([
     listQuery,
     hasPermission(profile, PERMISSIONS.QUOTES_CREATE),
     hasPermission(profile, PERMISSIONS.QUOTES_SEND),
+    hasPermission(profile, PERMISSIONS.ENQUIRIES_REASSIGN),
     supabase.from("quotes").select("status, currency, quote_versions!quotes_current_version_id_fkey(selling_price)"),
   ]);
+  const assignableUsers = canAssign ? await getAssignableSalesUsers(supabase) : [];
 
   const sorted = ((allMatching ?? []) as unknown as QuoteRow[]).slice().sort(comparatorFor(sort));
   const total = sorted.length;
@@ -135,6 +138,8 @@ export default async function Page({
       quotes={quotes}
       canCreateQuote={canCreateQuote}
       canResend={canResend}
+      canAssign={canAssign}
+      assignableUsers={assignableUsers}
       canViewAiEstimate={profile.is_master_admin}
       page={page}
       pageSize={PAGE_SIZE}

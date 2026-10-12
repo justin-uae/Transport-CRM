@@ -3,6 +3,7 @@ import Link from "next/link";
 import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { hasPermission, PERMISSIONS } from "@/lib/permissions";
+import { getAssignableSalesUsers } from "@/lib/leadAssignees";
 import { Panel } from "@/components/ui/Panel";
 import { PageHead } from "@/components/ui/PageHead";
 import { Breadcrumb } from "@/components/ui/Breadcrumb";
@@ -10,6 +11,7 @@ import { BackLink } from "@/components/ui/BackLink";
 import { SectionTitle } from "@/components/ui/SectionTitle";
 import { RichText } from "@/components/ui/RichText";
 import { QuoteDetailActions, type AmendableLeg, type QuoteRefund } from "@/components/pages/QuoteDetailActions";
+import { AssignQuoteButton } from "@/components/pages/AssignQuoteButton";
 import { BookingEditHistory, type BookingEditRecord } from "@/components/pages/BookingEditHistory";
 import { JourneyLegDetail, type JourneyLeg } from "@/components/pages/JourneyLegDetail";
 import { formatDateTime, formatDate } from "@/lib/formatDate";
@@ -75,7 +77,7 @@ interface QuoteDetailRow {
   customers: { id: string; company_name: string | null; contact_name: string; phone: string | null; email: string | null } | null;
   enquiries: { id: string; assigned_user_id: string | null; enquiry_legs: (JourneyLeg & { id: string })[] } | null;
   quote_versions: VersionRow[];
-  quote_events: { event: QuoteEventType; created_at: string }[];
+  quote_events: { event: QuoteEventType; detail: string | null; created_at: string }[];
   quote_decisions: { decision: QuoteDecisionType; reason: string | null; free_text: string | null; decided_at: string }[];
   customer_payments: PaymentRow[];
   quote_payment_milestones: MilestoneRow[];
@@ -90,6 +92,7 @@ const EVENT_LABEL: Record<QuoteEventType, string> = {
   cancelled: "Quote cancelled",
   partially_paid: "Deposit/partial payment received",
   paid: "Paid in full",
+  reassigned: "Reassigned",
 };
 
 function money(amount: number | undefined | null, currency: string) {
@@ -101,17 +104,19 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
   const { id } = await params;
   const actor = await requireProfile();
   const supabase = await createClient();
-  const [canCancelPermission, canProcessRefunds, canAmendPermission, canCreateQuote] = await Promise.all([
+  const [canCancelPermission, canProcessRefunds, canAmendPermission, canCreateQuote, canAssign] = await Promise.all([
     hasPermission(actor, PERMISSIONS.QUOTES_CANCEL),
     hasPermission(actor, PERMISSIONS.FINANCE_PROCESS_REFUNDS),
     hasPermission(actor, PERMISSIONS.BOOKINGS_AMEND),
     hasPermission(actor, PERMISSIONS.QUOTES_CREATE),
+    hasPermission(actor, PERMISSIONS.ENQUIRIES_REASSIGN),
   ]);
+  const assignableUsers = canAssign ? await getAssignableSalesUsers(supabase) : [];
 
   const { data: quoteRaw, error: quoteError } = await supabase
     .from("quotes")
     .select(
-      "id, quote_number, status, currency, expiry_at, invoice_number, invoiced_at, public_token, created_at, sent_at, viewed_at, decided_at, cancellation_reason, cancelled_by, cancelled_by_profile:profiles!quotes_cancelled_by_fkey(full_name), created_by, created_by_profile:profiles!quotes_created_by_fkey(full_name), ai_generated, customers(id, company_name, contact_name, phone, email), enquiries(id, assigned_user_id, enquiry_legs(id, sequence, journey_type, pickup_address, destination_address, via_points, pickup_date, pickup_time, return_date, return_time, passenger_count, luggage_count, wheelchair_required, child_seats, special_requirements, vehicle_types(name))), quote_versions!quote_versions_quote_id_fkey(id, version_number, vehicle_description, supplier_estimated_cost, selling_price, currency, deposit_percentage, deposit_fixed_amount, customer_notes, terms_snapshot, created_at, quote_line_items(id, description, amount, category)), quote_events(event, created_at), quote_decisions(decision, reason, free_text, decided_at), customer_payments(id, amount, method, paid_at), quote_payment_milestones(id, sequence, label, amount, due_date)",
+      "id, quote_number, status, currency, expiry_at, invoice_number, invoiced_at, public_token, created_at, sent_at, viewed_at, decided_at, cancellation_reason, cancelled_by, cancelled_by_profile:profiles!quotes_cancelled_by_fkey(full_name), created_by, created_by_profile:profiles!quotes_created_by_fkey(full_name), ai_generated, customers(id, company_name, contact_name, phone, email), enquiries(id, assigned_user_id, enquiry_legs(id, sequence, journey_type, pickup_address, destination_address, via_points, pickup_date, pickup_time, return_date, return_time, passenger_count, luggage_count, wheelchair_required, child_seats, special_requirements, vehicle_types(name))), quote_versions!quote_versions_quote_id_fkey(id, version_number, vehicle_description, supplier_estimated_cost, selling_price, currency, deposit_percentage, deposit_fixed_amount, customer_notes, terms_snapshot, created_at, quote_line_items(id, description, amount, category)), quote_events(event, detail, created_at), quote_decisions(decision, reason, free_text, decided_at), customer_payments(id, amount, method, paid_at), quote_payment_milestones(id, sequence, label, amount, due_date)",
     )
     .eq("id", id)
     .single();
@@ -155,6 +160,7 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
     specialRequirements: l.special_requirements,
   }));
   const amendments = (amendmentsRaw ?? []) as unknown as BookingEditRecord[];
+  const assignedName = assignableUsers.find((u) => u.id === quote.enquiries?.assigned_user_id)?.full_name ?? null;
   const versions = [...(quote.quote_versions ?? [])].sort((a, b) => b.version_number - a.version_number);
   const currentVersion = versions[0] ?? null;
   const events = [...(quote.quote_events ?? [])].sort(
@@ -277,7 +283,18 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
               </div>
               <div>
                 <dt className="text-xs font-bold uppercase text-slate-400">Sales rep</dt>
-                <dd className="mt-0.5 font-semibold">{quote.created_by_profile?.full_name ?? "—"}</dd>
+                <dd className="mt-0.5 flex flex-wrap items-center gap-2 font-semibold">
+                  <span>{assignedName ?? quote.created_by_profile?.full_name ?? "—"}</span>
+                  {canAssign && (
+                    <AssignQuoteButton
+                      quoteId={quote.id}
+                      quoteNumber={quote.quote_number}
+                      currentAssigneeId={quote.enquiries?.assigned_user_id ?? null}
+                      currentAssigneeName={assignedName}
+                      assignableUsers={assignableUsers}
+                    />
+                  )}
+                </dd>
               </div>
               <div>
                 <dt className="text-xs font-bold uppercase text-slate-400">Sent Date</dt>
@@ -312,7 +329,10 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
             <ol className="mt-4 space-y-3">
               {events.map((e, i) => (
                 <li key={i} className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-b pb-3 text-sm last:border-0">
-                  <span className="font-semibold">{EVENT_LABEL[e.event]}</span>
+                  <span className="font-semibold">
+                    {EVENT_LABEL[e.event]}
+                    {e.detail && <span className="font-normal text-slate-500"> — {e.detail}</span>}
+                  </span>
                   <span className="text-xs text-slate-400">{formatDateTime(e.created_at)}</span>
                 </li>
               ))}

@@ -1,5 +1,7 @@
 import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
+import { hasPermission, PERMISSIONS } from "@/lib/permissions";
+import { getAssignableSalesUsers } from "@/lib/leadAssignees";
 import { PartiallyPaidQuotesPage, type PartiallyPaidQuoteRow, type PartiallyPaidSortKey } from "@/components/pages/PartiallyPaidQuotesPage";
 
 const PAGE_SIZE = 25;
@@ -50,7 +52,7 @@ function comparatorFor(sort: PartiallyPaidSortKey): (a: PartiallyPaidQuoteRow, b
  */
 export default async function Page({ searchParams }: { searchParams: Promise<{ q?: string; page?: string; sort?: string }> }) {
   const params = await searchParams;
-  await requireProfile();
+  const profile = await requireProfile();
   const supabase = await createClient();
 
   const q = params.q?.trim() || "";
@@ -58,10 +60,13 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ q
   const from = (page - 1) * PAGE_SIZE;
   const sort: PartiallyPaidSortKey = (SORT_KEYS as string[]).includes(params.sort ?? "") ? (params.sort as PartiallyPaidSortKey) : "created_desc";
 
+  const canAssign = await hasPermission(profile, PERMISSIONS.ENQUIRIES_REASSIGN);
+  const assignableUsers = canAssign ? await getAssignableSalesUsers(supabase) : [];
+
   let listQuery = supabase
     .from("quotes")
     .select(
-      "id, quote_number, currency, invoice_number, created_at, customers(company_name, contact_name), enquiries(enquiry_legs(pickup_address, destination_address)), quote_versions!quotes_current_version_id_fkey(selling_price), profiles!quotes_created_by_fkey(full_name), customer_payments(amount, verification_status)",
+      "id, quote_number, currency, invoice_number, created_at, customers(company_name, contact_name), enquiries(assigned_user_id, leads(source), enquiry_legs(pickup_address, destination_address)), quote_versions!quotes_current_version_id_fkey(selling_price), profiles!quotes_created_by_fkey(full_name), customer_payments(amount, verification_status)",
     )
     .eq("status", "partially_paid");
   if (q) {
@@ -109,6 +114,8 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ q
       total={total}
       outstandingTotal={outstandingTotal}
       outstandingCurrency={outstandingCurrency}
+      canAssign={canAssign}
+      assignableUsers={assignableUsers}
     />
   );
 }

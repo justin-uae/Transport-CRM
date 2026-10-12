@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { hasPermission, PERMISSIONS } from "@/lib/permissions";
+import { getAssignableSalesUsers } from "@/lib/leadAssignees";
 import { DispatchJobDetail, type JobDetailRow, type JobAllocationRow, type JobRejectionRecord } from "@/components/pages/DispatchJobDetail";
 import type { SupplierOption } from "@/components/pages/DispatchBoard";
 import type { BookingEditRecord } from "@/components/pages/BookingEditHistory";
@@ -11,7 +12,7 @@ export default async function DispatchJobDetailPage({ params }: { params: Promis
   const actor = await requireProfile();
   const supabase = await createClient();
 
-  const [{ data: job }, { data: allocations }, { data: suppliers }, canTransfer, canDispatchManual, canEditBookingPermission, canCancelPermission, { data: amendmentsRaw }, { data: rejectionsRaw }] = await Promise.all([
+  const [{ data: job }, { data: allocations }, { data: suppliers }, canTransfer, canDispatchManual, canEditBookingPermission, canCancelPermission, canAssign, { data: amendmentsRaw }, { data: rejectionsRaw }] = await Promise.all([
     supabase
       .from("jobs")
       .select(
@@ -31,6 +32,7 @@ export default async function DispatchJobDetailPage({ params }: { params: Promis
     hasPermission(actor, PERMISSIONS.DISPATCH_SEND_MANUAL),
     hasPermission(actor, PERMISSIONS.BOOKINGS_AMEND),
     hasPermission(actor, PERMISSIONS.QUOTES_CANCEL),
+    hasPermission(actor, PERMISSIONS.ENQUIRIES_REASSIGN),
     supabase
       .from("booking_amendments")
       .select(
@@ -47,6 +49,7 @@ export default async function DispatchJobDetailPage({ params }: { params: Promis
 
   if (!job) notFound();
   const jobRow = job as unknown as JobDetailRow;
+  const assignableUsers = canAssign ? await getAssignableSalesUsers(supabase) : [];
 
   // Mirrors canDispatch() in app/(staff)/dispatch/actions.ts — owning the
   // job (it was created from a quote this user handled) is enough even
@@ -84,6 +87,8 @@ export default async function DispatchJobDetailPage({ params }: { params: Promis
       canDispatchJobs={canDispatchJobs}
       canEditBooking={canEditBooking}
       canCancel={canCancel}
+      canAssign={canAssign}
+      assignableUsers={assignableUsers}
       amendments={(amendmentsRaw ?? []) as unknown as BookingEditRecord[]}
       rejections={(rejectionsRaw ?? []) as unknown as JobRejectionRecord[]}
     />

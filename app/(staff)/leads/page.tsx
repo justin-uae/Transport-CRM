@@ -63,11 +63,19 @@ export default async function Page({
     listQuery = listQuery.or(`pickup_text.ilike.%${q}%,destination_text.ilike.%${q}%,notes.ilike.%${q}%`);
   }
 
+  // mine/pool/quoted all need only status + assigned_user_id to count, and
+  // every row any of them could possibly match is already covered by one
+  // filter (assigned to me, OR open_pool — exactly what RLS lets a plain
+  // Sales User see anyway) — so these 3 KPI counts, which used to be 3
+  // separate queries, are now derived in JS from a single cheap fetch. This
+  // mirrors the fix for the same 57014 statement-timeout bug on Pending
+  // Quotes (app/(staff)/quotes/page.tsx) — too many concurrent queries on
+  // this page was pushing Postgres over its timeout, silently leaving
+  // mineCount/poolCount/quotedCount (and sometimes the leads list itself)
+  // looking like "0 leads" when the data was there all along.
   const [
     { data: leads, count },
-    { count: mineCount },
-    { count: poolCount },
-    { count: quotedCount },
+    { data: countRows },
     { data: openEnquiries },
     { count: openQuotesCount },
     canAddEnquiry,
@@ -77,17 +85,7 @@ export default async function Page({
     canAssign,
   ] = await Promise.all([
     listQuery.order(sortColumn, { ascending: sortAscending, nullsFirst: false }).range(from, to),
-    supabase
-      .from("leads")
-      .select("id", { count: "exact", head: true })
-      .eq("assigned_user_id", profile.id)
-      .not("status", "in", "(closed,converted)"),
-    supabase.from("leads").select("id", { count: "exact", head: true }).eq("status", "open_pool"),
-    supabase
-      .from("leads")
-      .select("id", { count: "exact", head: true })
-      .eq("assigned_user_id", profile.id)
-      .eq("status", "converted"),
+    supabase.from("leads").select("status, assigned_user_id").or(`assigned_user_id.eq.${profile.id},status.eq.open_pool`),
     supabase
       .from("enquiries")
       .select("id, status")
@@ -109,6 +107,11 @@ export default async function Page({
     ),
     hasPermission(profile, PERMISSIONS.ENQUIRIES_REASSIGN),
   ]);
+
+  const rows = countRows ?? [];
+  const mineCount = rows.filter((r) => r.assigned_user_id === profile.id && r.status !== "closed" && r.status !== "converted").length;
+  const poolCount = rows.filter((r) => r.status === "open_pool").length;
+  const quotedCount = rows.filter((r) => r.assigned_user_id === profile.id && r.status === "converted").length;
 
   const quotesAwaitingResponse = openQuotesCount ?? 0;
   const assignableUsers = canAssign ? await getAssignableSalesUsers(supabase) : [];
@@ -136,9 +139,9 @@ export default async function Page({
       canAssign={canAssign}
       assignableUsers={assignableUsers}
       tab={tab}
-      mineCount={mineCount ?? 0}
-      poolCount={poolCount ?? 0}
-      quotedCount={quotedCount ?? 0}
+      mineCount={mineCount}
+      poolCount={poolCount}
+      quotedCount={quotedCount}
       page={page}
       pageSize={PAGE_SIZE}
       total={count ?? 0}

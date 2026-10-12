@@ -6,6 +6,7 @@ import { SortSelect } from "@/components/ui/SortSelect";
 import { AiBadge } from "@/components/ui/AiBadge";
 import { BookingTabs, BookingsGuideButton } from "@/components/pages/BookingTabs";
 import { formatDate, formatDateTime } from "@/lib/formatDate";
+import { SOURCE_LABEL } from "@/lib/leadSource";
 
 export type CompletedSortKey = "created_desc" | "created_asc" | "completed_desc" | "value_desc" | "value_asc";
 
@@ -26,7 +27,7 @@ export interface CompletedBookingJob {
     quote_number: string;
     currency: string;
     customers: { company_name: string | null; contact_name: string } | null;
-    enquiries: { enquiry_legs: { pickup_date: string | null }[] } | null;
+    enquiries: { leads: { source: keyof typeof SOURCE_LABEL } | null; enquiry_legs: { pickup_date: string | null }[] } | null;
     quote_versions: { selling_price: number } | null;
     ai_generated: boolean;
   } | null;
@@ -36,6 +37,11 @@ export interface CompletedBookingJob {
 function latestCompletion(allocations: CompletedBookingJob["job_allocations"]): string | null {
   const dates = allocations.map((a) => a.completed_at).filter((d): d is string => !!d).sort();
   return dates.length > 0 ? dates[dates.length - 1]! : null;
+}
+
+function sourceLabel(job: CompletedBookingJob): string {
+  const source = job.quotes?.enquiries?.leads?.source;
+  return source ? SOURCE_LABEL[source] : "—";
 }
 
 function supplierSummary(allocations: CompletedBookingJob["job_allocations"]): string {
@@ -81,7 +87,7 @@ export function BookingsCompletedPage({
                   <div>
                     <b>{customer?.company_name || customer?.contact_name || "Customer"}</b>
                     <div className="text-xs text-slate-500">
-                      {job.quotes?.quote_number} · {job.region ?? "No region"}
+                      {job.quotes?.quote_number} · {job.region ?? "No region"} · Source: {sourceLabel(job)}
                     </div>
                   </div>
                   <div className="flex shrink-0 items-center gap-1.5">

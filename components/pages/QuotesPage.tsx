@@ -17,10 +17,12 @@ import { ConfirmDetailModal } from "@/components/ui/ConfirmDetailModal";
 import { useToast } from "@/components/ui/Toast";
 import { PageGuide } from "@/components/ui/PageGuide";
 import { QuotesDiagram } from "@/components/ui/guide-diagrams/QuotesDiagram";
-import { resendQuoteEmailAction, resendQuoteEmailsBulkAction, estimateQuotePriceAction } from "@/app/(staff)/quotes/actions";
+import { resendQuoteEmailAction, resendQuoteEmailsBulkAction, estimateQuotePriceAction, assignQuoteAction } from "@/app/(staff)/quotes/actions";
 import type { QuoteStatus } from "@/lib/supabase/database.types";
 import { QUOTE_STATUS_LABEL, QUOTE_STATUS_STYLE } from "@/lib/quoteStatus";
 import { formatDateTime, formatDateAndTime, isPastDate } from "@/lib/formatDate";
+import { SOURCE_LABEL } from "@/lib/leadSource";
+import type { AssignableUser } from "@/components/pages/LeadDetailPage";
 
 export type QuoteSortKey =
   | "created_desc"
@@ -65,6 +67,8 @@ export interface QuoteRow {
   viewed_at: string | null;
   customers: { company_name: string | null; contact_name: string } | null;
   enquiries: {
+    assigned_user_id: string | null;
+    leads: { source: keyof typeof SOURCE_LABEL } | null;
     enquiry_legs: { pickup_address: string; destination_address: string; pickup_date: string | null; pickup_time: string | null }[];
   } | null;
   quote_versions: { selling_price: number } | null;
@@ -89,6 +93,11 @@ function money(amount: number | undefined, currency: string) {
 
 function journeyOf(q: QuoteRow) {
   return q.enquiries?.enquiry_legs?.[0] ?? null;
+}
+
+function sourceLabel(q: QuoteRow) {
+  const source = q.enquiries?.leads?.source;
+  return source ? SOURCE_LABEL[source] : "—";
 }
 
 // One label/value tile — every field in a quote card renders through this,
@@ -122,6 +131,8 @@ export function QuotesPage({
   quotes,
   canCreateQuote,
   canResend,
+  canAssign,
+  assignableUsers,
   canViewAiEstimate,
   page,
   pageSize,
@@ -136,6 +147,8 @@ export function QuotesPage({
   quotes: QuoteRow[];
   canCreateQuote: boolean;
   canResend: boolean;
+  canAssign: boolean;
+  assignableUsers: AssignableUser[];
   canViewAiEstimate: boolean;
   page: number;
   pageSize: number;
@@ -152,6 +165,10 @@ export function QuotesPage({
   const [resendingId, setResendingId] = useState<string | null>(null);
   const [confirmSingle, setConfirmSingle] = useState<QuoteRow | null>(null);
   const [confirmBulkOpen, setConfirmBulkOpen] = useState(false);
+  const [assignQuote, setAssignQuote] = useState<QuoteRow | null>(null);
+  const [assigneeId, setAssigneeId] = useState("");
+  const [assignError, setAssignError] = useState<string | null>(null);
+  const [assignPending, startAssignTransition] = useTransition();
   const [pending, startTransition] = useTransition();
   const [bulkPending, startBulkTransition] = useTransition();
   const [estimatingId, setEstimatingId] = useState<string | null>(null);
@@ -254,6 +271,47 @@ export function QuotesPage({
   function copyLink(token: string) {
     const link = `${window.location.origin}/q/${token}`;
     navigator.clipboard.writeText(link).then(() => notify("Quote link copied"));
+  }
+
+  function assignedNameFor(q: QuoteRow) {
+    const id = q.enquiries?.assigned_user_id;
+    if (!id) return null;
+    return assignableUsers.find((u) => u.id === id)?.full_name ?? null;
+  }
+
+  function openAssign(q: QuoteRow) {
+    setAssignError(null);
+    setAssigneeId(q.enquiries?.assigned_user_id ?? "");
+    setAssignQuote(q);
+  }
+
+  function closeAssign() {
+    if (assignPending) return;
+    setAssignQuote(null);
+    setAssignError(null);
+  }
+
+  function doAssign() {
+    if (!assignQuote) return;
+    if (!assigneeId) {
+      setAssignError("Choose someone to assign this quote to.");
+      return;
+    }
+    if (assigneeId === assignQuote.enquiries?.assigned_user_id) {
+      setAssignError("This quote is already assigned to that person.");
+      return;
+    }
+    setAssignError(null);
+    startAssignTransition(async () => {
+      const result = await assignQuoteAction(assignQuote.id, assigneeId);
+      if (result.error) {
+        setAssignError(result.error);
+        return;
+      }
+      const name = assignableUsers.find((u) => u.id === assigneeId)?.full_name ?? "the selected user";
+      notify(`Quote assigned to ${name}`);
+      setAssignQuote(null);
+    });
   }
 
   function toggleOne(id: string) {
@@ -493,21 +551,25 @@ export function QuotesPage({
                   </Field>
 
                   <Field label="Sales Rep">
-                    <span className="block truncate">{q.profiles?.full_name || "—"}</span>
+                    <span className="block truncate">{assignedNameFor(q) || q.profiles?.full_name || "—"}</span>
                   </Field>
                   <Field label="Pickup Date">{pickupInfo(q)}</Field>
                   <Field label="Sent">{q.sent_at ? formatDateTime(q.sent_at) : "—"}</Field>
                   <Field label="Customer Viewed">
                     {q.viewed_at ? formatDateTime(q.viewed_at) : <span className="text-slate-400">Not viewed yet</span>}
                   </Field>
+                  {/* Shares its row with AI Est. Price below when that's
+                      visible (1 + 3 = 4 columns) so Source never sits alone
+                      on an otherwise-empty row; spans the full row itself
+                      for anyone who can't see the AI estimate. */}
+                  <Field label="Source" className={canViewAiEstimate ? undefined : "sm:col-span-4"}>
+                    {sourceLabel(q)}
+                  </Field>
 
                   {/* Master Admin only — an internal pricing benchmark, not
-                      anything a customer or regular staff should see. Its
-                      own full-width row rather than folded into the 4-col
-                      grid above, since it's conditional and would otherwise
-                      throw off that grid's column count. */}
+                      anything a customer or regular staff should see. */}
                   {canViewAiEstimate && (
-                    <Field label="AI Est. Price" className="sm:col-span-4">
+                    <Field label="AI Est. Price" className="sm:col-span-3">
                       {(() => {
                         const estimate = aiEstimateFor(q);
                         const isEstimating = estimatePending && estimatingId === q.id;
@@ -576,6 +638,11 @@ export function QuotesPage({
                     >
                       <RefreshCw size={13} />
                       {pending && resendingId === q.id ? "Resending…" : "Resend"}
+                    </button>
+                  )}
+                  {canAssign && (
+                    <button onClick={() => openAssign(q)} className="rounded-lg border px-3 py-2 text-xs font-bold hover:bg-slate-50">
+                      Assign
                     </button>
                   )}
                 </div>
@@ -663,6 +730,36 @@ export function QuotesPage({
           </div>
         )}
       </ConfirmDetailModal>
+
+      {assignQuote && (
+        <ConfirmDetailModal
+          open
+          onClose={closeAssign}
+          title={`Assign ${assignQuote.quote_number}`}
+          description="Hand this quote to a specific sales user — moves it onto their list the same way reassigning its lead would."
+          pending={assignPending}
+          error={assignError}
+          details={[{ label: "Currently", value: assignedNameFor(assignQuote) || <span className="font-bold text-primary-600">Unassigned</span> }]}
+          confirmLabel="Assign"
+          onConfirm={doAssign}
+        >
+          <label className="block text-sm font-bold">
+            Assign to
+            <select
+              value={assigneeId}
+              onChange={(e) => setAssigneeId(e.target.value)}
+              className="mt-1 w-full rounded-xl border px-3 py-2 font-normal"
+            >
+              <option value="">Choose a sales user…</option>
+              {assignableUsers.map((u) => (
+                <option key={u.id} value={u.id}>
+                  {u.full_name}
+                </option>
+              ))}
+            </select>
+          </label>
+        </ConfirmDetailModal>
+      )}
     </div>
   );
 }

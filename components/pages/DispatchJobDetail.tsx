@@ -20,11 +20,12 @@ import {
   transferSupplierInvoiceToAccountingAction,
   updateAllocationTermsAction,
 } from "@/app/(staff)/dispatch/actions";
-import { cancelBookingAction } from "@/app/(staff)/quotes/actions";
+import { cancelBookingAction, assignQuoteAction } from "@/app/(staff)/quotes/actions";
 import { JourneyLegDetail, type JourneyLeg } from "@/components/pages/JourneyLegDetail";
 import { EditBookingButton, type EditableLeg } from "@/components/pages/EditBookingButton";
 import { BookingEditHistory, type BookingEditRecord } from "@/components/pages/BookingEditHistory";
 import { RejectionHistory, type JobRejectionRecord } from "@/components/pages/RejectionHistory";
+import type { AssignableUser } from "@/components/pages/LeadDetailPage";
 
 export type { JobRejectionRecord };
 
@@ -591,6 +592,8 @@ export function DispatchJobDetail({
   canDispatchJobs,
   canEditBooking,
   canCancel,
+  canAssign,
+  assignableUsers,
   amendments,
   rejections,
 }: {
@@ -602,6 +605,8 @@ export function DispatchJobDetail({
   canDispatchJobs: boolean;
   canEditBooking: boolean;
   canCancel: boolean;
+  canAssign: boolean;
+  assignableUsers: AssignableUser[];
   amendments: BookingEditRecord[];
   rejections: JobRejectionRecord[];
 }) {
@@ -613,6 +618,10 @@ export function DispatchJobDetail({
   const [cancelReason, setCancelReason] = useState("");
   const [cancelError, setCancelError] = useState<string | null>(null);
   const [cancelPending, startCancelTransition] = useTransition();
+  const [assignOpen, setAssignOpen] = useState(false);
+  const [assigneeId, setAssigneeId] = useState(job.quotes?.enquiries?.assigned_user_id ?? "");
+  const [assignError, setAssignError] = useState<string | null>(null);
+  const [assignPending, startAssignTransition] = useTransition();
   const [selectedLegIds, setSelectedLegIds] = useState<string[]>([]);
   const [vehicleNotes, setVehicleNotes] = useState("");
   // Pre-filled from the quote's own supplier estimated cost so the figure
@@ -647,6 +656,39 @@ export function DispatchJobDetail({
     [allocations],
   );
   const legsById = useMemo(() => new Map(legs.map((l) => [l.id, l])), [legs]);
+
+  const currentAssigneeId = job.quotes?.enquiries?.assigned_user_id ?? null;
+  const currentAssigneeName = assignableUsers.find((u) => u.id === currentAssigneeId)?.full_name ?? null;
+
+  function openAssign() {
+    setAssignError(null);
+    setAssigneeId(currentAssigneeId ?? "");
+    setAssignOpen(true);
+  }
+
+  function doAssign() {
+    if (!job.quotes) return;
+    if (!assigneeId) {
+      setAssignError("Choose someone to assign this job to.");
+      return;
+    }
+    if (assigneeId === currentAssigneeId) {
+      setAssignError("This job is already assigned to that person.");
+      return;
+    }
+    setAssignError(null);
+    startAssignTransition(async () => {
+      const result = await assignQuoteAction(job.quotes!.id, assigneeId);
+      if (result.error) {
+        setAssignError(result.error);
+        return;
+      }
+      const name = assignableUsers.find((u) => u.id === assigneeId)?.full_name ?? "the selected user";
+      notify(`Job assigned to ${name}`);
+      setAssignOpen(false);
+      router.refresh();
+    });
+  }
 
   function cancelBooking() {
     if (!job.quotes) return;
@@ -720,6 +762,15 @@ export function DispatchJobDetail({
                     legs={editableLegs}
                     className="rounded-xl border px-3 py-1.5 text-xs font-bold"
                   />
+                )}
+                {job.quotes && canAssign && (
+                  <button
+                    type="button"
+                    onClick={openAssign}
+                    className="rounded-xl border px-3 py-1.5 text-xs font-bold hover:bg-slate-50"
+                  >
+                    Assign{currentAssigneeName ? `: ${currentAssigneeName}` : " (unassigned)"}
+                  </button>
                 )}
                 {job.quotes && canCancel && CANCELLABLE_STATUSES.includes(job.quotes.status) && (
                   <button
@@ -882,6 +933,36 @@ export function DispatchJobDetail({
               className="mt-2 min-h-20 w-full rounded-xl border px-3 py-2 font-normal"
               placeholder="Why is this booking being cancelled?"
             />
+          </label>
+        </ConfirmDetailModal>
+      )}
+
+      {assignOpen && job.quotes && (
+        <ConfirmDetailModal
+          open
+          onClose={() => !assignPending && setAssignOpen(false)}
+          title={`Assign ${job.quotes.quote_number}`}
+          description="Hand this job's quote to a specific sales user — moves it onto their list the same way reassigning its lead would."
+          pending={assignPending}
+          error={assignError}
+          details={[{ label: "Currently", value: currentAssigneeName || <span className="font-bold text-primary-600">Unassigned</span> }]}
+          confirmLabel="Assign"
+          onConfirm={doAssign}
+        >
+          <label className="block text-sm font-bold">
+            Assign to
+            <select
+              value={assigneeId}
+              onChange={(e) => setAssigneeId(e.target.value)}
+              className="mt-1 w-full rounded-xl border px-3 py-2 font-normal"
+            >
+              <option value="">Choose a sales user…</option>
+              {assignableUsers.map((u) => (
+                <option key={u.id} value={u.id}>
+                  {u.full_name}
+                </option>
+              ))}
+            </select>
           </label>
         </ConfirmDetailModal>
       )}

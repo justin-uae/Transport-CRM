@@ -484,6 +484,11 @@ export async function createAndSendQuote(
       link: publicLink,
     },
     attachments: quotePdf ? [{ filename: `${quote.quote_number}.pdf`, content: quotePdf, contentType: "application/pdf" }] : undefined,
+    // Without this, every AI-auto-sent quote falls back to the shared
+    // SMTP_FROM sender — even though "Andy I" (aiProfileId) has its own
+    // connected mailbox (email_accounts) like any other rep, it just never
+    // got told to use it here.
+    senderId: aiProfileId ?? undefined,
   });
   if (emailResult.error) {
     console.error(`aiAutoQuote: quote_sent email failed for quote ${quote.id}: ${emailResult.error}`);
