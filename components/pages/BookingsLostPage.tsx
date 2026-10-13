@@ -3,7 +3,6 @@ import { PageHead } from "@/components/ui/PageHead";
 import { Panel } from "@/components/ui/Panel";
 import { SortSelect } from "@/components/ui/SortSelect";
 import { AiBadge } from "@/components/ui/AiBadge";
-import { Money } from "@/components/ui/Money";
 import { BookingTabs, BookingsGuideButton } from "@/components/pages/BookingTabs";
 import { formatDate, formatDateTime } from "@/lib/formatDate";
 import { SOURCE_LABEL } from "@/lib/leadSource";
@@ -56,6 +55,10 @@ export interface ExpiredLead {
   profiles: { full_name: string } | null;
 }
 
+function money(amount: number | undefined | null, currency: string) {
+  if (amount === undefined || amount === null) return "—";
+  return new Intl.NumberFormat("en-GB", { style: "currency", currency, maximumFractionDigits: 0 }).format(amount);
+}
 
 export function BookingsLostPage({ quotes, expiredLeads }: { quotes: LostBookingQuote[]; expiredLeads: ExpiredLead[] }) {
   return (
@@ -139,9 +142,7 @@ export function BookingsLostPage({ quotes, expiredLeads }: { quotes: LostBooking
                     {leg ? `${leg.pickup_address} → ${leg.destination_address}` : "—"}
                     {leg?.pickup_date && <span className="text-slate-400"> · {formatDate(leg.pickup_date)}</span>}
                   </span>
-                  <span className="font-bold">
-                    <Money amount={q.quote_versions?.selling_price} currency={q.currency} />
-                  </span>
+                  <span className="font-bold">{money(q.quote_versions?.selling_price, q.currency)}</span>
                 </div>
                 {!isExpired && !isCancelled && decision && (decision.reason || decision.free_text) && (
                   <p className="mt-2 text-xs text-slate-500">

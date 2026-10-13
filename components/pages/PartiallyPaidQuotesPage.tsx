@@ -5,7 +5,6 @@ import { Wallet } from "lucide-react";
 import Link from "next/link";
 import { Panel } from "@/components/ui/Panel";
 import { Kpi } from "@/components/ui/Kpi";
-import { Money } from "@/components/ui/Money";
 import { PageHead } from "@/components/ui/PageHead";
 import { SearchInput } from "@/components/ui/SearchInput";
 import { SortSelect } from "@/components/ui/SortSelect";
@@ -45,6 +44,11 @@ export interface PartiallyPaidQuoteRow {
   profiles: { full_name: string } | null;
   paid: number;
   remaining: number;
+}
+
+function money(amount: number | undefined, currency: string) {
+  if (amount === undefined) return "—";
+  return new Intl.NumberFormat("en-GB", { style: "currency", currency, maximumFractionDigits: 0 }).format(amount);
 }
 
 function journeyOf(q: PartiallyPaidQuoteRow) {
@@ -132,12 +136,7 @@ export function PartiallyPaidQuotesPage({
       />
       <div className="grid gap-4 md:grid-cols-2">
         <Kpi title="Partially paid quotes" value={String(total)} icon={Wallet} href="/quotes/partially-paid" />
-        <Kpi
-          title="Outstanding balance"
-          value={<Money amount={outstandingTotal} currency={outstandingCurrency} />}
-          icon={Wallet}
-          href="/quotes/partially-paid"
-        />
+        <Kpi title="Outstanding balance" value={money(outstandingTotal, outstandingCurrency)} icon={Wallet} href="/quotes/partially-paid" />
       </div>
       <Panel className="mt-6 min-w-0">
         <div className="flex flex-col gap-3 border-b pb-4 md:flex-row md:items-center">
@@ -163,15 +162,11 @@ export function PartiallyPaidQuotesPage({
               </div>
               <div className="mt-2 flex justify-between text-sm">
                 <span className="text-slate-500">Paid</span>
-                <b>
-                  <Money amount={q.paid} currency={q.currency} />
-                </b>
+                <b>{money(q.paid, q.currency)}</b>
               </div>
               <div className="flex justify-between text-sm">
                 <span className="text-slate-500">Remaining</span>
-                <b className="text-amber-700">
-                  <Money amount={q.remaining} currency={q.currency} />
-                </b>
+                <b className="text-amber-700">{money(q.remaining, q.currency)}</b>
               </div>
               <div className="mt-1 text-xs text-slate-400">Sales rep: {assignedNameFor(q) || q.profiles?.full_name || "—"}</div>
               <div className="mt-0.5 text-xs text-slate-400">Source: {sourceLabel(q)}</div>
@@ -227,12 +222,8 @@ export function PartiallyPaidQuotesPage({
                   </td>
                   <td className="whitespace-nowrap px-3 py-4 text-slate-600">{assignedNameFor(q) || q.profiles?.full_name || "—"}</td>
                   <td className="whitespace-nowrap px-3 py-4 text-slate-600">{sourceLabel(q)}</td>
-                  <td className="whitespace-nowrap px-3 py-4 font-bold text-emerald-700">
-                    <Money amount={q.paid} currency={q.currency} />
-                  </td>
-                  <td className="whitespace-nowrap px-3 py-4 font-black text-amber-700">
-                    <Money amount={q.remaining} currency={q.currency} />
-                  </td>
+                  <td className="whitespace-nowrap px-3 py-4 font-bold text-emerald-700">{money(q.paid, q.currency)}</td>
+                  <td className="whitespace-nowrap px-3 py-4 font-black text-amber-700">{money(q.remaining, q.currency)}</td>
                   <td className="whitespace-nowrap px-3 py-4 text-right">
                     <div className="flex justify-end gap-2">
                       <Link

@@ -6,7 +6,6 @@ import { Breadcrumb } from "@/components/ui/Breadcrumb";
 import { BackLink } from "@/components/ui/BackLink";
 import { Panel } from "@/components/ui/Panel";
 import { SectionTitle } from "@/components/ui/SectionTitle";
-import { Money } from "@/components/ui/Money";
 import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { formatDateTime } from "@/lib/formatDate";
@@ -26,6 +25,10 @@ const ENQUIRY_STATUS_STYLE: Record<EnquiryStatus, string> = {
   completed: "bg-emerald-50 text-emerald-700",
 };
 
+function money(amount: number | undefined | null, currency: string) {
+  if (amount === undefined || amount === null) return "—";
+  return new Intl.NumberFormat("en-GB", { style: "currency", currency, maximumFractionDigits: 0 }).format(amount);
+}
 
 const TASK_STATUS_STYLE: Record<TaskStatus, string> = {
   todo: "bg-slate-100 text-slate-700",
@@ -70,8 +73,8 @@ type TimelineEvent = {
   id: string;
   at: string;
   icon: typeof MapPin;
-  title: React.ReactNode;
-  subtitle: React.ReactNode;
+  title: string;
+  subtitle: string;
   href?: string;
   badge: { label: string; className: string };
 };
@@ -131,11 +134,7 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
       at: q.created_at,
       icon: FileText,
       title: q.quote_number,
-      subtitle: (
-        <>
-          <Money amount={q.quote_versions?.selling_price} currency={q.currency} /> · {formatDateTime(q.created_at)}
-        </>
-      ),
+      subtitle: `${money(q.quote_versions?.selling_price, q.currency)} · ${formatDateTime(q.created_at)}`,
       href: `/quotes/${q.id}`,
       badge: { label: QUOTE_STATUS_LABEL[q.status], className: QUOTE_STATUS_STYLE[q.status] },
     })),
@@ -143,11 +142,7 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
       id: `payment-${p.id}`,
       at: p.paid_at,
       icon: Banknote,
-      title: (
-        <>
-          <Money amount={p.amount} currency={p.currency} /> received
-        </>
-      ),
+      title: `${money(p.amount, p.currency)} received`,
       subtitle: `${p.method.replaceAll("_", " ")} · ${p.quotes?.quote_number ?? "—"} · ${formatDateTime(p.paid_at)}`,
       href: p.quotes ? `/quotes/${p.quotes.id}` : undefined,
       badge: { label: "payment", className: "bg-emerald-50 text-emerald-700" },

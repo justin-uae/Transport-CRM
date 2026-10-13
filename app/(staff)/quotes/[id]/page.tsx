@@ -10,7 +10,6 @@ import { Breadcrumb } from "@/components/ui/Breadcrumb";
 import { BackLink } from "@/components/ui/BackLink";
 import { SectionTitle } from "@/components/ui/SectionTitle";
 import { RichText } from "@/components/ui/RichText";
-import { Money } from "@/components/ui/Money";
 import { QuoteDetailActions, type AmendableLeg, type QuoteRefund } from "@/components/pages/QuoteDetailActions";
 import { AssignQuoteButton } from "@/components/pages/AssignQuoteButton";
 import { BookingEditHistory, type BookingEditRecord } from "@/components/pages/BookingEditHistory";
@@ -223,15 +222,11 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
               </div>
               <div>
                 <dt className="text-xs font-bold uppercase text-slate-400">Supplier cost (est.)</dt>
-                <dd className="mt-0.5 font-semibold">
-                  <Money amount={currentVersion?.supplier_estimated_cost} currency={quote.currency} />
-                </dd>
+                <dd className="mt-0.5 font-semibold">{money(currentVersion?.supplier_estimated_cost, quote.currency)}</dd>
               </div>
               <div>
                 <dt className="text-xs font-bold uppercase text-slate-400">Selling price</dt>
-                <dd className="mt-0.5 text-base font-black text-primary-600">
-                  <Money amount={currentVersion?.selling_price} currency={quote.currency} />
-                </dd>
+                <dd className="mt-0.5 text-base font-black text-primary-600">{money(currentVersion?.selling_price, quote.currency)}</dd>
               </div>
             </dl>
             {currentVersion && currentVersion.quote_line_items.length > 0 && (
@@ -240,9 +235,7 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
                 {currentVersion.quote_line_items.map((li) => (
                   <div key={li.id} className="flex justify-between">
                     <span className="text-slate-500">{li.description}</span>
-                    <b>
-                      <Money amount={li.amount} currency={quote.currency} />
-                    </b>
+                    <b>{money(li.amount, quote.currency)}</b>
                   </div>
                 ))}
               </div>
@@ -263,9 +256,7 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
                         {m.label}
                         {m.due_date ? ` · due ${formatDate(m.due_date)}` : ""}
                       </span>
-                      <b className={covered ? "text-slate-400" : ""}>
-                        <Money amount={m.amount} currency={quote.currency} />
-                      </b>
+                      <b className={covered ? "text-slate-400" : ""}>{money(m.amount, quote.currency)}</b>
                     </div>
                   );
                 })}
@@ -385,9 +376,7 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
                     {versions.map((v) => (
                       <tr key={v.id} className="border-t">
                         <td className="whitespace-nowrap py-2 font-bold">v{v.version_number}</td>
-                        <td className="whitespace-nowrap py-2">
-                          <Money amount={v.selling_price} currency={v.currency} />
-                        </td>
+                        <td className="whitespace-nowrap py-2">{money(v.selling_price, v.currency)}</td>
                         <td className="min-w-[11rem] py-2 text-slate-500">{formatDateTime(v.created_at)}</td>
                       </tr>
                     ))}
@@ -443,18 +432,14 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
                   <span className="capitalize text-slate-500">
                     {p.method.replace("_", " ")} · {formatDateTime(p.paid_at)}
                   </span>
-                  <b>
-                    <Money amount={p.amount} currency={quote.currency} />
-                  </b>
+                  <b>{money(p.amount, quote.currency)}</b>
                 </div>
               ))}
               {payments.length === 0 && <p className="text-sm text-slate-500">No payments recorded yet.</p>}
               {payments.length > 0 && (
                 <div className="flex justify-between pt-1.5 text-sm font-bold">
                   <span>Balance remaining</span>
-                  <span className="text-primary-600">
-                    <Money amount={balanceRemaining} currency={quote.currency} />
-                  </span>
+                  <span className="text-primary-600">{money(balanceRemaining, quote.currency)}</span>
                 </div>
               )}
             </div>

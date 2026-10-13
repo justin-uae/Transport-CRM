@@ -13,8 +13,8 @@ export function Kpi({
   href,
 }: {
   title: string;
-  value: React.ReactNode;
-  delta?: React.ReactNode;
+  value: string;
+  delta?: string;
   icon: LucideIcon;
   warn?: boolean;
   /** When set, the whole card becomes a link to the view this number is counted from — e.g. a status-filtered list. Omit for a card that's a pure aggregate (a revenue total, a percentage) with no single list it could sensibly open. */

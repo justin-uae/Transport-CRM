@@ -4,7 +4,6 @@ import { useState, useTransition } from "react";
 import Link from "next/link";
 import { useToast } from "@/components/ui/Toast";
 import { ConfirmDetailModal } from "@/components/ui/ConfirmDetailModal";
-import { Money } from "@/components/ui/Money";
 import {
   resendQuoteEmailAction,
   resendQuoteWhatsAppAction,
@@ -38,6 +37,11 @@ interface QuoteSummary {
 }
 
 export type AmendableLeg = EditableLeg;
+
+function money(amount: number | null, currency: string) {
+  if (amount === null) return "—";
+  return new Intl.NumberFormat("en-GB", { style: "currency", currency, maximumFractionDigits: 0 }).format(amount);
+}
 
 const EMAILABLE: QuoteStatus[] = ["sent", "viewed", "accepted", "partially_paid", "paid"];
 const CANCELLABLE: QuoteStatus[] = ["accepted", "partially_paid", "paid"];
@@ -215,9 +219,7 @@ export function QuoteDetailActions({
           {refunds.map((r) => (
             <div key={r.id} className="rounded-lg border p-3 text-sm">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <span className="font-bold">
-                  <Money amount={r.amount} currency={r.currency} />
-                </span>
+                <span className="font-bold">{money(r.amount, r.currency)}</span>
                 <span className={`rounded-full px-2.5 py-1 text-xs font-bold capitalize ${REFUND_STATUS_STYLE[r.status]}`}>
                   {r.status}
                 </span>
@@ -254,7 +256,7 @@ export function QuoteDetailActions({
           details={[
             { label: "Quote", value: quote.quote_number },
             { label: "Customer", value: quote.customerLabel },
-            { label: "Value", value: <Money amount={quote.sellingPrice} currency={quote.currency} /> },
+            { label: "Value", value: money(quote.sellingPrice, quote.currency) },
           ]}
           pending={pending}
           destructive
@@ -280,7 +282,7 @@ export function QuoteDetailActions({
           title="Mark this refund as processed?"
           description="Confirms the money has actually been sent back to the customer — this cannot be undone."
           details={[
-            { label: "Amount", value: <Money amount={confirmRefund.amount} currency={confirmRefund.currency} /> },
+            { label: "Amount", value: money(confirmRefund.amount, confirmRefund.currency) },
             { label: "Reason", value: confirmRefund.reason ?? "—" },
           ]}
           pending={refundPending}
@@ -298,7 +300,7 @@ export function QuoteDetailActions({
           details={[
             { label: "Quote", value: quote.quote_number },
             { label: "Customer", value: quote.customerLabel },
-            { label: "Value", value: <Money amount={quote.sellingPrice} currency={quote.currency} /> },
+            { label: "Value", value: money(quote.sellingPrice, quote.currency) },
             { label: "Invoice", value: quote.invoice_number ?? "—" },
           ]}
           pending={pending}

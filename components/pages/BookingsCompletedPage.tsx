@@ -4,7 +4,6 @@ import { Panel } from "@/components/ui/Panel";
 import { Pagination } from "@/components/ui/Pagination";
 import { SortSelect } from "@/components/ui/SortSelect";
 import { AiBadge } from "@/components/ui/AiBadge";
-import { Money } from "@/components/ui/Money";
 import { BookingTabs, BookingsGuideButton } from "@/components/pages/BookingTabs";
 import { formatDate, formatDateTime } from "@/lib/formatDate";
 import { SOURCE_LABEL } from "@/lib/leadSource";
@@ -50,6 +49,11 @@ function supplierSummary(allocations: CompletedBookingJob["job_allocations"]): s
   return names.length > 0 ? `Supplier: ${names.join(", ")}` : "—";
 }
 
+function money(amount: number | undefined | null, currency: string) {
+  if (amount === undefined || amount === null) return "—";
+  return new Intl.NumberFormat("en-GB", { style: "currency", currency, maximumFractionDigits: 0 }).format(amount);
+}
+
 export function BookingsCompletedPage({
   jobs,
   page,
@@ -93,9 +97,7 @@ export function BookingsCompletedPage({
                 </div>
                 <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-sm text-slate-600">
                   <span>{supplierSummary(job.job_allocations)}</span>
-                  <span className="font-bold">
-                    <Money amount={job.quotes?.quote_versions?.selling_price} currency={job.quotes?.currency ?? "EUR"} />
-                  </span>
+                  <span className="font-bold">{money(job.quotes?.quote_versions?.selling_price, job.quotes?.currency ?? "EUR")}</span>
                 </div>
                 <p className="mt-1 text-xs text-slate-500">
                   Travel date: {job.quotes?.enquiries?.enquiry_legs?.[0]?.pickup_date ? formatDate(job.quotes.enquiries.enquiry_legs[0].pickup_date!) : "—"}

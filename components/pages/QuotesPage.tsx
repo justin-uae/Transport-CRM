@@ -8,7 +8,6 @@ import Link from "next/link";
 import clsx from "clsx";
 import { Panel } from "@/components/ui/Panel";
 import { Kpi } from "@/components/ui/Kpi";
-import { Money } from "@/components/ui/Money";
 import { PageHead } from "@/components/ui/PageHead";
 import { SearchInput } from "@/components/ui/SearchInput";
 import { SortSelect } from "@/components/ui/SortSelect";
@@ -438,11 +437,7 @@ export function QuotesPage({
         <Kpi
           title="Awaiting response"
           value={String(sentCount)}
-          delta={
-            <>
-              <Money amount={pipelineValue} currency={pipelineCurrency} /> pipeline
-            </>
-          }
+          delta={money(pipelineValue, pipelineCurrency) + " pipeline"}
           icon={Send}
           href="/quotes?status=awaiting_response"
         />
@@ -552,9 +547,7 @@ export function QuotesPage({
                     <JourneyCell pickup={leg?.pickup_address} destination={leg?.destination_address} maxWidth="100%" />
                   </Field>
                   <Field label="Value" className="sm:text-right">
-                    <span className="text-base font-black text-slate-900">
-                      <Money amount={q.quote_versions?.selling_price} currency={q.currency} />
-                    </span>
+                    <span className="text-base font-black text-slate-900">{money(q.quote_versions?.selling_price, q.currency)}</span>
                   </Field>
 
                   <Field label="Sales Rep">
@@ -586,7 +579,7 @@ export function QuotesPage({
                           <div className="flex flex-wrap items-center gap-2">
                             {estimate ? (
                               <span className={clsx("font-black", seemsUnderpriced ? "text-amber-600" : "text-slate-900")}>
-                                <Money amount={estimate.price} currency={estimate.currency} />
+                                {money(estimate.price, estimate.currency)}
                                 {estimate.distanceKm != null && (
                                   <span className="ml-1.5 text-xs font-normal text-slate-400">
                                     (≈{estimate.distanceKm} km{estimate.legCount && estimate.legCount > 1 ? ` across ${estimate.legCount} legs` : ""})
@@ -671,7 +664,7 @@ export function QuotesPage({
             ? [
                 { label: "Quote", value: confirmSingle.quote_number },
                 { label: "Customer", value: confirmSingle.customers?.company_name || confirmSingle.customers?.contact_name || "—" },
-                { label: "Value", value: <Money amount={confirmSingle.quote_versions?.selling_price} currency={confirmSingle.currency} /> },
+                { label: "Value", value: money(confirmSingle.quote_versions?.selling_price, confirmSingle.currency) },
               ]
             : []
         }
@@ -700,11 +693,8 @@ export function QuotesPage({
           aiEstimateModalData
             ? [
                 { label: "Recommended vehicle", value: aiEstimateModalData.vehicleDescription ?? "—" },
-                {
-                  label: "Supplier cost estimate",
-                  value: <Money amount={aiEstimateModalData.supplierCost ?? undefined} currency={aiEstimateModalData.currency} />,
-                },
-                { label: "Suggested selling price", value: <Money amount={aiEstimateModalData.price} currency={aiEstimateModalData.currency} /> },
+                { label: "Supplier cost estimate", value: money(aiEstimateModalData.supplierCost ?? undefined, aiEstimateModalData.currency) },
+                { label: "Suggested selling price", value: money(aiEstimateModalData.price, aiEstimateModalData.currency) },
                 ...(aiEstimateModalData.originalPrice != null && aiEstimateModalData.originalCurrency != null
                   ? [
                       {
