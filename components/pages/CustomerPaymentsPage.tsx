@@ -4,6 +4,7 @@ import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Panel } from "@/components/ui/Panel";
 import { PageHead } from "@/components/ui/PageHead";
+import { Money } from "@/components/ui/Money";
 import { PageGuide } from "@/components/ui/PageGuide";
 import { CustomerPaymentsDiagram } from "@/components/ui/guide-diagrams/CustomerPaymentsDiagram";
 import { useToast } from "@/components/ui/Toast";
@@ -353,7 +354,9 @@ export function CustomerPaymentsPage({
                     </div>
                   </div>
                   <div className="text-right">
-                    <div className="font-black">{money(r.amount, r.currency)}</div>
+                    <div className="font-black">
+                      <Money amount={r.amount} currency={r.currency} />
+                    </div>
                     <span
                       className={`rounded-full px-2.5 py-1 text-xs font-bold capitalize ${
                         r.status === "processed" ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"
@@ -399,7 +402,7 @@ export function CustomerPaymentsPage({
                     {q.customers?.company_name || q.customers?.contact_name || "—"}
                   </div>
                   <div className="mt-1 text-sm">
-                    Bank transfer · {money(p.amount, q.currency)} · {formatDateTime(p.paid_at)}
+                    Bank transfer · <Money amount={p.amount} currency={q.currency} /> · {formatDateTime(p.paid_at)}
                   </div>
                   {proofUrls[p.id] && (
                     <a href={proofUrls[p.id] ?? undefined} target="_blank" rel="noreferrer" className="text-xs font-bold text-primary-600">
@@ -442,10 +445,12 @@ export function CustomerPaymentsPage({
                     <div className="text-sm font-semibold">{customer?.company_name || customer?.contact_name || "—"}</div>
                   </div>
                   <div className="text-right">
-                    <span className="font-black">{money(q.quote_versions?.selling_price, q.currency)}</span>
+                    <span className="font-black">
+                      <Money amount={q.quote_versions?.selling_price} currency={q.currency} />
+                    </span>
                     {q.status === "partially_paid" && (
                       <div className="text-xs font-semibold text-amber-600">
-                        {money(paidSoFar, q.currency)} paid · {money(balance, q.currency)} remaining
+                        <Money amount={paidSoFar} currency={q.currency} /> paid · <Money amount={balance} currency={q.currency} /> remaining
                       </div>
                     )}
                   </div>
@@ -458,7 +463,7 @@ export function CustomerPaymentsPage({
                     {(q.customer_payments ?? []).map((p) => (
                       <div key={p.id} className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
                         <span className="capitalize">
-                          {p.method.replace("_", " ")} · {money(p.amount, q.currency)} · {formatDateTime(p.paid_at)}
+                          {p.method.replace("_", " ")} · <Money amount={p.amount} currency={q.currency} /> · {formatDateTime(p.paid_at)}
                           {p.verification_status === "pending" && (
                             <span className="ml-1.5 rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-bold normal-case text-amber-700">
                               Pending verification
@@ -508,7 +513,7 @@ export function CustomerPaymentsPage({
           details={[
             { label: "Quote", value: target.quote_number },
             { label: "Customer", value: target.customers?.company_name || target.customers?.contact_name || "—" },
-            { label: "Outstanding balance", value: money(targetBalance, target.currency) },
+            { label: "Outstanding balance", value: <Money amount={targetBalance} currency={target.currency} /> },
           ]}
           confirmLabel={modalWarning ? "Record anyway" : "Record payment"}
           onConfirm={confirm}
@@ -552,7 +557,7 @@ export function CustomerPaymentsPage({
               label: "Customer",
               value: confirmRefund.quotes?.customers?.company_name || confirmRefund.quotes?.customers?.contact_name || "—",
             },
-            { label: "Amount", value: money(confirmRefund.amount, confirmRefund.currency) },
+            { label: "Amount", value: <Money amount={confirmRefund.amount} currency={confirmRefund.currency} /> },
             { label: "Reason", value: confirmRefund.reason ?? "—" },
           ]}
           pending={refundPending}

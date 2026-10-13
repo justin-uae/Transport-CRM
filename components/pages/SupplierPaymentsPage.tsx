@@ -4,6 +4,7 @@ import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Panel } from "@/components/ui/Panel";
 import { PageHead } from "@/components/ui/PageHead";
+import { Money } from "@/components/ui/Money";
 import { PageGuide } from "@/components/ui/PageGuide";
 import { SupplierPaymentsDiagram } from "@/components/ui/guide-diagrams/SupplierPaymentsDiagram";
 import { useToast } from "@/components/ui/Toast";
@@ -60,9 +61,6 @@ const STATUS_STYLE: Record<SupplierPaymentStatus, string> = {
   paid: "bg-emerald-50 text-emerald-700",
 };
 
-function money(amount: number, currency: string) {
-  return new Intl.NumberFormat("en-GB", { style: "currency", currency, maximumFractionDigits: 2 }).format(amount);
-}
 
 function paidSoFar(row: SupplierInvoiceRow) {
   return (row.job_allocations?.supplier_payments ?? []).reduce((sum, p) => sum + p.amount, 0);
@@ -489,30 +487,38 @@ export function SupplierPaymentsPage({
                 >
                   <div>
                     <div className="text-xs font-bold uppercase text-slate-400">Invoice</div>
-                    <b>{money(row.amount, row.currency)}</b>
+                    <b>
+                      <Money amount={row.amount} currency={row.currency} />
+                    </b>
                   </div>
                   {adjustments !== 0 && (
                     <div>
                       <div className="text-xs font-bold uppercase text-slate-400">Adjustments</div>
                       <b className={adjustments < 0 ? "text-red-600" : "text-slate-800"}>
                         {adjustments > 0 ? "+" : ""}
-                        {money(adjustments, row.currency)}
+                        <Money amount={adjustments} currency={row.currency} />
                       </b>
                     </div>
                   )}
                   <div>
                     <div className="text-xs font-bold uppercase text-slate-400">Paid so far</div>
-                    <b>{money(paid, row.currency)}</b>
+                    <b>
+                      <Money amount={paid} currency={row.currency} />
+                    </b>
                   </div>
                   {refunded !== 0 && (
                     <div>
                       <div className="text-xs font-bold uppercase text-slate-400">Refunded so far</div>
-                      <b className="text-slate-800">{money(refunded, row.currency)}</b>
+                      <b className="text-slate-800">
+                        <Money amount={refunded} currency={row.currency} />
+                      </b>
                     </div>
                   )}
                   <div>
                     <div className="text-xs font-bold uppercase text-slate-400">{refundOwed ? "Refund owed from supplier" : "Balance"}</div>
-                    <b className={refundOwed ? "text-red-600" : "text-primary-600"}>{money(Math.abs(bal), row.currency)}</b>
+                    <b className={refundOwed ? "text-red-600" : "text-primary-600"}>
+                      <Money amount={Math.abs(bal)} currency={row.currency} />
+                    </b>
                   </div>
                 </div>
                 {row.job_allocations!.job_allocation_adjustments.length > 0 && (
@@ -524,7 +530,7 @@ export function SupplierPaymentsPage({
                         </span>
                         <b className={a.amount < 0 ? "text-red-600" : "text-slate-700"}>
                           {a.amount > 0 ? "+" : ""}
-                          {money(a.amount, row.currency)}
+                          <Money amount={a.amount} currency={row.currency} />
                         </b>
                       </div>
                     ))}
@@ -535,7 +541,7 @@ export function SupplierPaymentsPage({
                     {row.job_allocations!.supplier_payments.map((p) => (
                       <div key={p.id} className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
                         <span>
-                          Paid {money(p.amount, row.currency)} · {formatDateTime(p.paid_at)}
+                          Paid <Money amount={p.amount} currency={row.currency} /> · {formatDateTime(p.paid_at)}
                           {p.bank_reference && ` · ${p.bank_reference}`}
                         </span>
                         {proofUrls[p.id] && (
@@ -552,7 +558,7 @@ export function SupplierPaymentsPage({
                     {row.job_allocations!.supplier_refunds.map((r) => (
                       <div key={r.id} className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
                         <span>
-                          Refund received {money(r.amount, row.currency)} · {formatDateTime(r.received_at)}
+                          Refund received <Money amount={r.amount} currency={row.currency} /> · {formatDateTime(r.received_at)}
                           {r.bank_reference && ` · ${r.bank_reference}`}
                         </span>
                         {refundProofUrls[r.id] && (
@@ -608,9 +614,9 @@ export function SupplierPaymentsPage({
           error={modalError}
           details={[
             { label: "Supplier", value: target.suppliers?.name ?? "—" },
-            { label: "Invoice total", value: money(target.amount, target.currency) },
-            { label: "Balance before", value: money(paymentBalance, target.currency) },
-            { label: "Balance after this payment", value: money(Math.max(remainingAfter, 0), target.currency) },
+            { label: "Invoice total", value: <Money amount={target.amount} currency={target.currency} /> },
+            { label: "Balance before", value: <Money amount={paymentBalance} currency={target.currency} /> },
+            { label: "Balance after this payment", value: <Money amount={Math.max(remainingAfter, 0)} currency={target.currency} /> },
           ]}
           confirmLabel={willFullySettle ? "Mark supplier as paid" : "Record partial payment"}
           onConfirm={confirm}
@@ -654,7 +660,7 @@ export function SupplierPaymentsPage({
             </label>
             {remainingAfter > 0 && enteredAmount > 0 && (
               <p className="text-xs font-semibold text-amber-600">
-                This leaves a balance of {money(remainingAfter, target.currency)} — you can pay the rest later.
+                This leaves a balance of <Money amount={remainingAfter} currency={target.currency} /> — you can pay the rest later.
               </p>
             )}
             {willFullySettle && (
@@ -676,7 +682,7 @@ export function SupplierPaymentsPage({
           error={modalError}
           details={[
             { label: "Supplier", value: refundTarget.suppliers?.name ?? "—" },
-            { label: "Refund owed", value: money(refundOwedAmount, refundTarget.currency) },
+            { label: "Refund owed", value: <Money amount={refundOwedAmount} currency={refundTarget.currency} /> },
           ]}
           confirmLabel="Record refund"
           onConfirm={confirmRefund}

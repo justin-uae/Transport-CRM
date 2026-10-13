@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { PageHead } from "@/components/ui/PageHead";
 import { Panel } from "@/components/ui/Panel";
+import { Money } from "@/components/ui/Money";
 import { SortSelect } from "@/components/ui/SortSelect";
 import { AiBadge } from "@/components/ui/AiBadge";
 import { OverdueBadge } from "@/components/ui/OverdueBadge";
@@ -86,10 +87,6 @@ const JOB_STATUS_STYLE: Record<JobStatus, string> = {
   cancelled: "bg-slate-100 text-slate-500",
 };
 
-function money(amount: number | undefined | null, currency: string) {
-  if (amount === undefined || amount === null) return "—";
-  return new Intl.NumberFormat("en-GB", { style: "currency", currency, maximumFractionDigits: 0 }).format(amount);
-}
 
 function journeySummary(legs: LegsRef) {
   const leg = legs?.enquiry_legs?.[0];
@@ -135,7 +132,9 @@ export function BookingsConfirmedPage({ jobs }: { jobs: ConfirmedBookingJob[] })
                 </div>
                 <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-sm text-slate-600">
                   <span>{journeySummary(job.quotes?.enquiries ?? null)}</span>
-                  <span className="font-bold">{money(job.quotes?.quote_versions?.selling_price, job.quotes?.currency ?? "EUR")}</span>
+                  <span className="font-bold">
+                    <Money amount={job.quotes?.quote_versions?.selling_price} currency={job.quotes?.currency ?? "EUR"} />
+                  </span>
                 </div>
                 <p className="mt-1 text-xs text-slate-500">Travel date: {leg?.pickup_date ? formatDate(leg.pickup_date) : "—"}</p>
                 {allocationSummary(job.job_allocations) && (

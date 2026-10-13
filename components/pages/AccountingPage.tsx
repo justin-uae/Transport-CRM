@@ -6,6 +6,7 @@ import { BarChart, Bar, CartesianGrid, XAxis, YAxis, Tooltip, ResponsiveContaine
 import { Landmark, ReceiptText, TrendingUp, Truck, X, AlertTriangle } from "lucide-react";
 import { Panel } from "@/components/ui/Panel";
 import { Kpi } from "@/components/ui/Kpi";
+import { Money } from "@/components/ui/Money";
 import { PageHead } from "@/components/ui/PageHead";
 import { PageGuide } from "@/components/ui/PageGuide";
 import { AccountingDiagram } from "@/components/ui/guide-diagrams/AccountingDiagram";
@@ -34,9 +35,6 @@ function compactGbp(amount: number) {
   );
 }
 
-function money(amount: number, currency: string) {
-  return new Intl.NumberFormat("en-GB", { style: "currency", currency, maximumFractionDigits: 2 }).format(amount);
-}
 
 export function AccountingPage({ summary }: { summary: AccountingSummary }) {
   const [selectedBucket, setSelectedBucket] = useState<AgeBucket | null>(null);
@@ -137,7 +135,9 @@ export function AccountingPage({ summary }: { summary: AccountingSummary }) {
                   <b>{x.customerName}</b>
                   <div className="text-xs text-slate-500">{x.quoteNumber} • Awaiting payment</div>
                 </div>
-                <b>{money(x.balance, x.currency)}</b>
+                <b>
+                  <Money amount={x.balance} currency={x.currency} />
+                </b>
                 <Link
                   href="/accounting/customer-payments"
                   className="rounded-xl bg-emerald-600 px-3 py-2 text-xs font-bold text-white"
@@ -193,7 +193,9 @@ export function AccountingPage({ summary }: { summary: AccountingSummary }) {
                     <b className="text-primary-600">{r.quoteNumber}</b>
                     <div className="text-slate-500">{r.customerName}</div>
                   </div>
-                  <b>{money(r.balance, r.currency)}</b>
+                  <b>
+                    <Money amount={r.balance} currency={r.currency} />
+                  </b>
                 </Link>
               ))}
               {bucketRows.length === 0 && <p className="py-8 text-center text-sm text-slate-500">No quotes in this bucket.</p>}

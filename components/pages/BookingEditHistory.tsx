@@ -1,5 +1,6 @@
 import { Panel } from "@/components/ui/Panel";
 import { SectionTitle } from "@/components/ui/SectionTitle";
+import { Money } from "@/components/ui/Money";
 import { formatDateTime } from "@/lib/formatDate";
 
 export type SupplierApprovalStatus = "not_required" | "pending" | "approved" | "rejected";
@@ -18,10 +19,6 @@ export interface BookingEditRecord {
   job_allocation_adjustments: { amount: number; reason: string | null; created_at: string }[];
 }
 
-function money(amount: number | null, currency: string) {
-  if (amount === null) return "—";
-  return new Intl.NumberFormat("en-GB", { style: "currency", currency, maximumFractionDigits: 0 }).format(amount);
-}
 
 const APPROVAL_BADGE: Record<Exclude<SupplierApprovalStatus, "not_required">, { label: string; style: string }> = {
   pending: { label: "Awaiting supplier re-approval", style: "bg-orange-50 text-orange-700" },
@@ -65,7 +62,7 @@ export function BookingEditHistory({ amendments, currency }: { amendments: Booki
                 <p key={i} className="mt-1 text-xs font-bold text-red-600">
                   {adj.amount < 0 ? "Refund owed from supplier: " : "Supplier payout adjustment: "}
                   {adj.amount > 0 ? "+" : ""}
-                  {money(adj.amount, currency)} — see Supplier Payments to record it.
+                  <Money amount={adj.amount} currency={currency} /> — see Supplier Payments to record it.
                 </p>
               ))}
               {fieldChanges.length > 0 && (
@@ -83,13 +80,13 @@ export function BookingEditHistory({ amendments, currency }: { amendments: Booki
                   {!!a.customer_charge_amount && (
                     <span className="font-bold text-primary-600">
                       Customer: {a.customer_charge_amount > 0 ? "+" : ""}
-                      {money(a.customer_charge_amount, currency)}
+                      <Money amount={a.customer_charge_amount} currency={currency} />
                     </span>
                   )}
                   {!!a.supplier_adjustment_amount && (
                     <span className="font-bold text-slate-600">
                       Supplier: {a.supplier_adjustment_amount > 0 ? "+" : ""}
-                      {money(a.supplier_adjustment_amount, currency)}
+                      <Money amount={a.supplier_adjustment_amount} currency={currency} />
                     </span>
                   )}
                 </div>

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Search, X } from "lucide-react";
 import { Panel } from "@/components/ui/Panel";
 import { PageHead } from "@/components/ui/PageHead";
+import { Money } from "@/components/ui/Money";
 import { Breadcrumb } from "@/components/ui/Breadcrumb";
 import { BackLink } from "@/components/ui/BackLink";
 import { SectionTitle } from "@/components/ui/SectionTitle";
@@ -113,10 +114,6 @@ const PAYMENT_STATUS_STYLE: Record<SupplierPaymentStatus, string> = {
   paid: "bg-emerald-50 text-emerald-700",
 };
 
-function money(amount: number | undefined | null, currency: string) {
-  if (amount === undefined || amount === null) return "—";
-  return new Intl.NumberFormat("en-GB", { style: "currency", currency, maximumFractionDigits: 0 }).format(amount);
-}
 
 function legRouteSummary(legs: DispatchLeg[]) {
   if (legs.length === 0) return "—";
@@ -321,7 +318,7 @@ function AllocationCard({
 
       {allocation.agreed_cost != null ? (
         <p className="mt-2 text-sm text-slate-600">
-          Agreed cost: <b>{money(allocation.agreed_cost, allocation.currency ?? "EUR")}</b>
+          Agreed cost: <b><Money amount={allocation.agreed_cost} currency={allocation.currency ?? "EUR"} /></b>
         </p>
       ) : (
         canDispatchJobs &&
@@ -483,7 +480,9 @@ function AllocationCard({
                   {formatDateTime(p.paid_at)}
                   {p.bank_reference ? ` · ${p.bank_reference}` : ""}
                 </span>
-                <b>{money(p.amount, p.currency)}</b>
+                <b>
+                  <Money amount={p.amount} currency={p.currency} />
+                </b>
               </div>
             ))}
             {allocation.supplier_payments.length === 0 && <p className="text-slate-500">No payments recorded yet.</p>}
@@ -822,7 +821,9 @@ export function DispatchJobDetail({
             <dl className="mt-4 flex flex-col gap-3 rounded-2xl bg-slate-50 p-4 text-sm sm:grid sm:grid-cols-2 sm:gap-x-4 sm:gap-y-3">
               <div>
                 <dt className="text-xs font-bold uppercase text-slate-400">Value</dt>
-                <dd className="mt-0.5 font-semibold">{money(job.quotes?.quote_versions?.selling_price, currency)}</dd>
+                <dd className="mt-0.5 font-semibold">
+                  <Money amount={job.quotes?.quote_versions?.selling_price} currency={currency} />
+                </dd>
               </div>
               <div>
                 <dt className="text-xs font-bold uppercase text-slate-400">Customer contact</dt>
