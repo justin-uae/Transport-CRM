@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { Wand2, Plus, Trash2, Upload, FileText, X, Loader2 } from "lucide-react";
 import { SectionTitle } from "@/components/ui/SectionTitle";
 import { DatePicker } from "@/components/ui/DatePicker";
@@ -15,8 +15,10 @@ import {
   type ComplexBookingFileRef,
   type ComplexBookingLegInput,
 } from "@/app/(staff)/leads/complex-booking/actions";
+import { extractComplexBookingFromLeadAction, convertLeadToComplexBookingAction } from "@/app/(staff)/leads/[id]/complex-booking/actions";
 import type { JourneyType } from "@/lib/supabase/database.types";
 import type { DuplicateCustomerMatch } from "@/lib/customerDuplicates";
+import type { ComplexBookingExtraction } from "@/lib/complexBookingExtraction";
 
 interface CustomerOption {
   id: string;
@@ -74,11 +76,23 @@ function blankLeg(): EditableLeg {
 
 export function ComplexBookingPage({
   customers,
+  leadConversion,
 }: {
   customers: CustomerOption[];
+  /**
+   * When set, this instance converts an EXISTING lead into a complex
+   * booking instead of creating a brand new one: it skips the paste/upload
+   * step entirely, auto-running AI extraction on mount from everything
+   * already captured on that lead, fixes the customer to the lead's own
+   * linked one (no picker — a lead's customer can't be reassigned through
+   * this flow), and saves via convertLeadToComplexBookingAction, which
+   * attaches the result to that lead's own enquiry instead of inserting a
+   * new lead row.
+   */
+  leadConversion?: { leadId: string; customerLabel: string };
 }) {
   const notify = useToast();
-  const [phase, setPhase] = useState<"input" | "review">("input");
+  const [phase, setPhase] = useState<"input" | "extracting" | "review">(leadConversion ? "extracting" : "input");
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [duplicateWarning, setDuplicateWarning] = useState<DuplicateCustomerMatch | null>(null);
@@ -139,6 +153,42 @@ export function ComplexBookingPage({
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   }
 
+  /** Shared by both extraction paths (paste/upload, and auto-extracting from an existing lead's own data) — maps the AI's result onto the editable review-phase state. */
+  function applyExtraction(data: ComplexBookingExtraction, warning: string | null) {
+    // A lead-conversion already has a fixed customer (the lead's own) — never
+    // let the AI's read of the pasted-together lead summary overwrite it.
+    if (!leadConversion) {
+      const c = data.customer;
+      if (c.name || c.company || c.email || c.phone) {
+        setCustomerMode("new");
+        setNewCustomer({ contactName: c.name ?? "", companyName: c.company ?? "", email: c.email ?? "", phone: toE164(c.phone) });
+      }
+    }
+
+    setLegs(
+      data.legs.map((leg, i) => ({
+        clientId: crypto.randomUUID(),
+        sourceIndex: i,
+        journeyType: leg.journey_type,
+        pickupAddress: leg.pickup_address,
+        destinationAddress: leg.destination_address,
+        pickupDate: leg.pickup_date ?? "",
+        pickupTime: leg.pickup_time ?? "",
+        returnDate: leg.return_date ?? "",
+        returnTime: leg.return_time ?? "",
+        passengers: leg.passenger_count ?? 1,
+        luggage: leg.luggage_count ?? 0,
+        vehicleDescription: leg.vehicle_notes ?? "",
+        wheelchair: false,
+        childSeats: 0,
+        specialRequirements: leg.special_requirements ?? "",
+      })),
+    );
+    setInternalNotes(data.internal_notes ?? "");
+    setUncertainFields(new Set(data.uncertain_fields));
+    setExtractWarning(warning);
+  }
+
   function extract() {
     setError(null);
     setExtractWarning(null);
@@ -148,39 +198,34 @@ export function ComplexBookingPage({
         setError(result.error ?? "Could not read this itinerary.");
         return;
       }
-
-      const c = result.data.customer;
-      if (c.name || c.company || c.email || c.phone) {
-        setCustomerMode("new");
-        setNewCustomer({ contactName: c.name ?? "", companyName: c.company ?? "", email: c.email ?? "", phone: toE164(c.phone) });
-      }
-
-      setLegs(
-        result.data.legs.map((leg, i) => ({
-          clientId: crypto.randomUUID(),
-          sourceIndex: i,
-          journeyType: leg.journey_type,
-          pickupAddress: leg.pickup_address,
-          destinationAddress: leg.destination_address,
-          pickupDate: leg.pickup_date ?? "",
-          pickupTime: leg.pickup_time ?? "",
-          returnDate: leg.return_date ?? "",
-          returnTime: leg.return_time ?? "",
-          passengers: leg.passenger_count ?? 1,
-          luggage: leg.luggage_count ?? 0,
-          vehicleDescription: leg.vehicle_notes ?? "",
-          wheelchair: false,
-          childSeats: 0,
-          specialRequirements: leg.special_requirements ?? "",
-        })),
-      );
-      setInternalNotes(result.data.internal_notes ?? "");
-      setUncertainFields(new Set(result.data.uncertain_fields));
-      setExtractWarning(result.warning);
+      applyExtraction(result.data, result.warning);
       notify(`AI found ${result.data.legs.length} leg${result.data.legs.length === 1 ? "" : "s"} — review before creating the lead`);
       setPhase("review");
     });
   }
+
+  /** Runs (or re-runs) AI extraction against the lead's own captured data — used on mount in lead-conversion mode, and again from the "Re-run AI" link in the review phase. */
+  function runLeadExtraction() {
+    if (!leadConversion) return;
+    setError(null);
+    setExtractWarning(null);
+    setPhase("extracting");
+    startTransition(async () => {
+      const result = await extractComplexBookingFromLeadAction(leadConversion.leadId);
+      if (result.error || !result.data) {
+        setError(result.error ?? "Could not process this lead.");
+        return;
+      }
+      applyExtraction(result.data, result.warning);
+      notify(`AI found ${result.data.legs.length} leg${result.data.legs.length === 1 ? "" : "s"} — review before saving`);
+      setPhase("review");
+    });
+  }
+
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (leadConversion) runLeadExtraction();
+  }, []);
 
   function isUncertain(path: string) {
     return uncertainFields.has(path);
@@ -233,6 +278,16 @@ export function ComplexBookingPage({
     }));
 
     startTransition(async () => {
+      if (leadConversion) {
+        const result = await convertLeadToComplexBookingAction(leadConversion.leadId, {
+          legs: legInputs,
+          internalNotes: internalNotes.trim() || null,
+        });
+        if (result?.error) setError(result.error);
+        // On success this redirects into /quotes/new — nothing else to do here.
+        return;
+      }
+
       const result = await createComplexBookingLeadAction({
         existingCustomerId: customerMode === "existing" ? existingCustomerId : null,
         newCustomer: customerMode === "new" ? newCustomer : null,
@@ -249,6 +304,31 @@ export function ComplexBookingPage({
       if (result?.error) setError(result.error);
       // On success this redirects into /quotes/new — nothing else to do here.
     });
+  }
+
+  if (phase === "extracting") {
+    return (
+      <div className="flex flex-col items-center gap-4 py-16 text-center">
+        {error ? (
+          <>
+            <p className="max-w-sm text-sm font-semibold text-red-700">{error}</p>
+            <button
+              type="button"
+              onClick={runLeadExtraction}
+              className="flex items-center gap-2 rounded-xl bg-primary-500 px-5 py-2.5 text-sm font-bold text-white"
+            >
+              <Wand2 size={16} />
+              Try again
+            </button>
+          </>
+        ) : (
+          <>
+            <Loader2 size={28} className="animate-spin text-primary-500" />
+            <p className="text-sm font-semibold text-slate-600">Reading everything captured on this lead…</p>
+          </>
+        )}
+      </div>
+    );
   }
 
   if (phase === "input") {
@@ -331,13 +411,16 @@ export function ComplexBookingPage({
   return (
     <div>
       <div className="flex items-center justify-between">
-        <SectionTitle title="Review & edit" sub="Correct anything the AI missed, then create the lead" />
+        <SectionTitle
+          title="Review & edit"
+          sub={leadConversion ? "Correct anything the AI missed, then save it to this lead" : "Correct anything the AI missed, then create the lead"}
+        />
         <button
           type="button"
-          onClick={() => setPhase("input")}
+          onClick={() => (leadConversion ? runLeadExtraction() : setPhase("input"))}
           className="shrink-0 rounded-lg px-2.5 py-1.5 text-xs font-bold text-primary-600 hover:bg-primary-50"
         >
-          ← Start over
+          {leadConversion ? "↻ Re-run AI" : "← Start over"}
         </button>
       </div>
 
@@ -350,61 +433,67 @@ export function ComplexBookingPage({
       )}
 
       <div className="mt-5 text-xs font-black uppercase tracking-wide text-primary-500">Customer</div>
-      <div className="mt-2 flex gap-2">
-        <button
-          type="button"
-          onClick={() => setCustomerMode("existing")}
-          className={"rounded-xl px-3 py-2 text-sm font-bold " + (customerMode === "existing" ? "bg-primary-500 text-white" : "bg-slate-100")}
-        >
-          Existing customer
-        </button>
-        <button
-          type="button"
-          onClick={() => setCustomerMode("new")}
-          className={"rounded-xl px-3 py-2 text-sm font-bold " + (customerMode === "new" ? "bg-primary-500 text-white" : "bg-slate-100")}
-        >
-          New customer
-        </button>
-      </div>
-      {customerMode === "existing" ? (
-        <div className="mt-3">
-          <CustomerCombobox customers={customers} value={existingCustomerId} onChange={setExistingCustomerId} />
-        </div>
+      {leadConversion ? (
+        <div className="mt-2 rounded-xl border bg-slate-50 px-4 py-3 text-sm font-bold text-slate-700">{leadConversion.customerLabel}</div>
       ) : (
-        <div className="mt-3 grid gap-4 sm:grid-cols-2">
-          <label className="text-sm font-bold">
-            Contact name
-            <input
-              value={newCustomer.contactName}
-              onChange={(e) => setNewCustomer({ ...newCustomer, contactName: e.target.value })}
-              className={fieldClass("mt-2 w-full rounded-xl border px-3 py-3 font-normal", isUncertain("customer.name"))}
-            />
-          </label>
-          <label className="text-sm font-bold">
-            Company name
-            <input
-              value={newCustomer.companyName}
-              onChange={(e) => setNewCustomer({ ...newCustomer, companyName: e.target.value })}
-              className={fieldClass("mt-2 w-full rounded-xl border px-3 py-3 font-normal", isUncertain("customer.company"))}
-            />
-          </label>
-          <label className="text-sm font-bold">
-            Email
-            <input
-              value={newCustomer.email}
-              onChange={(e) => setNewCustomer({ ...newCustomer, email: e.target.value })}
-              className={fieldClass("mt-2 w-full rounded-xl border px-3 py-3 font-normal", isUncertain("customer.email"))}
-            />
-          </label>
-          <label className="text-sm font-bold">
-            Phone
-            <PhoneNumberField
-              value={newCustomer.phone}
-              onChange={(v) => setNewCustomer({ ...newCustomer, phone: v ?? "" })}
-              className={"mt-2" + (isUncertain("customer.phone") ? " rounded-xl ring-2 ring-amber-300" : "")}
-            />
-          </label>
-        </div>
+        <>
+          <div className="mt-2 flex gap-2">
+            <button
+              type="button"
+              onClick={() => setCustomerMode("existing")}
+              className={"rounded-xl px-3 py-2 text-sm font-bold " + (customerMode === "existing" ? "bg-primary-500 text-white" : "bg-slate-100")}
+            >
+              Existing customer
+            </button>
+            <button
+              type="button"
+              onClick={() => setCustomerMode("new")}
+              className={"rounded-xl px-3 py-2 text-sm font-bold " + (customerMode === "new" ? "bg-primary-500 text-white" : "bg-slate-100")}
+            >
+              New customer
+            </button>
+          </div>
+          {customerMode === "existing" ? (
+            <div className="mt-3">
+              <CustomerCombobox customers={customers} value={existingCustomerId} onChange={setExistingCustomerId} />
+            </div>
+          ) : (
+            <div className="mt-3 grid gap-4 sm:grid-cols-2">
+              <label className="text-sm font-bold">
+                Contact name
+                <input
+                  value={newCustomer.contactName}
+                  onChange={(e) => setNewCustomer({ ...newCustomer, contactName: e.target.value })}
+                  className={fieldClass("mt-2 w-full rounded-xl border px-3 py-3 font-normal", isUncertain("customer.name"))}
+                />
+              </label>
+              <label className="text-sm font-bold">
+                Company name
+                <input
+                  value={newCustomer.companyName}
+                  onChange={(e) => setNewCustomer({ ...newCustomer, companyName: e.target.value })}
+                  className={fieldClass("mt-2 w-full rounded-xl border px-3 py-3 font-normal", isUncertain("customer.company"))}
+                />
+              </label>
+              <label className="text-sm font-bold">
+                Email
+                <input
+                  value={newCustomer.email}
+                  onChange={(e) => setNewCustomer({ ...newCustomer, email: e.target.value })}
+                  className={fieldClass("mt-2 w-full rounded-xl border px-3 py-3 font-normal", isUncertain("customer.email"))}
+                />
+              </label>
+              <label className="text-sm font-bold">
+                Phone
+                <PhoneNumberField
+                  value={newCustomer.phone}
+                  onChange={(v) => setNewCustomer({ ...newCustomer, phone: v ?? "" })}
+                  className={"mt-2" + (isUncertain("customer.phone") ? " rounded-xl ring-2 ring-amber-300" : "")}
+                />
+              </label>
+            </div>
+          )}
+        </>
       )}
 
       <div className="mt-6 flex items-center justify-between">
@@ -616,7 +705,15 @@ export function ComplexBookingPage({
             (duplicateWarning ? "bg-amber-500" : "bg-primary-500")
           }
         >
-          {pending ? "Creating…" : duplicateWarning ? "Create anyway" : "Create Lead & Continue to Quote"}
+          {pending
+            ? leadConversion
+              ? "Saving…"
+              : "Creating…"
+            : duplicateWarning
+              ? "Create anyway"
+              : leadConversion
+                ? "Save & Continue to Quote"
+                : "Create Lead & Continue to Quote"}
         </button>
       </div>
     </div>
