@@ -1,7 +1,6 @@
 import { redirect } from "next/navigation";
 import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
-import { hasPermission, PERMISSIONS } from "@/lib/permissions";
 import { landingHrefForProfile } from "@/lib/landing";
 import { WhatsAppInboxPage, type ConversationSummary, type WhatsAppMessageRow } from "@/components/pages/WhatsAppInboxPage";
 
@@ -22,7 +21,7 @@ interface MessageRow {
 
 export default async function WhatsAppPage() {
   const profile = await requireProfile();
-  if (!(await hasPermission(profile, PERMISSIONS.GENERAL_WORKSPACE_ACCESS))) {
+  if (!profile.is_master_admin) {
     redirect(await landingHrefForProfile(profile));
   }
   const supabase = await createClient();

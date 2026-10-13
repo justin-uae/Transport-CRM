@@ -25,9 +25,11 @@ function format(amount: number, currency: string) {
 
 /**
  * Displays a money amount converted to GBP, with the original amount/
- * currency as a hover tooltip — the single shared way every staff-facing
- * page shows money, so every figure in the CRM reads in one currency at a
- * glance instead of staff mentally converting USD/GHS/AED/... row by row.
+ * currency available on hover (desktop) or tap (touch/mobile, where there's
+ * no hover state so the `title` tooltip never fires) — the single shared way
+ * every staff-facing page shows money, so every figure in the CRM reads in
+ * one currency at a glance instead of staff mentally converting USD/GHS/
+ * AED/... row by row.
  *
  * Deliberately NOT used for: customer-facing pages (app/q/[token]/*) or
  * generated PDFs (lib/pdfDocument.ts) — a customer/supplier must see the
@@ -53,6 +55,7 @@ export function Money({
   className?: string;
 }) {
   const [rates, setRates] = useState<Record<string, number> | null>(null);
+  const [showOriginal, setShowOriginal] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -72,10 +75,24 @@ export function Money({
   const rate = rates?.[code];
   if (!rate) return <span className={className}>{format(amount, code)}</span>;
 
-  const gbpAmount = amount / rate;
+  const original = format(amount, code);
+  const gbp = format(amount / rate, "GBP");
+
   return (
-    <span className={clsx("cursor-help underline decoration-dotted decoration-slate-300 underline-offset-2", className)} title={`${format(amount, code)} (original)`}>
-      {format(gbpAmount, "GBP")}
+    <span
+      className={clsx("cursor-help underline decoration-dotted decoration-slate-300 underline-offset-2", className)}
+      title={`${original} (original)`}
+      // Tapping toggles the display on touch devices — there's no hover
+      // state to reveal the title tooltip there, so without this the
+      // original currency was simply unreachable on mobile. stopPropagation
+      // keeps the tap from also firing a parent row/Link's click (several
+      // call sites render this inside a clickable list row).
+      onClick={(e) => {
+        e.stopPropagation();
+        setShowOriginal((v) => !v);
+      }}
+    >
+      {showOriginal ? original : gbp}
     </span>
   );
 }

@@ -3,7 +3,6 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { requireProfile } from "@/lib/auth";
-import { hasPermission, PERMISSIONS } from "@/lib/permissions";
 import { recordAudit } from "@/lib/audit";
 import { sendWhatsAppText } from "@/lib/whatsapp360";
 
@@ -15,8 +14,7 @@ import { sendWhatsAppText } from "@/lib/whatsapp360";
  */
 export async function sendWhatsAppReplyAction(customerId: string, body: string): Promise<{ error: string | null }> {
   const actor = await requireProfile();
-  const allowed = await hasPermission(actor, PERMISSIONS.GENERAL_WORKSPACE_ACCESS);
-  if (!allowed) return { error: "You do not have permission to send WhatsApp messages." };
+  if (!actor.is_master_admin) return { error: "You do not have permission to send WhatsApp messages." };
 
   const trimmed = body.trim();
   if (!trimmed) return { error: "Write a message first." };
