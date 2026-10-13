@@ -2,6 +2,7 @@ import "server-only";
 import nodemailer from "nodemailer";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { decryptSecret } from "@/lib/crypto";
+import { htmlToPlainText } from "@/lib/htmlToPlainText";
 import type { Database, EmailAccount, EmailAttachmentMeta } from "@/lib/supabase/database.types";
 import type { EmailAttachment } from "@/lib/email";
 
@@ -60,6 +61,8 @@ export async function sendUserEmail(
     }
   }
 
+  const text = htmlToPlainText(html);
+
   const info = await transporter.sendMail({
     from: `"${account.display_name}" <${account.email_address}>`,
     to: to.join(", "),
@@ -67,6 +70,7 @@ export async function sendUserEmail(
     bcc: bcc && bcc.length > 0 ? bcc.join(", ") : undefined,
     subject,
     html,
+    text,
     inReplyTo: inReplyTo ?? undefined,
     attachments: mailAttachments,
   });
@@ -87,7 +91,7 @@ export async function sendUserEmail(
     bcc_addresses: bcc ?? [],
     subject,
     body_html: html,
-    body_text: null,
+    body_text: text,
     snippet: html.replace(/<[^>]+>/g, "").slice(0, 200),
     has_attachments: (attachments?.length ?? 0) > 0,
     attachment_meta: attachments ?? [],
@@ -119,11 +123,14 @@ export async function sendTransactionalEmailFromAccount(
     auth: { user: account.smtp_username, pass: decryptSecret(account.smtp_password_enc) },
   });
 
+  const text = htmlToPlainText(html);
+
   const info = await transporter.sendMail({
     from: `"${account.display_name}" <${account.email_address}>`,
     to,
     subject,
     html,
+    text,
     attachments,
   });
 
@@ -142,7 +149,7 @@ export async function sendTransactionalEmailFromAccount(
     cc_addresses: [],
     subject,
     body_html: html,
-    body_text: null,
+    body_text: text,
     snippet: html.replace(/<[^>]+>/g, "").slice(0, 200),
     has_attachments: (attachments?.length ?? 0) > 0,
     attachment_meta: [],

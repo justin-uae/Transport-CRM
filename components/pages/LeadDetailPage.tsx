@@ -10,6 +10,7 @@ import { Panel } from "@/components/ui/Panel";
 import { SectionTitle } from "@/components/ui/SectionTitle";
 import { useToast } from "@/components/ui/Toast";
 import { ConfirmDetailModal } from "@/components/ui/ConfirmDetailModal";
+import { FormattedText } from "@/components/ui/FormattedText";
 import { JourneyLegDetail, type JourneyLeg } from "@/components/pages/JourneyLegDetail";
 import { LeadEditHistory, type LeadEditRecord } from "@/components/pages/LeadEditHistory";
 import { LeadAssignmentHistory, type LeadAssignmentEvent } from "@/components/pages/LeadAssignmentHistory";
@@ -449,7 +450,12 @@ export function LeadDetailPage({
                   }
                 />
               )}
-              <Row label={isGeneralEnquiry ? "Message" : "Notes"} value={lead.notes} />
+              <div className="border-b py-2 last:border-0">
+                <div className="text-slate-500">{isGeneralEnquiry ? "Message" : "Notes"}</div>
+                <div className="mt-1 font-bold">
+                  <FormattedText text={lead.notes} />
+                </div>
+              </div>
             </div>
           </Panel>
 

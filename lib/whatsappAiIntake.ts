@@ -139,7 +139,7 @@ const TURN_SCHEMA = {
         notes: {
           type: ["string", "null"],
           description:
-            "Any further/special requirements the customer mentions when you ask (e.g. wheelchair access, luggage, child seats, a specific pickup time). This must always be explicitly asked about once the trip basics are known. If the customer says they have nothing else to add, set this to \"None\" rather than leaving it null — null means you haven't asked yet.",
+            "Any further/special requirements the customer mentions when you ask (e.g. wheelchair access, luggage, child seats, a specific pickup time). This must always be explicitly asked about once the trip basics are known. If the customer says they have nothing else to add, set this to \"None\" rather than leaving it null — null means you haven't asked yet. If there's more than one distinct requirement, put each on its own line starting with \"- \" rather than running them together in one sentence.",
         },
       },
       required: ["name", "email", "pickup", "destination", "passenger_count", "travel_date", "notes"],

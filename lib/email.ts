@@ -1,5 +1,6 @@
 import "server-only";
 import nodemailer from "nodemailer";
+import { htmlToPlainText } from "@/lib/htmlToPlainText";
 
 /**
  * Server-only SMTP transport. Only import from Server Actions/Route
@@ -44,5 +45,5 @@ export async function sendEmail({
   if (!from) {
     throw new Error("SMTP_FROM is not configured — email was not sent.");
   }
-  await getTransporter().sendMail({ from, to, subject, html, attachments });
+  await getTransporter().sendMail({ from, to, subject, html, text: htmlToPlainText(html), attachments });
 }

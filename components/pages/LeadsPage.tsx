@@ -13,6 +13,7 @@ import { SortSelect } from "@/components/ui/SortSelect";
 import { Pagination } from "@/components/ui/Pagination";
 import { useToast } from "@/components/ui/Toast";
 import { ConfirmDetailModal } from "@/components/ui/ConfirmDetailModal";
+import { FormattedText } from "@/components/ui/FormattedText";
 import { NewLeadMenu } from "@/components/ui/NewLeadMenu";
 import { PageGuide } from "@/components/ui/PageGuide";
 import { LeadsDiagram } from "@/components/ui/guide-diagrams/LeadsDiagram";
@@ -608,7 +609,11 @@ export function LeadsPage({
               label: "Customer email",
               value: detailLead.customers?.email ?? <span className="text-amber-600">No email on file</span>,
             },
-            { label: detailIsGeneralEnquiry ? "Message" : "Notes", value: detailLead.notes ?? "—" },
+            {
+              label: detailIsGeneralEnquiry ? "Message" : "Notes",
+              value: <FormattedText text={detailLead.notes} />,
+              fullWidth: true,
+            },
           ]}
           confirmLabel={
             detailLead.status === "open_pool" && canClaim

@@ -101,7 +101,7 @@ const EXTRACTION_SCHEMA = {
     notes: {
       type: ["string", "null"],
       description:
-        "Anything else relevant that doesn't fit the other fields — vehicle type/size options (list ALL of them if several were requested, not just the one in passenger_count), intermediate stops/waypoints along the route, occasion, and any special requirements. Preserve real detail rather than summarizing it away — for a detailed enquiry, err on the side of including too much rather than too little, since this is the only place that detail survives.",
+        "Anything else relevant that doesn't fit the other fields — vehicle type/size options (list ALL of them if several were requested, not just the one in passenger_count), intermediate stops/waypoints along the route, occasion, and any special requirements. Preserve real detail rather than summarizing it away — for a detailed enquiry, err on the side of including too much rather than too little, since this is the only place that detail survives. Format for readability: short lead-in sentence(s) first, then — whenever you're listing more than one distinct item (vehicle options, stops, requirements) — put each on its own line starting with \"- \", with a blank line before the list. Never run several items together in one long sentence.",
     },
   },
   required: [

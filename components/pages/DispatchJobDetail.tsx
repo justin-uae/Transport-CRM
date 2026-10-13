@@ -10,6 +10,7 @@ import { BackLink } from "@/components/ui/BackLink";
 import { SectionTitle } from "@/components/ui/SectionTitle";
 import { useToast } from "@/components/ui/Toast";
 import { ConfirmDetailModal } from "@/components/ui/ConfirmDetailModal";
+import { FormattedText } from "@/components/ui/FormattedText";
 import {
   createAllocationAction,
   editAllocationLegsAction,
@@ -431,7 +432,9 @@ function AllocationCard({
               <b>
                 {invoice.currency} {invoice.amount.toFixed(2)}
               </b>
-              <div className="text-xs text-slate-400">{invoice.notes || "No notes"}</div>
+              <div className="text-xs text-slate-400">
+                {invoice.notes ? <FormattedText text={invoice.notes} /> : "No notes"}
+              </div>
             </div>
             {invoiceUrl ? (
               <a href={invoiceUrl} target="_blank" rel="noreferrer" className="text-xs font-bold text-primary-600">

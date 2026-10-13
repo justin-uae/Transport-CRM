@@ -8,6 +8,7 @@ import { PageHead } from "@/components/ui/PageHead";
 import { PageGuide } from "@/components/ui/PageGuide";
 import { EmailDiagram } from "@/components/ui/guide-diagrams/EmailDiagram";
 import { useToast } from "@/components/ui/Toast";
+import { FormattedText } from "@/components/ui/FormattedText";
 import { sendEmailAction, getEmailAttachmentUrlAction } from "@/app/(staff)/email/mailActions";
 import { createClient } from "@/lib/supabase/client";
 import { EmailTemplatesPage } from "./EmailTemplatesPage";
@@ -362,7 +363,7 @@ export function EmailCentrePage({
                   {selected.body_html ? (
                     <div dangerouslySetInnerHTML={{ __html: selected.body_html }} />
                   ) : (
-                    <p className="whitespace-pre-wrap">{selected.body_text}</p>
+                    <FormattedText text={selected.body_text} />
                   )}
                 </div>
                 {selected.has_attachments && selected.attachment_meta.length > 0 && (

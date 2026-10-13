@@ -10,7 +10,7 @@ export interface ConfirmDetailModalProps {
   title: string;
   description?: string;
   /** Simple label/value rows — covers most cases (lead detail, quote detail, job detail). */
-  details?: { label: string; value: React.ReactNode }[];
+  details?: { label: string; value: React.ReactNode; fullWidth?: boolean }[];
   /** Free-form body content, rendered below `details` if both are given. */
   children?: React.ReactNode;
   confirmLabel?: string;
@@ -108,7 +108,7 @@ export function ConfirmDetailModal({
             {details && details.length > 0 && (
               <dl className="mt-4 flex flex-col gap-3 rounded-2xl bg-slate-50 p-4 sm:grid sm:grid-cols-2 sm:gap-x-4 sm:gap-y-3">
                 {details.map((d, i) => (
-                  <div key={i} className="min-w-0">
+                  <div key={i} className={clsx("min-w-0", d.fullWidth && "sm:col-span-2")}>
                     <dt className="text-xs font-bold uppercase text-slate-400">{d.label}</dt>
                     <dd className="mt-0.5 break-words text-sm font-semibold text-slate-800">{d.value}</dd>
                   </div>

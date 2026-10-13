@@ -26,6 +26,13 @@ export function sanitizeEmailHtml(html: string): string {
         "background-color": [/.*/],
         "text-align": [/.*/],
         "font-weight": [/.*/],
+        // Gmail (and others) wrap a quoted plain-text reply in a div with
+        // this instead of real <br> tags — stripping it collapses every
+        // line break and bullet in the quoted block into one run-on
+        // paragraph via the browser's default whitespace handling, even
+        // though the original line breaks are still right there in the
+        // markup.
+        "white-space": [/^(pre|pre-wrap|pre-line|normal|nowrap)$/],
       },
     },
     allowedSchemes: ["http", "https", "mailto"],

@@ -6,6 +6,7 @@ import { Breadcrumb } from "@/components/ui/Breadcrumb";
 import { BackLink } from "@/components/ui/BackLink";
 import { Panel } from "@/components/ui/Panel";
 import { SectionTitle } from "@/components/ui/SectionTitle";
+import { FormattedText } from "@/components/ui/FormattedText";
 import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { formatDateTime } from "@/lib/formatDate";
@@ -188,7 +189,9 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
             {customer.notes && (
               <div className="border-t pt-2">
                 <div className="text-slate-500">Internal notes</div>
-                <p className="mt-1">{customer.notes}</p>
+                <div className="mt-1">
+                  <FormattedText text={customer.notes} />
+                </div>
               </div>
             )}
           </div>

@@ -1,4 +1,5 @@
 import { formatDateAndTime } from "@/lib/formatDate";
+import { FormattedText } from "@/components/ui/FormattedText";
 
 export interface JourneyLeg {
   /** Only present where a leg needs to be individually addressable (e.g. editing) — read-only display contexts don't select it. */
@@ -61,7 +62,9 @@ export function JourneyLegDetail({ leg, index, total }: { leg: JourneyLeg; index
         {leg.special_requirements && (
           <div className="sm:col-span-2">
             <dt className="text-xs font-bold uppercase text-slate-400">Special requirements</dt>
-            <dd className="mt-0.5 font-semibold">{leg.special_requirements}</dd>
+            <dd className="mt-0.5 font-semibold">
+              <FormattedText text={leg.special_requirements} />
+            </dd>
           </div>
         )}
       </dl>

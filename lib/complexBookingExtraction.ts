@@ -63,7 +63,11 @@ const EXTRACTION_SCHEMA = {
           passenger_count: { type: ["integer", "null"] },
           luggage_count: { type: ["integer", "null"] },
           vehicle_notes: { type: ["string", "null"], description: "Free-text vehicle hint, e.g. '45-seat coach' — do not invent one if not mentioned" },
-          special_requirements: { type: ["string", "null"] },
+          special_requirements: {
+            type: ["string", "null"],
+            description:
+              "If there's more than one distinct requirement, put each on its own line starting with \"- \" rather than running them together in one sentence.",
+          },
         },
         required: [
           "journey_type",
@@ -81,7 +85,11 @@ const EXTRACTION_SCHEMA = {
         additionalProperties: false,
       },
     },
-    internal_notes: { type: ["string", "null"], description: "Anything relevant that didn't fit a leg or customer field" },
+    internal_notes: {
+      type: ["string", "null"],
+      description:
+        "Anything relevant that didn't fit a leg or customer field. If listing more than one distinct item, put each on its own line starting with \"- \" rather than running them together in one sentence.",
+    },
     uncertain_fields: {
       type: "array",
       items: { type: "string" },
