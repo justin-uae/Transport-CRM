@@ -62,9 +62,31 @@ async function loadOwnedLead(leadId: string, actorId: string) {
   return { supabase, lead };
 }
 
-async function hasExistingEnquiry(supabase: Awaited<ReturnType<typeof createClient>>, leadId: string): Promise<boolean> {
-  const { data } = await supabase.from("enquiries").select("id").eq("lead_id", leadId).limit(1).maybeSingle();
-  return !!data;
+/**
+ * A lead commonly gets a quick single-leg enquiry via "Create Quote" before
+ * anyone realises it's actually a multi-day/multi-leg booking — blocking
+ * conversion just because *an* enquiry exists would make this feature
+ * useless for exactly the case it's for. The only thing that actually can't
+ * be undone is a quote: once one's been sent, the legs it was built from are
+ * a commitment, not a draft. So conversion stays available right up until
+ * that point, reusing the existing (quote-less) enquiry and replacing its
+ * legs rather than creating a second enquiry on the same lead.
+ */
+async function getLeadEnquiryState(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  leadId: string,
+): Promise<{ enquiryId: string | null; hasQuote: boolean }> {
+  const { data: enquiry } = await supabase
+    .from("enquiries")
+    .select("id")
+    .eq("lead_id", leadId)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (!enquiry) return { enquiryId: null, hasQuote: false };
+
+  const { data: quote } = await supabase.from("quotes").select("id").eq("enquiry_id", enquiry.id).limit(1).maybeSingle();
+  return { enquiryId: enquiry.id, hasQuote: !!quote };
 }
 
 export async function extractComplexBookingFromLeadAction(
@@ -77,8 +99,8 @@ export async function extractComplexBookingFromLeadAction(
   const { supabase, lead } = await loadOwnedLead(leadId, actor.id);
   if (!lead) return { data: null, warning: null, error: "This lead is not assigned to you." };
   if (!lead.customer_id) return { data: null, warning: null, error: "This lead has no linked customer yet." };
-  if (await hasExistingEnquiry(supabase, leadId)) {
-    return { data: null, warning: null, error: "This lead already has an enquiry — convert it before a quote is started, not after." };
+  if ((await getLeadEnquiryState(supabase, leadId)).hasQuote) {
+    return { data: null, warning: null, error: "This lead already has a quote — convert it before quoting starts, not after." };
   }
 
   const summary = buildLeadSummaryText(lead as unknown as Parameters<typeof buildLeadSummaryText>[0]);
@@ -117,8 +139,9 @@ export async function convertLeadToComplexBookingAction(
   // Re-checked here, not just when the AI step ran — the review step can sit
   // open for a while, long enough for a quote to have been started from this
   // lead in the meantime.
-  if (await hasExistingEnquiry(supabase, leadId)) {
-    return { error: "This lead already has an enquiry — convert it before a quote is started, not after." };
+  const { enquiryId: existingEnquiryId, hasQuote } = await getLeadEnquiryState(supabase, leadId);
+  if (hasQuote) {
+    return { error: "This lead already has a quote — convert it before quoting starts, not after." };
   }
 
   const firstLeg = input.legs[0]!;
@@ -138,26 +161,42 @@ export async function convertLeadToComplexBookingAction(
     .eq("id", leadId);
   if (leadUpdateError) return { error: leadUpdateError.message };
 
-  const { data: enquiry, error: enquiryError } = await supabase
-    .from("enquiries")
-    .insert({
-      tenant_id: lead.tenant_id,
-      brand_id: lead.brand_id,
-      lead_id: leadId,
-      customer_id: lead.customer_id,
-      assigned_user_id: actor.id,
-      status: "new",
-      internal_notes: input.internalNotes,
-      created_by: actor.id,
-      is_complex_booking: true,
-    })
-    .select()
-    .single();
-  if (enquiryError || !enquiry) return { error: enquiryError?.message ?? "Could not create the enquiry." };
+  let enquiryId = existingEnquiryId;
+  if (enquiryId) {
+    // A quote-less enquiry already exists (typically from an earlier
+    // "Create Quote" click) — reuse it and replace its legs rather than
+    // leaving a second, orphaned enquiry behind.
+    const { error: enquiryUpdateError } = await supabase
+      .from("enquiries")
+      .update({ internal_notes: input.internalNotes, is_complex_booking: true })
+      .eq("id", enquiryId);
+    if (enquiryUpdateError) return { error: enquiryUpdateError.message };
+
+    const { error: deleteLegsError } = await supabase.from("enquiry_legs").delete().eq("enquiry_id", enquiryId);
+    if (deleteLegsError) return { error: deleteLegsError.message };
+  } else {
+    const { data: enquiry, error: enquiryError } = await supabase
+      .from("enquiries")
+      .insert({
+        tenant_id: lead.tenant_id,
+        brand_id: lead.brand_id,
+        lead_id: leadId,
+        customer_id: lead.customer_id,
+        assigned_user_id: actor.id,
+        status: "new",
+        internal_notes: input.internalNotes,
+        created_by: actor.id,
+        is_complex_booking: true,
+      })
+      .select()
+      .single();
+    if (enquiryError || !enquiry) return { error: enquiryError?.message ?? "Could not create the enquiry." };
+    enquiryId = enquiry.id;
+  }
 
   const { error: legsError } = await supabase.from("enquiry_legs").insert(
     input.legs.map((leg, i) => ({
-      enquiry_id: enquiry.id,
+      enquiry_id: enquiryId,
       sequence: i + 1,
       journey_type: leg.journeyType,
       pickup_address: leg.pickupAddress,
@@ -182,7 +221,7 @@ export async function convertLeadToComplexBookingAction(
     action: "lead_converted_to_complex_booking",
     entityType: "lead",
     entityId: leadId,
-    newValue: { legCount: input.legs.length, enquiryId: enquiry.id },
+    newValue: { legCount: input.legs.length, enquiryId },
   });
 
   // Reuses lead_edits (LeadEditHistory) rather than a new table/panel — it's
@@ -201,5 +240,5 @@ export async function convertLeadToComplexBookingAction(
 
   revalidatePath("/leads");
   revalidatePath(`/leads/${leadId}`);
-  redirect(`/quotes/new?enquiryId=${enquiry.id}`);
+  redirect(`/quotes/new?enquiryId=${enquiryId}`);
 }

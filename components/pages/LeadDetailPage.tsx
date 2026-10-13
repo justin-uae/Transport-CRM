@@ -498,7 +498,7 @@ export function LeadDetailPage({
                 {pending ? "Please wait…" : quote ? "Continue to Quote" : "Create Quote"}
               </button>
             )}
-            {isOwnActiveLead && canAddEnquiry && !enquiryId && !lead.is_complex_booking && (
+            {isOwnActiveLead && canAddEnquiry && !quote && !lead.is_complex_booking && (
               <Link
                 href={`/leads/${lead.id}/complex-booking`}
                 className="flex items-center gap-1.5 rounded-xl border px-5 py-2.5 text-sm font-bold text-primary-600 hover:bg-primary-50"
