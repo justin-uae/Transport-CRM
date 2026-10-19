@@ -2,12 +2,13 @@ import { Bot } from "lucide-react";
 import { Panel } from "@/components/ui/Panel";
 import { SectionTitle } from "@/components/ui/SectionTitle";
 import { formatDateTime } from "@/lib/formatDate";
+import { getAiModelLabel } from "@/lib/aiProviderRegistry";
 
 export interface LeadAssignmentEvent {
   id: string;
   action: string;
   created_at: string;
-  new_value: { assignedToName?: string; quoteNumber?: string } | null;
+  new_value: { assignedToName?: string; quoteNumber?: string; aiModel?: { provider: string; model: string } | null } | null;
   actor: { full_name: string } | null;
 }
 
@@ -33,30 +34,30 @@ function describe(e: LeadAssignmentEvent): string {
   }
 }
 
+const AI_TRIGGER_LABEL: Record<string, string> = {
+  ai_quote_created_sla: "Time limit",
+  lead_released_sla_breach: "Time limit",
+  ai_quote_created_whatsapp_lead: "WhatsApp lead",
+  ai_quote_created_manual_assign: "Assigned to AI",
+};
+
 /** Small tag distinguishing what kind of event this was, at a glance —
-    "AI · <trigger>" for anything the AI Assistant did on its own, "Manual"
-    for a human claim/assign/release. Kept as three sub-labels rather than
-    one generic "AI" badge so the timeline actually tells the three AI
-    triggers (SLA time limit, WhatsApp lead, manual assign) apart. */
-function Badge({ action }: { action: string }) {
-  if (action === "ai_quote_created_sla" || action === "lead_released_sla_breach") {
+    "AI · <trigger> · <model>" for anything the AI Assistant did on its own,
+    "Manual" for a human claim/assign/release. Kept as three sub-labels
+    rather than one generic "AI" badge so the timeline actually tells the
+    three AI triggers (SLA time limit, WhatsApp lead, manual assign) apart
+    — and, where available, which provider/model actually priced it
+    (new_value.aiModel, only present on the two ai_quote_created_* actions
+    that go through createAndSendQuote; lead_released_sla_breach has none
+    since releasing isn't itself a pricing event). */
+function Badge({ action, newValue }: { action: string; newValue: LeadAssignmentEvent["new_value"] }) {
+  const trigger = AI_TRIGGER_LABEL[action];
+  if (trigger) {
+    const modelLabel = getAiModelLabel(newValue?.aiModel);
     return (
       <span className="flex items-center gap-1 rounded-full bg-indigo-50 px-2 py-0.5 text-[10px] font-bold text-indigo-600">
-        <Bot size={11} /> AI · Time limit
-      </span>
-    );
-  }
-  if (action === "ai_quote_created_whatsapp_lead") {
-    return (
-      <span className="flex items-center gap-1 rounded-full bg-indigo-50 px-2 py-0.5 text-[10px] font-bold text-indigo-600">
-        <Bot size={11} /> AI · WhatsApp lead
-      </span>
-    );
-  }
-  if (action === "ai_quote_created_manual_assign") {
-    return (
-      <span className="flex items-center gap-1 rounded-full bg-indigo-50 px-2 py-0.5 text-[10px] font-bold text-indigo-600">
-        <Bot size={11} /> AI · Assigned to AI
+        <Bot size={11} /> AI · {trigger}
+        {modelLabel ? ` · ${modelLabel}` : ""}
       </span>
     );
   }
@@ -87,7 +88,7 @@ export function LeadAssignmentHistory({ events }: { events: LeadAssignmentEvent[
         {events.map((e) => (
           <li key={e.id} className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5 rounded-xl border p-3 text-sm">
             <span className="flex flex-wrap items-center gap-2">
-              <Badge action={e.action} />
+              <Badge action={e.action} newValue={e.new_value} />
               <span>{describe(e)}</span>
             </span>
             <span className="shrink-0 text-xs text-slate-400">{formatDateTime(e.created_at)}</span>

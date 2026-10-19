@@ -7,6 +7,7 @@ import { requireProfile } from "@/lib/auth";
 import { hasPermission, PERMISSIONS } from "@/lib/permissions";
 import { recordAudit } from "@/lib/audit";
 import { extractComplexBooking, type ComplexBookingExtraction } from "@/lib/complexBookingExtraction";
+import { getAiModelSetting } from "@/lib/aiProviders";
 import type { ComplexBookingLegInput } from "@/app/(staff)/leads/complex-booking/actions";
 
 /**
@@ -109,7 +110,8 @@ export async function extractComplexBookingFromLeadAction(
   }
 
   try {
-    const data = await extractComplexBooking({ pastedText: summary, file: null });
+    const aiModel = await getAiModelSetting(supabase, actor.tenant_id, "complex_booking");
+    const data = await extractComplexBooking({ pastedText: summary, file: null, aiModel });
     const warning = data.legs.length === 0 ? "Couldn't turn this lead's details into a journey leg — add one manually below." : null;
     return { data, warning, error: null };
   } catch (err) {

@@ -1,7 +1,7 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "./supabase/database.types";
-import { getOpenAIClient } from "./openai";
+import { runAiStructuredTask, getAiModelSetting, type AiModelChoice } from "./aiProviders";
 import { recordAudit } from "./audit";
 import { businessHoursElapsed } from "./businessHours";
 import { STRIPE_PRICE_THRESHOLD, paymentMethodsForGbpValue } from "./quoteMoney";
@@ -131,10 +131,9 @@ const CURRENCY_CODE_RE = /^[A-Z]{3}$/;
 export async function estimatePricing(
   lead: LeadForSweep,
   brandName: string,
+  aiModel: AiModelChoice,
   options?: { realDistanceKm?: number; realDurationMinutes?: number },
 ): Promise<PricingEstimate> {
-  const client = getOpenAIClient();
-
   // When both times are known and the trip is a same-day return, the vehicle
   // and driver are realistically committed for the whole gap between drop-off
   // and the return pickup, not just the two drive legs — that's a day-rate
@@ -151,83 +150,62 @@ export async function estimatePricing(
     }
   }
 
-  const response = await client.responses.create(
-    {
-      // The best available reasoning-tier model, not a "mini"/fast one —
-      // gpt-4o-mini's estimates for this exact kind of job (a multi-hour
-      // day-hire, not a simple transfer) came back roughly 3-4x under a
-      // careful human/ChatGPT estimate for the same trip. gpt-5.5 reasons
-      // explicitly about vehicle class, hours committed and a real
-      // supplier-cost range before landing on a number, and landed within
-      // ~6% of that reference estimate in testing. Deliberately NOT
-      // gpt-5.5-pro: it scored only marginally closer (~4%) but took
-      // 60-100s+ per call in testing versus ~15s here — unworkable for a
-      // button a person is sitting and waiting on (and risks exceeding the
-      // hosting platform's own request timeout, on top of the model's own).
-      // No `temperature` param: this model line doesn't accept one (fixed
-      // reasoning, not sampled) — unlike gpt-4o, which needed it pinned to
-      // stop the same trip swinging wildly between calls.
-      model: "gpt-5.5",
-      instructions:
-        `You are a pricing analyst for ${brandName}, a coach and transport hire company. A lead has gone unquoted too ` +
-        `long, so you're pricing and quoting the trip yourself based on typical market rates for private transport hire. ` +
-        `Give a realistic, fair estimate — never a placeholder or round guess. Price it in the currency of the country ` +
-        `where the trip is taking place, not any other currency. ` +
-        `This quote is always full payment upfront, no deposit option — don't mention a deposit or part-payment in customer_notes. ` +
-        `If the trip has a return leg on the same day, the vehicle and driver are committed for the whole time between the ` +
-        `outbound drop-off and the return pickup, not just the two drive legs — price it as a day-hire/waiting-time job at ` +
-        `that point (a driver sitting idle for several hours still has to be paid), not as two one-way transfers added together. ` +
-        `Size the vehicle for the full passenger count given, and reason explicitly about vehicle class, hours committed, and ` +
-        `distance before settling on a number — never anchor on a generic per-km airport-transfer rate for a multi-hour booking.`,
-      input: [
-        {
-          role: "user" as const,
-          content: [
-            `Pickup: ${lead.pickup_text ?? "Not specified"}`,
-            `Destination: ${lead.destination_text ?? "Not specified"}`,
-            options?.realDistanceKm
-              ? `Real driving distance (from mapping data — this is already the TOTAL for the whole trip, including the return leg if there is one; use this exact figure, do not re-estimate or re-double it): ${options.realDistanceKm} km, approx ${options.realDurationMinutes ?? "?"} minutes`
-              : null,
-            `Travel date: ${lead.travel_date ?? "Not specified"}`,
-            lead.pickup_time ? `Pickup time: ${lead.pickup_time}` : null,
-            lead.return_trip
-              ? `Return date: ${lead.return_date ?? "Not specified"}${lead.return_time ? `, return time: ${lead.return_time}` : ""}`
-              : "One-way trip",
-            committedHours !== null
-              ? `The vehicle/driver is effectively committed for approximately ${committedHours} hours in total (pickup to return pickup, same day) — price this as a day-hire/waiting-time booking.`
-              : null,
-            `Passengers: ${lead.passenger_count ?? "Not specified"}`,
-            lead.luggage_count ? `Luggage: ${lead.luggage_count} pieces` : null,
-            lead.vehicle_requested ? `Customer requested vehicle: ${lead.vehicle_requested}` : null,
-            lead.notes ? `Notes: ${lead.notes}` : null,
-          ]
-            .filter(Boolean)
-            .join("\n"),
-        },
-      ],
-      text: {
-        format: {
-          type: "json_schema",
-          name: "ai_auto_quote_pricing",
-          strict: true,
-          schema: PRICING_SCHEMA,
-        },
+  const parsed = await runAiStructuredTask<PricingEstimate>({
+    provider: aiModel.provider,
+    model: aiModel.model,
+    // The reasoning this prompt asks for (vehicle class, hours committed, a
+    // real supplier-cost range before landing on a number) is what keeps
+    // this landing close to a careful human estimate instead of anchoring on
+    // a generic per-km rate — see the Settings -> AI Models page for why a
+    // fast/"mini"-tier model per provider isn't offered here.
+    instructions:
+      `You are a pricing analyst for ${brandName}, a coach and transport hire company. A lead has gone unquoted too ` +
+      `long, so you're pricing and quoting the trip yourself based on typical market rates for private transport hire. ` +
+      `Give a realistic, fair estimate — never a placeholder or round guess. Price it in the currency of the country ` +
+      `where the trip is taking place, not any other currency. ` +
+      `This quote is always full payment upfront, no deposit option — don't mention a deposit or part-payment in customer_notes. ` +
+      `If the trip has a return leg on the same day, the vehicle and driver are committed for the whole time between the ` +
+      `outbound drop-off and the return pickup, not just the two drive legs — price it as a day-hire/waiting-time job at ` +
+      `that point (a driver sitting idle for several hours still has to be paid), not as two one-way transfers added together. ` +
+      `Size the vehicle for the full passenger count given, and reason explicitly about vehicle class, hours committed, and ` +
+      `distance before settling on a number — never anchor on a generic per-km airport-transfer rate for a multi-hour booking.`,
+    content: [
+      {
+        type: "text",
+        text: [
+          `Pickup: ${lead.pickup_text ?? "Not specified"}`,
+          `Destination: ${lead.destination_text ?? "Not specified"}`,
+          options?.realDistanceKm
+            ? `Real driving distance (from mapping data — this is already the TOTAL for the whole trip, including the return leg if there is one; use this exact figure, do not re-estimate or re-double it): ${options.realDistanceKm} km, approx ${options.realDurationMinutes ?? "?"} minutes`
+            : null,
+          `Travel date: ${lead.travel_date ?? "Not specified"}`,
+          lead.pickup_time ? `Pickup time: ${lead.pickup_time}` : null,
+          lead.return_trip
+            ? `Return date: ${lead.return_date ?? "Not specified"}${lead.return_time ? `, return time: ${lead.return_time}` : ""}`
+            : "One-way trip",
+          committedHours !== null
+            ? `The vehicle/driver is effectively committed for approximately ${committedHours} hours in total (pickup to return pickup, same day) — price this as a day-hire/waiting-time booking.`
+            : null,
+          `Passengers: ${lead.passenger_count ?? "Not specified"}`,
+          lead.luggage_count ? `Luggage: ${lead.luggage_count} pieces` : null,
+          lead.vehicle_requested ? `Customer requested vehicle: ${lead.vehicle_requested}` : null,
+          lead.notes ? `Notes: ${lead.notes}` : null,
+        ]
+          .filter(Boolean)
+          .join("\n"),
       },
-    },
-    // This reasoning-tier model takes noticeably longer than gpt-4o did
-    // (several seconds to ~15-30s in testing vs a couple of seconds) — 20s
-    // was too tight. maxRetries: 0 is deliberate: the OpenAI SDK retries a
-    // timed-out/failed request up to 2 more times by default, so a single
-    // slow call could silently stack into several minutes of total wait
-    // (exactly what happened before this was set — one call ran past 4
-    // minutes). One attempt, a clear error if it fails, rather than a
-    // multi-minute hang on a button someone is sitting and waiting on.
-    { timeout: 60000, maxRetries: 0 },
-  );
-
-  const raw = response.output_text;
-  if (!raw) throw new Error("OpenAI returned no output for an AI auto-quote pricing estimate.");
-  const parsed = JSON.parse(raw) as PricingEstimate;
+    ],
+    schema: PRICING_SCHEMA,
+    schemaName: "ai_auto_quote_pricing",
+    // This reasoning-tier task takes noticeably longer than a quick
+    // classification call — several seconds up to ~30s in testing. Each
+    // provider adapter sets maxRetries: 0 itself: a retried timed-out/failed
+    // request stacking into several minutes of total wait (exactly what
+    // happened before that was set — one call ran past 4 minutes) would be
+    // far worse than a clear failure on a button someone is sitting and
+    // waiting on.
+    timeoutMs: 60000,
+  });
 
   // "Use USD, never default to EUR" only lives in the prompt — enforce it
   // here too, in case the model returns something malformed/blank/not a
@@ -394,7 +372,8 @@ export async function createAndSendQuote(
   // (the AI works this out from pickup/destination, falling back to USD if
   // it can't tell), not the brand's own default_currency — a UK-registered
   // brand quoting a coach hire in Thailand should show THB, not GBP.
-  const pricing = await estimatePricing(lead, brand.name, { realDistanceKm, realDurationMinutes });
+  const aiModel = await getAiModelSetting(admin, lead.tenant_id, "pricing_engine");
+  const pricing = await estimatePricing(lead, brand.name, aiModel, { realDistanceKm, realDurationMinutes });
   const currency = pricing.currency;
 
   const { data: quoteNumber, error: numberError } = await admin.rpc("next_document_number", {
@@ -418,6 +397,7 @@ export async function createAndSendQuote(
       expiry_at: new Date(Date.now() + expiryDays * 86400000).toISOString(),
       created_by: aiProfileId,
       ai_generated: true,
+      ai_model: aiModel,
     })
     .select()
     .single();
@@ -547,6 +527,7 @@ export async function createAndSendQuote(
       pricingRationale: pricing.pricing_rationale,
       leadId: lead.id,
       trigger: options.trigger,
+      aiModel,
     },
   });
 
@@ -561,7 +542,7 @@ export async function createAndSendQuote(
     action: LEAD_AUDIT_ACTION_FOR_TRIGGER[options.trigger],
     entityType: "lead",
     entityId: lead.id,
-    newValue: { quoteNumber: quote.quote_number },
+    newValue: { quoteNumber: quote.quote_number, aiModel },
   });
 }
 

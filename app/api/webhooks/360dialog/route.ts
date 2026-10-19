@@ -13,6 +13,7 @@ import {
   type ConversationMessage,
 } from "@/lib/whatsappAiIntake";
 import { createAndSendQuote, getAiProfileId, LEAD_FOR_SWEEP_COLUMNS, type LeadForSweep } from "@/lib/aiAutoQuote";
+import { getAiModelSetting } from "@/lib/aiProviders";
 
 // Inbound WhatsApp -> lead creation via 360dialog (a WhatsApp Business
 // Solution Provider built directly on Meta's Cloud API — same webhook
@@ -300,6 +301,8 @@ async function handleInboundMessage(admin: AdminClient, brand: Brand, waId: stri
   const isNewMessage = await logInboundIfNew(admin, brand, waId, customerId, inboundText, message.type, message.id);
   if (!isNewMessage) return; // redelivered webhook for a message we've already answered
 
+  const aiModel = await getAiModelSetting(admin, brand.tenant_id, "whatsapp_intake");
+
   const { data: lastSession } = await admin
     .from("whatsapp_intake_sessions")
     .select("id, step, messages, collected, lead_id, created_at")
@@ -331,7 +334,7 @@ async function handleInboundMessage(admin: AdminClient, brand: Brand, waId: stri
   // plain word-list regex wasn't reliable enough). Anything that's actually
   // a new trip request falls through to start a fresh enquiry below.
   if (session?.step === "done") {
-    const postDone = await handlePostDoneMessage(brand.name, knownName, inboundText);
+    const postDone = await handlePostDoneMessage(brand.name, knownName, inboundText, aiModel);
     if (!postDone.isNewTripRequest) {
       await sendWhatsAppText(waId, postDone.reply);
       await logWhatsAppMessage(admin, brand, waId, customerId, "outbound", postDone.reply);
@@ -375,7 +378,7 @@ async function handleInboundMessage(admin: AdminClient, brand: Brand, waId: stri
 
   let result;
   try {
-    result = await runIntakeTurn(brand.name, history, session.collected ?? {}, inboundText);
+    result = await runIntakeTurn(brand.name, history, session.collected ?? {}, inboundText, aiModel);
   } catch (err) {
     console.error(`360dialog webhook: AI intake turn failed for ${waId}:`, err);
     const fallback = "Sorry, I'm having trouble replying right now — someone from our team will follow up with you shortly.";

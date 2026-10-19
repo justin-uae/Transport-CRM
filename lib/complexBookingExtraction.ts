@@ -1,8 +1,7 @@
 import "server-only";
 import mammoth from "mammoth";
-import { getOpenAIClient } from "@/lib/openai";
 import { createClient } from "@/lib/supabase/server";
-import type { ResponseInputContent } from "openai/resources/responses/responses";
+import { runAiStructuredTask, AI_PROVIDER_REGISTRY, type AiContentPart, type AiModelChoice } from "@/lib/aiProviders";
 
 export interface ComplexBookingExtraction {
   customer: {
@@ -112,10 +111,6 @@ const SYSTEM_PROMPT =
   "anything not mentioned. If you have to guess or infer a value from ambiguous wording rather than reading it " +
   "directly, still fill it in but list its field path in `uncertain_fields` so a human can double-check it.";
 
-function bufferToDataUrl(buffer: Buffer, mimeType: string): string {
-  return `data:${mimeType};base64,${buffer.toString("base64")}`;
-}
-
 async function downloadFileBuffer(storagePath: string): Promise<Buffer> {
   const supabase = await createClient();
   const { data, error } = await supabase.storage.from("documents").download(storagePath);
@@ -129,70 +124,54 @@ const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingm
 export async function extractComplexBooking(input: {
   pastedText: string | null;
   file: { storagePath: string; mimeType: string; fileName: string } | null;
+  aiModel: AiModelChoice;
 }): Promise<ComplexBookingExtraction> {
   if (!input.pastedText && !input.file) {
     throw new Error("Paste itinerary text or upload a file first.");
   }
 
-  const content: ResponseInputContent[] = [];
+  const content: AiContentPart[] = [];
   if (input.pastedText) {
-    content.push({ type: "input_text", text: input.pastedText });
+    content.push({ type: "text", text: input.pastedText });
   }
 
   if (input.file) {
     const { mimeType, fileName, storagePath } = input.file;
     if (mimeType.startsWith("image/")) {
       const buffer = await downloadFileBuffer(storagePath);
-      content.push({ type: "input_image", detail: "auto", image_url: bufferToDataUrl(buffer, mimeType) });
+      content.push({ type: "image", data: buffer, mimeType });
     } else if (mimeType === "application/pdf") {
+      if (!AI_PROVIDER_REGISTRY[input.aiModel.provider].supportsPdf) {
+        throw new Error("The selected AI provider (Settings -> AI Models -> Complex Booking) doesn't support PDF uploads — switch provider, or upload an image/paste the itinerary text instead.");
+      }
       const buffer = await downloadFileBuffer(storagePath);
-      content.push({ type: "input_file", filename: fileName, file_data: bufferToDataUrl(buffer, mimeType) });
+      content.push({ type: "pdf", data: buffer, fileName });
     } else if (mimeType === DOCX_MIME || fileName.toLowerCase().endsWith(".docx")) {
       const buffer = await downloadFileBuffer(storagePath);
       const { value: text } = await mammoth.extractRawText({ buffer });
       if (!text.trim()) throw new Error("Could not read any text from this Word document.");
-      content.push({ type: "input_text", text });
+      content.push({ type: "text", text });
     } else {
       throw new Error("Unsupported file type — upload a PDF, Word (.docx) document, or an image, or paste the itinerary text instead.");
     }
   }
 
-  const client = getOpenAIClient();
-  const response = await client.responses.create(
-    {
-      // Same model as every other AI task in this CRM (lib/aiAutoQuote.ts,
-      // lib/whatsappAiIntake.ts, lib/emailLeadIntake.ts) — the strongest
-      // model on the account that's still fast enough for a staff member to
-      // sit and wait on, and confirmed to handle image/PDF input the same
-      // way gpt-4o did.
-      model: "gpt-5.5",
-      instructions: SYSTEM_PROMPT,
-      input: [{ role: "user", content }],
-      text: {
-        format: {
-          type: "json_schema",
-          name: "complex_booking_extraction",
-          strict: true,
-          schema: EXTRACTION_SCHEMA,
-        },
-      },
-    },
-    // No timeout/maxRetries here before — the client's own defaults (10min
-    // timeout, 2 retries) mean a single slow/failed call could silently
-    // stack into a very long wait with no feedback, the same bug fixed in
-    // lib/aiAutoQuote.ts. A document upload can be a multi-page PDF, so this
-    // gets more headroom than the short text-only classification calls.
-    { timeout: 90000, maxRetries: 0 },
-  );
+  const parsed = await runAiStructuredTask<ComplexBookingExtraction>({
+    provider: input.aiModel.provider,
+    model: input.aiModel.model,
+    instructions: SYSTEM_PROMPT,
+    content,
+    schema: EXTRACTION_SCHEMA,
+    schemaName: "complex_booking_extraction",
+    // No timeout/maxRetries here before — a vendor SDK's own defaults (e.g.
+    // OpenAI's: 10min timeout, 2 retries) mean a single slow/failed call
+    // could silently stack into a very long wait with no feedback, the same
+    // bug fixed in lib/aiAutoQuote.ts. A document upload can be a
+    // multi-page PDF, so this gets more headroom than the short text-only
+    // classification calls elsewhere.
+    timeoutMs: 90000,
+  });
 
-  const raw = response.output_text;
-  if (!raw) throw new Error("The AI didn't return any extracted data — try again or enter this booking manually.");
-
-  try {
-    const parsed = JSON.parse(raw) as ComplexBookingExtraction;
-    if (!Array.isArray(parsed.uncertain_fields)) parsed.uncertain_fields = [];
-    return parsed;
-  } catch {
-    throw new Error("The AI's response could not be read — try again, or enter this booking manually.");
-  }
+  if (!Array.isArray(parsed.uncertain_fields)) parsed.uncertain_fields = [];
+  return parsed;
 }

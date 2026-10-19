@@ -24,6 +24,8 @@ export interface Tenant {
   whatsapp_auto_quote_enabled: boolean;
   /** Every lead the email-lead-intake sweep creates lands on this brand — set once (backfilled to the tenant's "GLOBAL BUS RENTAL LIMITED" brand, see 0088_email_lead_intake.sql) since 300+ forwarded sites can't be reliably attributed from email content alone. Null disables the sweep for this tenant entirely. */
   default_lead_inbox_brand_id: string | null;
+  /** Master-Admin-only per-feature AI provider/model picks (Settings -> AI Models, see 0098_ai_model_settings.sql and lib/aiProviders.ts) — keyed by AiFeatureKey ("whatsapp_intake" | "pricing_engine" | "email_intake" | "complex_booking"), each value an {provider, model}. A missing key falls back to OpenAI/gpt-5.5 in code. */
+  ai_model_settings: Record<string, { provider: string; model: string }>;
   /** IMAP polling cursor for the shared lead-intake inbox — everything before this timestamp has already been swept. */
   email_lead_inbox_synced_since: string;
   created_at: string;
@@ -427,8 +429,10 @@ export interface Quote {
   /** Why and by whom this booking was cancelled — set by cancelBookingAction, see 0077_quote_cancellation_history.sql. */
   cancellation_reason: string | null;
   cancelled_by: string | null;
-  /** True when OpenAI priced and sent this quote itself via the ai-auto-quote sweep (see lib/aiAutoQuote.ts), rather than a human via quotes/new/actions.ts. created_by stays null on these. */
+  /** True when AI priced and sent this quote itself via the ai-auto-quote sweep (see lib/aiAutoQuote.ts), rather than a human via quotes/new/actions.ts. created_by stays null on these. */
   ai_generated: boolean;
+  /** Which AI provider/model actually priced this quote (Settings -> AI Models -> Pricing Engine at the moment it was created) — see 0099_quote_ai_model.sql. Null for non-AI quotes and for anything created before this column existed. Set once, never updated — the tenant's live setting can change later without rewriting history. */
+  ai_model: { provider: string; model: string } | null;
   /** An on-demand OpenAI price benchmark for this quote's journey (Master Admin only, see lib/aiPriceEstimate.ts) — an internal pricing sanity check, cached here so re-viewing it doesn't re-call OpenAI. Unrelated to ai_generated: any quote, human or AI-priced, can have one computed. */
   ai_estimated_price: number | null;
   ai_estimated_price_currency: string | null;

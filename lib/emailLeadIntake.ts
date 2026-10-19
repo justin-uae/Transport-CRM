@@ -4,7 +4,7 @@ import { ImapFlow } from "imapflow";
 import { simpleParser } from "mailparser";
 import { htmlToText } from "html-to-text";
 import type { Database } from "./supabase/database.types";
-import { getOpenAIClient } from "./openai";
+import { runAiStructuredTask, getAiModelSetting, type AiModelChoice } from "./aiProviders";
 import { recordAudit } from "./audit";
 import { resolveCustomerId, notifyIfAutoAssigned } from "./leadIntake";
 
@@ -123,42 +123,26 @@ const EXTRACTION_SCHEMA = {
 } as const;
 
 /** One-shot classification — unlike the WhatsApp/AI-auto-quote flows, there's no back-and-forth: whatever the email says is all there'll ever be, so missing fields are expected and fine as long as is_travel_enquiry and a way to reach the sender are present. */
-async function classifyEnquiryEmail(subject: string, bodyText: string, emailDateIso: string): Promise<EnquiryExtraction> {
-  const client = getOpenAIClient();
-  const response = await client.responses.create(
-    {
-      // Same model as every other AI task in this CRM (lib/aiAutoQuote.ts,
-      // lib/whatsappAiIntake.ts, lib/complexBookingExtraction.ts) — this
-      // sweep runs unattended over a batch of emails, not something a
-      // person is watching, so there's no reason to hold it back on a
-      // "mini" model.
-      model: "gpt-5.5",
-      instructions:
-        `You are screening inbound emails forwarded from company transport-hire websites into one shared inbox. This ` +
-        `email's own date is ${emailDateIso} — use that as "today" when resolving relative dates. Decide whether it's a ` +
-        `genuine customer enquiry, and if so extract whatever trip details are actually present. Never invent a value ` +
-        `that isn't there — leave a field null rather than guess, since there's no way to ask this sender a follow-up question.`,
-      input: [{ role: "user" as const, content: `Subject: ${subject}\n\n${bodyText}`.slice(0, 8000) }],
-      text: {
-        format: {
-          type: "json_schema",
-          name: "email_lead_intake_extraction",
-          strict: true,
-          schema: EXTRACTION_SCHEMA,
-        },
-      },
-    },
-    // maxRetries: 0 — a timed-out/failed call retrying up to 2 more times
-    // by default could stack several minutes of delay into one email in the
-    // middle of a sweep over many messages, same bug fixed in
-    // lib/aiAutoQuote.ts. A clear failure for this one message (counted in
-    // SweepResult.failed, retried on the next hourly run) beats that.
-    { timeout: 30000, maxRetries: 0 },
-  );
-
-  const raw = response.output_text;
-  if (!raw) throw new Error("OpenAI returned no output for an email lead intake classification.");
-  return JSON.parse(raw) as EnquiryExtraction;
+async function classifyEnquiryEmail(subject: string, bodyText: string, emailDateIso: string, aiModel: AiModelChoice): Promise<EnquiryExtraction> {
+  return runAiStructuredTask<EnquiryExtraction>({
+    provider: aiModel.provider,
+    model: aiModel.model,
+    instructions:
+      `You are screening inbound emails forwarded from company transport-hire websites into one shared inbox. This ` +
+      `email's own date is ${emailDateIso} — use that as "today" when resolving relative dates. Decide whether it's a ` +
+      `genuine customer enquiry, and if so extract whatever trip details are actually present. Never invent a value ` +
+      `that isn't there — leave a field null rather than guess, since there's no way to ask this sender a follow-up question.`,
+    content: [{ type: "text", text: `Subject: ${subject}\n\n${bodyText}`.slice(0, 8000) }],
+    schema: EXTRACTION_SCHEMA,
+    schemaName: "email_lead_intake_extraction",
+    // maxRetries: 0 (set inside each provider adapter) — a timed-out/failed
+    // call retrying up to 2 more times by default could stack several
+    // minutes of delay into one email in the middle of a sweep over many
+    // messages, same bug fixed in lib/aiAutoQuote.ts. A clear failure for
+    // this one message (counted in SweepResult.failed, retried on the next
+    // hourly run) beats that.
+    timeoutMs: 30000,
+  });
 }
 
 interface ProcessResult {
@@ -227,6 +211,7 @@ async function processMessage(
   tenantId: string,
   brand: { id: string; name: string },
   parsed: { subject: string | null; text: string | null; html: string | null; date: Date | null; fromAddress: string | null; fromName: string | null },
+  aiModel: AiModelChoice,
 ): Promise<ProcessResult> {
   const subject = parsed.subject ?? "(no subject)";
   // mailparser only fills in `.text` from the HTML part when there's no
@@ -239,7 +224,7 @@ async function processMessage(
   const bodyText = parsed.text?.trim() || (parsed.html ? htmlToText(parsed.html, { wordwrap: false }).trim() : "");
   if (!bodyText) return { decision: "discarded_not_travel", detail: "Empty body." };
 
-  const extraction = await classifyEnquiryEmail(subject, bodyText, (parsed.date ?? new Date()).toISOString());
+  const extraction = await classifyEnquiryEmail(subject, bodyText, (parsed.date ?? new Date()).toISOString(), aiModel);
   if (!extraction.is_travel_enquiry) return { decision: "discarded_not_travel" };
 
   // The forwarded "From" header is often the forwarding service or a
@@ -353,6 +338,8 @@ export async function runEmailLeadIntakeSweep(admin: Admin): Promise<SweepResult
     const { data: brand } = await admin.from("brands").select("id, name").eq("id", tenant.default_lead_inbox_brand_id!).maybeSingle();
     if (!brand) continue;
 
+    const aiModel = await getAiModelSetting(admin, tenant.id, "email_intake");
+
     const maxLookback = new Date(Date.now() - MAX_LOOKBACK_DAYS * 86400000);
     const cursor = tenant.email_lead_inbox_synced_since ? new Date(tenant.email_lead_inbox_synced_since) : maxLookback;
     const since = cursor > maxLookback ? cursor : maxLookback;
@@ -387,14 +374,20 @@ export async function runEmailLeadIntakeSweep(admin: Admin): Promise<SweepResult
           result.checked++;
           let outcome: ProcessResult;
           try {
-            outcome = await processMessage(admin, tenant.id, brand, {
-              subject: parsed.subject ?? null,
-              text: parsed.text ?? null,
-              html: parsed.html || null,
-              date: parsed.date ?? null,
-              fromAddress: parsed.from?.value?.[0]?.address ?? null,
-              fromName: parsed.from?.value?.[0]?.name ?? null,
-            });
+            outcome = await processMessage(
+              admin,
+              tenant.id,
+              brand,
+              {
+                subject: parsed.subject ?? null,
+                text: parsed.text ?? null,
+                html: parsed.html || null,
+                date: parsed.date ?? null,
+                fromAddress: parsed.from?.value?.[0]?.address ?? null,
+                fromName: parsed.from?.value?.[0]?.name ?? null,
+              },
+              aiModel,
+            );
           } catch (err) {
             outcome = { decision: "error", detail: describeImapError(err) };
           }

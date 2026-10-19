@@ -30,6 +30,7 @@ export interface CompletedBookingJob {
     enquiries: { leads: { source: keyof typeof SOURCE_LABEL } | null; enquiry_legs: { pickup_date: string | null }[] } | null;
     quote_versions: { selling_price: number } | null;
     ai_generated: boolean;
+    ai_model: { provider: string; model: string } | null;
   } | null;
   job_allocations: { status: string; completed_at: string | null; suppliers: { name: string } | null }[];
 }
@@ -91,7 +92,7 @@ export function BookingsCompletedPage({
                     </div>
                   </div>
                   <div className="flex shrink-0 items-center gap-1.5">
-                    {job.quotes?.ai_generated && <AiBadge />}
+                    {job.quotes?.ai_generated && <AiBadge model={job.quotes.ai_model} />}
                     <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-bold text-emerald-700">Completed</span>
                   </div>
                 </div>

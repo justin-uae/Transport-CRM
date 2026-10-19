@@ -1,12 +1,13 @@
 import "server-only";
-import { getOpenAIClient } from "@/lib/openai";
+import { runAiStructuredTask, type AiModelChoice } from "@/lib/aiProviders";
 
 // AI-driven replacement for the old fixed-step WhatsApp Q&A
 // (app/api/webhooks/360dialog/route.ts). Each inbound message is answered
-// by an OpenAI call that both carries on a natural conversation and extracts
-// the cumulative trip details gathered so far — the webhook then decides,
-// deterministically (not by trusting the model alone), whether enough is
-// known to create a lead.
+// by an AI call (provider/model configurable per-tenant, Settings -> AI
+// Models — see lib/aiProviders.ts) that both carries on a natural
+// conversation and extracts the cumulative trip details gathered so far —
+// the webhook then decides, deterministically (not by trusting the model
+// alone), whether enough is known to create a lead.
 
 export interface CollectedTrip {
   name: string | null;
@@ -80,31 +81,27 @@ export async function handlePostDoneMessage(
   brandName: string,
   customerName: string | null,
   text: string,
+  aiModel: AiModelChoice,
 ): Promise<{ isNewTripRequest: boolean; reply: string }> {
-  const client = getOpenAIClient();
   const name = customerName?.trim();
   try {
-    const response = await client.responses.create(
-      {
-        // Same model as every other AI task in this CRM (lib/aiAutoQuote.ts,
-        // lib/emailLeadIntake.ts, lib/complexBookingExtraction.ts).
-        model: "gpt-5.5",
-        instructions:
-          `You're texting on WhatsApp for ${brandName}, a coach and transport hire company. A customer's trip request was ` +
-          `already fully confirmed and closed out${name ? ` (their name is ${name})` : ""}. They've now sent one more ` +
-          `message. Work out whether it's a new/different trip request or just a casual follow-up, and reply accordingly ` +
-          `per the schema. If it's a follow-up, sound like a real person on the team, not a bot — brief, warm, natural.`,
-        input: [{ role: "user" as const, content: text }],
-        text: { format: { type: "json_schema", name: "whatsapp_post_done_reply", strict: true, schema: POST_DONE_SCHEMA } },
-      },
-      // maxRetries: 0 — this is a live WhatsApp conversation; a retry-
-      // stacked multi-minute wait (the bug fixed in lib/aiAutoQuote.ts)
-      // would be far worse here than the existing fail-open fallback below.
-      { timeout: 20000, maxRetries: 0 },
-    );
-    const raw = response.output_text;
-    if (!raw) throw new Error("OpenAI returned no output for a post-done classification.");
-    const parsed = JSON.parse(raw) as { is_new_trip_request: boolean; reply: string };
+    const parsed = await runAiStructuredTask<{ is_new_trip_request: boolean; reply: string }>({
+      provider: aiModel.provider,
+      model: aiModel.model,
+      instructions:
+        `You're texting on WhatsApp for ${brandName}, a coach and transport hire company. A customer's trip request was ` +
+        `already fully confirmed and closed out${name ? ` (their name is ${name})` : ""}. They've now sent one more ` +
+        `message. Work out whether it's a new/different trip request or just a casual follow-up, and reply accordingly ` +
+        `per the schema. If it's a follow-up, sound like a real person on the team, not a bot — brief, warm, natural.`,
+      content: [{ type: "text", text }],
+      schema: POST_DONE_SCHEMA,
+      schemaName: "whatsapp_post_done_reply",
+      // maxRetries: 0 (set inside each provider adapter) — this is a live
+      // WhatsApp conversation; a retry-stacked multi-minute wait (the bug
+      // fixed in lib/aiAutoQuote.ts) would be far worse here than the
+      // existing fail-open fallback below.
+      timeoutMs: 20000,
+    });
     return { isNewTripRequest: Boolean(parsed.is_new_trip_request), reply: parsed.reply };
   } catch (err) {
     console.error("handlePostDoneMessage failed — failing open toward a fresh intake:", err);
@@ -211,37 +208,26 @@ export async function runIntakeTurn(
   history: ConversationMessage[],
   collectedSoFar: CollectedTrip,
   latestUserText: string,
+  aiModel: AiModelChoice,
 ): Promise<AiTurnResult> {
-  const client = getOpenAIClient();
   const todayIso = new Date().toISOString().slice(0, 10);
-  const response = await client.responses.create(
-    {
-      // Same model as every other AI task in this CRM — see the note on
-      // handlePostDoneMessage above.
-      model: "gpt-5.5",
-      instructions: `${systemPrompt(brandName, todayIso)}\n\nData already collected (do not drop a value unless the customer corrects it): ${JSON.stringify(
-        collectedSoFar,
-      )}`,
-      input: [...history.map((m) => ({ role: m.role, content: m.content })), { role: "user" as const, content: latestUserText }],
-      text: {
-        format: {
-          type: "json_schema",
-          name: "whatsapp_intake_turn",
-          strict: true,
-          schema: TURN_SCHEMA,
-        },
-      },
-    },
-    // maxRetries: 0 — same reasoning as handlePostDoneMessage above: this is
-    // a live conversation, not something that should silently retry into a
-    // multi-minute wait before the customer gets a reply.
-    { timeout: 20000, maxRetries: 0 },
-  );
+  const parsed = await runAiStructuredTask<AiTurnResult>({
+    provider: aiModel.provider,
+    model: aiModel.model,
+    instructions: `${systemPrompt(brandName, todayIso)}\n\nData already collected (do not drop a value unless the customer corrects it): ${JSON.stringify(
+      collectedSoFar,
+    )}`,
+    history,
+    content: [{ type: "text", text: latestUserText }],
+    schema: TURN_SCHEMA,
+    schemaName: "whatsapp_intake_turn",
+    // maxRetries: 0 (set inside each provider adapter) — same reasoning as
+    // handlePostDoneMessage above: this is a live conversation, not
+    // something that should silently retry into a multi-minute wait before
+    // the customer gets a reply.
+    timeoutMs: 20000,
+  });
 
-  const raw = response.output_text;
-  if (!raw) throw new Error("OpenAI returned no output for a WhatsApp intake turn.");
-
-  const parsed = JSON.parse(raw) as AiTurnResult;
   return { reply: parsed.reply, collected: { ...EMPTY_COLLECTED, ...parsed.collected }, ready: Boolean(parsed.ready) };
 }
 

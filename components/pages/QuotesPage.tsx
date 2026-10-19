@@ -74,6 +74,7 @@ export interface QuoteRow {
   quote_versions: { selling_price: number } | null;
   profiles: { full_name: string } | null;
   ai_generated: boolean;
+  ai_model: { provider: string; model: string } | null;
   ai_estimated_price: number | null;
   ai_estimated_price_currency: string | null;
 }
@@ -523,7 +524,7 @@ export function QuotesPage({
                     </div>
                   </div>
                   <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
-                    {q.ai_generated && <AiBadge />}
+                    {q.ai_generated && <AiBadge model={q.ai_model} />}
                     {isOverdue(q) && <OverdueBadge />}
                     <span className={"rounded-full px-2.5 py-1 text-xs font-bold " + QUOTE_STATUS_STYLE[q.status]}>
                       {QUOTE_STATUS_LABEL[q.status]}

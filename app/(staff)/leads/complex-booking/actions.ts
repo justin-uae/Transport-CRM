@@ -8,6 +8,7 @@ import { hasPermission, PERMISSIONS } from "@/lib/permissions";
 import { recordAudit } from "@/lib/audit";
 import { extractComplexBooking, type ComplexBookingExtraction } from "@/lib/complexBookingExtraction";
 import { findDuplicateCustomer, type DuplicateCustomerMatch } from "@/lib/customerDuplicates";
+import { getAiModelSetting } from "@/lib/aiProviders";
 import type { JourneyType } from "@/lib/supabase/database.types";
 
 export interface ComplexBookingFileRef {
@@ -69,7 +70,9 @@ export async function extractComplexBookingAction(input: {
   }
 
   try {
-    const data = await extractComplexBooking({ pastedText: pastedText || null, file: input.file });
+    const supabase = await createClient();
+    const aiModel = await getAiModelSetting(supabase, actor.tenant_id, "complex_booking");
+    const data = await extractComplexBooking({ pastedText: pastedText || null, file: input.file, aiModel });
     // A partial read (e.g. the customer's details came through but no leg was
     // recognisable) still goes to review rather than being thrown away — the
     // review form already lets staff add a leg by hand from there.

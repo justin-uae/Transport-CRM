@@ -49,7 +49,7 @@ export default async function DispatchPage({ searchParams }: { searchParams: Pro
   const { data: jobs } = await supabase
     .from("jobs")
     .select(
-      "id, status, region, created_at, quotes(id, quote_number, ai_generated, customers(company_name, contact_name), profiles!quotes_created_by_fkey(full_name), enquiries(assigned_user_id, leads(source), enquiry_legs(pickup_date))), job_allocations(id, status, suppliers(name))",
+      "id, status, region, created_at, quotes(id, quote_number, ai_generated, ai_model, customers(company_name, contact_name), profiles!quotes_created_by_fkey(full_name), enquiries(assigned_user_id, leads(source), enquiry_legs(pickup_date))), job_allocations(id, status, suppliers(name))",
     );
 
   const sorted = ((jobs ?? []) as unknown as JobRow[]).slice().sort(comparatorFor(sort));

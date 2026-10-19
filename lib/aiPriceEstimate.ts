@@ -2,6 +2,7 @@ import "server-only";
 import { estimateTripDistance } from "./tripDistance";
 import { estimatePricing, type LeadForSweep } from "./aiAutoQuote";
 import type { PricingBenchmark } from "./quotePricingBenchmark";
+import type { AiModelChoice } from "./aiProviders";
 
 // An on-demand price benchmark for an EXISTING quote (Master Admin only, see
 // estimateQuotePriceAction in app/(staff)/quotes/actions.ts) — a read-only
@@ -63,6 +64,10 @@ export interface QuoteEstimateInput {
       bookings to trust — shown alongside the model's own figure as context,
       never substituted for it (see note above). */
   historicalRatePerKm: PricingBenchmark | null;
+  /** Resolved by the caller (Settings -> AI Models -> Pricing Engine) —
+      this function has no supabase client of its own, so it can't look this
+      up itself. */
+  aiModel: AiModelChoice;
 }
 
 export interface QuoteEstimateResult {
@@ -200,7 +205,7 @@ export async function estimateQuoteTripPrice(input: QuoteEstimateInput): Promise
     created_at: new Date().toISOString(),
   };
 
-  const pricing = await estimatePricing(leadLike, input.brandName, {
+  const pricing = await estimatePricing(leadLike, input.brandName, input.aiModel, {
     realDistanceKm: totalDistanceKm ?? undefined,
     realDurationMinutes: totalDurationMinutes,
   });

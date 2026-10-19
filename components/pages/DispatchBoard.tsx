@@ -55,6 +55,7 @@ export interface JobRow {
       enquiry_legs: { pickup_date: string | null }[];
     } | null;
     ai_generated: boolean;
+    ai_model: { provider: string; model: string } | null;
   } | null;
   job_allocations: { id: string; status: JobStatus; suppliers: { name: string } | null }[];
 }
@@ -114,7 +115,7 @@ function JobCard({
           </div>
         </div>
         <div className="flex items-center gap-2">
-          {job.quotes?.ai_generated && <AiBadge />}
+          {job.quotes?.ai_generated && <AiBadge model={job.quotes.ai_model} />}
           {isOverdue(job) && <OverdueBadge />}
           <span className={`rounded-full px-2.5 py-1 text-xs font-bold capitalize ${STATUS_STYLE[job.status]}`}>
             {job.status.replaceAll("_", " ")}

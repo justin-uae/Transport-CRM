@@ -16,6 +16,7 @@ import { sendWhatsAppTemplate, normalizeWhatsAppNumber, WHATSAPP_TEMPLATE_HEADER
 import { estimateQuoteTripPrice } from "@/lib/aiPriceEstimate";
 import { convertCurrency } from "@/lib/fxRates";
 import { computeHistoricalRatePerKm } from "@/lib/quotePricingBenchmark";
+import { getAiModelSetting } from "@/lib/aiProviders";
 
 /**
  * Reassign who owns a quote — admin/sales manager only (enquiries.reassign,
@@ -1187,9 +1188,12 @@ export async function estimateQuotePriceAction(quoteId: string) {
     excludeQuoteId: quoteId,
   });
 
+  const aiModel = await getAiModelSetting(supabase, actor.tenant_id, "pricing_engine");
+
   let result;
   try {
     result = await estimateQuoteTripPrice({
+      aiModel,
       brandName: brand?.name ?? "the company",
       travelDate: sortedLegs[0]?.pickup_date ?? null,
       vehicleDescription: version?.vehicle_description ?? null,

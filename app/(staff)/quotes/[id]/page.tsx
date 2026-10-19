@@ -17,6 +17,7 @@ import { JourneyLegDetail, type JourneyLeg } from "@/components/pages/JourneyLeg
 import { formatDateTime, formatDate } from "@/lib/formatDate";
 import type { QuoteStatus, QuoteEventType, QuoteDecisionType, CustomerPaymentMethod, JobStatus } from "@/lib/supabase/database.types";
 import { QUOTE_STATUS_LABEL, QUOTE_STATUS_STYLE } from "@/lib/quoteStatus";
+import { getAiModelLabel } from "@/lib/aiProviderRegistry";
 
 interface LineItemRow {
   id: string;
@@ -74,6 +75,7 @@ interface QuoteDetailRow {
   created_by: string | null;
   created_by_profile: { full_name: string } | null;
   ai_generated: boolean;
+  ai_model: { provider: string; model: string } | null;
   customers: { id: string; company_name: string | null; contact_name: string; phone: string | null; email: string | null } | null;
   enquiries: { id: string; assigned_user_id: string | null; enquiry_legs: (JourneyLeg & { id: string })[] } | null;
   quote_versions: VersionRow[];
@@ -116,7 +118,7 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
   const { data: quoteRaw, error: quoteError } = await supabase
     .from("quotes")
     .select(
-      "id, quote_number, status, currency, expiry_at, invoice_number, invoiced_at, public_token, created_at, sent_at, viewed_at, decided_at, cancellation_reason, cancelled_by, cancelled_by_profile:profiles!quotes_cancelled_by_fkey(full_name), created_by, created_by_profile:profiles!quotes_created_by_fkey(full_name), ai_generated, customers(id, company_name, contact_name, phone, email), enquiries(id, assigned_user_id, enquiry_legs(id, sequence, journey_type, pickup_address, destination_address, via_points, pickup_date, pickup_time, return_date, return_time, passenger_count, luggage_count, wheelchair_required, child_seats, special_requirements, vehicle_types(name))), quote_versions!quote_versions_quote_id_fkey(id, version_number, vehicle_description, supplier_estimated_cost, selling_price, currency, deposit_percentage, deposit_fixed_amount, customer_notes, terms_snapshot, created_at, quote_line_items(id, description, amount, category)), quote_events(event, detail, created_at), quote_decisions(decision, reason, free_text, decided_at), customer_payments(id, amount, method, paid_at), quote_payment_milestones(id, sequence, label, amount, due_date)",
+      "id, quote_number, status, currency, expiry_at, invoice_number, invoiced_at, public_token, created_at, sent_at, viewed_at, decided_at, cancellation_reason, cancelled_by, cancelled_by_profile:profiles!quotes_cancelled_by_fkey(full_name), created_by, created_by_profile:profiles!quotes_created_by_fkey(full_name), ai_generated, ai_model, customers(id, company_name, contact_name, phone, email), enquiries(id, assigned_user_id, enquiry_legs(id, sequence, journey_type, pickup_address, destination_address, via_points, pickup_date, pickup_time, return_date, return_time, passenger_count, luggage_count, wheelchair_required, child_seats, special_requirements, vehicle_types(name))), quote_versions!quote_versions_quote_id_fkey(id, version_number, vehicle_description, supplier_estimated_cost, selling_price, currency, deposit_percentage, deposit_fixed_amount, customer_notes, terms_snapshot, created_at, quote_line_items(id, description, amount, category)), quote_events(event, detail, created_at), quote_decisions(decision, reason, free_text, decided_at), customer_payments(id, amount, method, paid_at), quote_payment_milestones(id, sequence, label, amount, due_date)",
     )
     .eq("id", id)
     .single();
@@ -303,8 +305,9 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
             </dl>
             {quote.ai_generated && (
               <p className="mt-4 rounded-xl bg-primary-50 p-3 text-xs font-semibold text-primary-700">
-                This lead sat unquoted past the time limit, so Global Bus AI priced and sent this quote automatically (Settings
-                -&gt; AI Assistant). Review the price before relying on it for anything beyond the customer&rsquo;s copy.
+                This quote was priced and sent automatically by AI Auto-Quote (Settings -&gt; AI Assistant)
+                {getAiModelLabel(quote.ai_model) ? ` — ${getAiModelLabel(quote.ai_model)}` : ""}. Review the price before
+                relying on it for anything beyond the customer&rsquo;s copy.
               </p>
             )}
             {customer?.id && (

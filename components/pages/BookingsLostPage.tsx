@@ -39,6 +39,7 @@ export interface LostBookingQuote {
   quote_decisions: { decision: string; reason: string | null; free_text: string | null }[];
   profiles: { full_name: string } | null;
   ai_generated: boolean;
+  ai_model: { provider: string; model: string } | null;
 }
 
 export interface ExpiredLead {
@@ -133,7 +134,7 @@ export function BookingsLostPage({ quotes, expiredLeads }: { quotes: LostBooking
                     </div>
                   </div>
                   <div className="flex shrink-0 items-center gap-1.5">
-                    {q.ai_generated && <AiBadge />}
+                    {q.ai_generated && <AiBadge model={q.ai_model} />}
                     <span className={"rounded-full px-2.5 py-1 text-xs font-bold " + badgeStyle}>{badgeLabel}</span>
                   </div>
                 </div>

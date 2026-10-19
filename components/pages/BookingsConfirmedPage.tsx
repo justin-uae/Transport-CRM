@@ -48,6 +48,7 @@ export interface ConfirmedBookingJob {
     quote_versions: VersionRef;
     profiles: { full_name: string } | null;
     ai_generated: boolean;
+    ai_model: { provider: string; model: string } | null;
   } | null;
   job_allocations: { status: JobStatus; offered_at: string | null; suppliers: { name: string } | null }[];
 }
@@ -126,7 +127,7 @@ export function BookingsConfirmedPage({ jobs }: { jobs: ConfirmedBookingJob[] })
                     </div>
                   </div>
                   <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
-                    {job.quotes?.ai_generated && <AiBadge />}
+                    {job.quotes?.ai_generated && <AiBadge model={job.quotes.ai_model} />}
                     {isPastDate(leg?.pickup_date) && <OverdueBadge />}
                     <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${JOB_STATUS_STYLE[job.status]}`}>
                       {JOB_STATUS_LABEL[job.status]}
