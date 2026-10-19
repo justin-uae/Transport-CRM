@@ -196,9 +196,11 @@ export async function createQuoteAction(
       // above it defaults to bank-transfer-only — but staff can force bank
       // transfer regardless of amount (e.g. a regular corporate account that
       // always pays by transfer even on a small booking). There's no
-      // override in the other direction: Stripe is never offered above the
-      // threshold, since that's a real card-processing/fraud-risk limit, not
-      // just a default.
+      // override in the other direction at creation time: Stripe is never
+      // offered above the threshold here, since that's a real card-
+      // processing/fraud-risk limit, not just a default — the only way past
+      // it is a Master-Admin-approved request on the quote afterwards (see
+      // requestCardPaymentOverrideAction, app/(staff)/quotes/actions.ts).
       payment_methods:
         forceBankTransfer && sellingPriceGbp < STRIPE_PRICE_THRESHOLD
           ? { stripe: false, bank_transfer: true }

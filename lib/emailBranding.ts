@@ -19,6 +19,8 @@ const EMAIL_HEADLINES: Record<EmailTemplateKey, string> = {
   job_amended: "Job updated",
   job_reapproval_required: "Action needed",
   job_reapproval_rejected: "Job rejected",
+  card_payment_override_requested: "Approval needed",
+  card_payment_override_decided: "Request decided",
 };
 
 /**

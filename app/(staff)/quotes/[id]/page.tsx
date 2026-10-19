@@ -12,6 +12,7 @@ import { SectionTitle } from "@/components/ui/SectionTitle";
 import { RichText } from "@/components/ui/RichText";
 import { QuoteDetailActions, type AmendableLeg, type QuoteRefund } from "@/components/pages/QuoteDetailActions";
 import { AssignQuoteButton } from "@/components/pages/AssignQuoteButton";
+import { RequestCardPaymentButton } from "@/components/pages/RequestCardPaymentButton";
 import { BookingEditHistory, type BookingEditRecord } from "@/components/pages/BookingEditHistory";
 import { JourneyLegDetail, type JourneyLeg } from "@/components/pages/JourneyLegDetail";
 import { formatDateTime, formatDate } from "@/lib/formatDate";
@@ -35,6 +36,7 @@ interface VersionRow {
   currency: string;
   deposit_percentage: number | null;
   deposit_fixed_amount: number | null;
+  payment_methods: { stripe: boolean; bank_transfer: boolean };
   customer_notes: string | null;
   terms_snapshot: string | null;
   created_at: string;
@@ -77,7 +79,7 @@ interface QuoteDetailRow {
   ai_generated: boolean;
   ai_model: { provider: string; model: string } | null;
   customers: { id: string; company_name: string | null; contact_name: string; phone: string | null; email: string | null } | null;
-  enquiries: { id: string; assigned_user_id: string | null; enquiry_legs: (JourneyLeg & { id: string })[] } | null;
+  enquiries: { id: string; lead_id: string | null; assigned_user_id: string | null; enquiry_legs: (JourneyLeg & { id: string })[] } | null;
   quote_versions: VersionRow[];
   quote_events: { event: QuoteEventType; detail: string | null; created_at: string }[];
   quote_decisions: { decision: QuoteDecisionType; reason: string | null; free_text: string | null; decided_at: string }[];
@@ -95,6 +97,9 @@ const EVENT_LABEL: Record<QuoteEventType, string> = {
   partially_paid: "Deposit/partial payment received",
   paid: "Paid in full",
   reassigned: "Reassigned",
+  card_payment_requested: "Card payment requested",
+  card_payment_approved: "Card payment approved",
+  card_payment_rejected: "Card payment request rejected",
 };
 
 function money(amount: number | undefined | null, currency: string) {
@@ -118,7 +123,7 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
   const { data: quoteRaw, error: quoteError } = await supabase
     .from("quotes")
     .select(
-      "id, quote_number, status, currency, expiry_at, invoice_number, invoiced_at, public_token, created_at, sent_at, viewed_at, decided_at, cancellation_reason, cancelled_by, cancelled_by_profile:profiles!quotes_cancelled_by_fkey(full_name), created_by, created_by_profile:profiles!quotes_created_by_fkey(full_name), ai_generated, ai_model, customers(id, company_name, contact_name, phone, email), enquiries(id, assigned_user_id, enquiry_legs(id, sequence, journey_type, pickup_address, destination_address, via_points, pickup_date, pickup_time, return_date, return_time, passenger_count, luggage_count, wheelchair_required, child_seats, special_requirements, vehicle_types(name))), quote_versions!quote_versions_quote_id_fkey(id, version_number, vehicle_description, supplier_estimated_cost, selling_price, currency, deposit_percentage, deposit_fixed_amount, customer_notes, terms_snapshot, created_at, quote_line_items(id, description, amount, category)), quote_events(event, detail, created_at), quote_decisions(decision, reason, free_text, decided_at), customer_payments(id, amount, method, paid_at), quote_payment_milestones(id, sequence, label, amount, due_date)",
+      "id, quote_number, status, currency, expiry_at, invoice_number, invoiced_at, public_token, created_at, sent_at, viewed_at, decided_at, cancellation_reason, cancelled_by, cancelled_by_profile:profiles!quotes_cancelled_by_fkey(full_name), created_by, created_by_profile:profiles!quotes_created_by_fkey(full_name), ai_generated, ai_model, customers(id, company_name, contact_name, phone, email), enquiries(id, lead_id, assigned_user_id, enquiry_legs(id, sequence, journey_type, pickup_address, destination_address, via_points, pickup_date, pickup_time, return_date, return_time, passenger_count, luggage_count, wheelchair_required, child_seats, special_requirements, vehicle_types(name))), quote_versions!quote_versions_quote_id_fkey(id, version_number, vehicle_description, supplier_estimated_cost, selling_price, currency, deposit_percentage, deposit_fixed_amount, payment_methods, customer_notes, terms_snapshot, created_at, quote_line_items(id, description, amount, category)), quote_events(event, detail, created_at), quote_decisions(decision, reason, free_text, decided_at), customer_payments(id, amount, method, paid_at), quote_payment_milestones(id, sequence, label, amount, due_date)",
     )
     .eq("id", id)
     .single();
@@ -128,7 +133,7 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
   const quote = quoteRaw as unknown as QuoteDetailRow;
   const canCancel = actor.is_master_admin || (canCancelPermission && quote.enquiries?.assigned_user_id === actor.id);
 
-  const [{ data: job }, { data: refunds }, { data: amendmentsRaw }] = await Promise.all([
+  const [{ data: job }, { data: refunds }, { data: amendmentsRaw }, { data: latestCardPaymentRequest }] = await Promise.all([
     supabase.from("jobs").select("id, status, suppliers(name)").eq("quote_id", id).maybeSingle(),
     supabase
       .from("refunds")
@@ -144,6 +149,13 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
       )
       .eq("quote_id", id)
       .order("created_at", { ascending: false }),
+    supabase
+      .from("card_payment_override_requests")
+      .select("id, status")
+      .eq("quote_id", id)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
   ]);
 
   const canAmend = actor.is_master_admin || (canAmendPermission && quote.enquiries?.assigned_user_id === actor.id);
@@ -229,6 +241,37 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
               <div>
                 <dt className="text-xs font-bold uppercase text-slate-400">Selling price</dt>
                 <dd className="mt-0.5 text-base font-black text-primary-600">{money(currentVersion?.selling_price, quote.currency)}</dd>
+              </div>
+              <div className="col-span-2">
+                <dt className="text-xs font-bold uppercase text-slate-400">Payment method</dt>
+                <dd className="mt-0.5 font-semibold">
+                  {currentVersion?.payment_methods?.stripe
+                    ? currentVersion.payment_methods.bank_transfer
+                      ? "Card or bank transfer"
+                      : "Card payment"
+                    : "Bank transfer only"}
+                  {currentVersion?.payment_methods?.stripe && latestCardPaymentRequest?.status === "approved" && (
+                    <span className="ml-2 rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-bold text-emerald-700">
+                      Card approved by Master Admin
+                    </span>
+                  )}
+                </dd>
+                {!currentVersion?.payment_methods?.stripe && canCreateQuote && (
+                  <>
+                    {latestCardPaymentRequest?.status === "pending" ? (
+                      <p className="mt-2 rounded-xl bg-amber-50 p-2.5 text-xs font-semibold text-amber-700">
+                        Card payment requested — waiting on Master Admin approval.
+                      </p>
+                    ) : (
+                      <>
+                        {latestCardPaymentRequest?.status === "rejected" && (
+                          <p className="mt-2 text-xs font-semibold text-red-600">A previous request for card payment was rejected.</p>
+                        )}
+                        <RequestCardPaymentButton quoteId={quote.id} quoteNumber={quote.quote_number} />
+                      </>
+                    )}
+                  </>
+                )}
               </div>
             </dl>
             {currentVersion && currentVersion.quote_line_items.length > 0 && (

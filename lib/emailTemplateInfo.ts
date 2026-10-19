@@ -18,7 +18,9 @@ export type EmailTemplateKey =
   | "booking_amended"
   | "job_amended"
   | "job_reapproval_required"
-  | "job_reapproval_rejected";
+  | "job_reapproval_rejected"
+  | "card_payment_override_requested"
+  | "card_payment_override_decided";
 
 /** Friendly labels + the {{variable}} tokens each template supports — shown as an editing hint in Email Centre -> Templates. */
 export const EMAIL_TEMPLATE_INFO: Record<EmailTemplateKey, { label: string; description: string; variables: string[] }> = {
@@ -112,5 +114,15 @@ export const EMAIL_TEMPLATE_INFO: Record<EmailTemplateKey, { label: string; desc
     label: "Job re-approval rejected",
     description: "Sent to the booking's owner when a supplier rejects an edited job — it's open for dispatch to a new supplier.",
     variables: ["supplier_name", "quote_number", "brand_name", "link"],
+  },
+  card_payment_override_requested: {
+    label: "Card payment approval needed",
+    description: "Sent to every Master Admin when staff request card payment on a quote that's normally bank-transfer-only at its amount.",
+    variables: ["admin_name", "quote_number", "requested_by", "amount", "reason", "link"],
+  },
+  card_payment_override_decided: {
+    label: "Card payment request decided",
+    description: "Sent to the staff member who requested it, once a Master Admin approves or rejects their card-payment request.",
+    variables: ["requested_by", "quote_number", "decision", "decided_by", "decision_note", "link"],
   },
 };

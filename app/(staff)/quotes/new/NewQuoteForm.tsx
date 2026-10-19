@@ -135,10 +135,14 @@ export function NewQuoteForm({
       : gbpRates?.[currencyCode]
         ? sellingPriceNum / gbpRates[currencyCode]
         : null;
-  // Card payment is only ever offered under £1000 GBP — a real
-  // processing/fraud-risk limit, not just a default, so there's no override
-  // in that direction. Below it, staff can still choose bank transfer
-  // instead (e.g. a regular corporate account that always pays that way).
+  // Card payment is only ever offered under £1000 GBP at creation time — a
+  // real processing/fraud-risk limit, not just a default, so there's no
+  // override here. Below it, staff can still choose bank transfer instead
+  // (e.g. a regular corporate account that always pays that way). The one
+  // way past the limit is after the quote exists: its own detail page has a
+  // "Request card payment approval" button that asks Master Admin to add
+  // Stripe as an option for that specific quote (see
+  // requestCardPaymentOverrideAction, app/(staff)/quotes/actions.ts).
   const stripeEligible = sellingPriceGbp !== null && sellingPriceGbp < STRIPE_PRICE_THRESHOLD;
   const methods =
     sellingPriceGbp === null
@@ -449,7 +453,7 @@ export function NewQuoteForm({
                     <span className="text-xs font-normal text-slate-500">
                       {stripeEligible
                         ? "The customer gets a secure link to pay by card online. Available for bookings under £1,000."
-                        : `Not available for this amount — bookings of £${STRIPE_PRICE_THRESHOLD} or more must be paid by bank transfer.`}
+                        : `Not available for this amount — bookings of £${STRIPE_PRICE_THRESHOLD} or more must be paid by bank transfer. You can request Master Admin approval to allow card payment after creating this quote.`}
                     </span>
                   </label>
                   <label

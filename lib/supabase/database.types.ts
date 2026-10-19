@@ -285,7 +285,19 @@ export type QuoteDecisionType = "accepted" | "rejected";
 
 export type CustomerPaymentMethod = "stripe" | "bank_transfer";
 
-export type QuoteEventType = "sent" | "viewed" | "accepted" | "rejected" | "expired" | "cancelled" | "partially_paid" | "paid" | "reassigned";
+export type QuoteEventType =
+  | "sent"
+  | "viewed"
+  | "accepted"
+  | "rejected"
+  | "expired"
+  | "cancelled"
+  | "partially_paid"
+  | "paid"
+  | "reassigned"
+  | "card_payment_requested"
+  | "card_payment_approved"
+  | "card_payment_rejected";
 
 export interface Customer {
   id: string;
@@ -587,6 +599,21 @@ export interface QuoteEvent {
   quote_id: string;
   event: QuoteEventType;
   detail: string | null;
+  created_at: string;
+}
+
+/** Settings -> Card Payment Requests — staff asking Master Admin to allow Stripe on a specific quote that's normally bank-transfer-only above STRIPE_PRICE_THRESHOLD (lib/quoteMoney.ts). See 0102_card_payment_override_requests.sql. */
+export interface CardPaymentOverrideRequest {
+  id: string;
+  tenant_id: string;
+  quote_id: string;
+  requested_by: string | null;
+  reason: string | null;
+  amount_gbp: number;
+  status: "pending" | "approved" | "rejected";
+  decided_by: string | null;
+  decided_at: string | null;
+  decision_note: string | null;
   created_at: string;
 }
 
@@ -1188,6 +1215,7 @@ export interface Database {
       quote_versions: Table<QuoteVersion>;
       quote_decisions: Table<QuoteDecision>;
       quote_events: Table<QuoteEvent>;
+      card_payment_override_requests: Table<CardPaymentOverrideRequest>;
       number_sequences: Table<NumberSequence>;
       bank_accounts: Table<BankAccount>;
       suppliers: Table<Supplier>;

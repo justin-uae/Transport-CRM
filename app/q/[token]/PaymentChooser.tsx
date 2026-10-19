@@ -16,10 +16,15 @@ export interface BankAccountRow {
   currency: string;
 }
 
-// Stripe and bank transfer are never both available on the same quote — the
-// selling price threshold picks exactly one (see lib/quoteMoney.ts's
-// paymentMethodsFor) — so this only ever renders one path, not a real
-// either/or choice.
+/**
+ * Normally only ever one of stripe/bankTransfer is true — the selling price
+ * threshold (lib/quoteMoney.ts) picks exactly one, so this renders a single
+ * path with no real either/or choice. The one case both are true is a
+ * Master-Admin-approved card payment request on an otherwise bank-transfer-
+ * only quote (card_payment_override_requests, 0102_card_payment_override_requests.sql)
+ * — approving ADDS Stripe rather than replacing bank transfer, so the
+ * customer gets an actual choice between the two in that case.
+ */
 export function PaymentChooser({
   token,
   amountDueLabel,
@@ -35,17 +40,28 @@ export function PaymentChooser({
   bankAccounts: BankAccountRow[];
   reference: string;
 }) {
+  const bothAvailable = stripeAvailable && bankTransferAvailable;
+  const [method, setMethod] = useState<"stripe" | "bank_transfer">(stripeAvailable ? "stripe" : "bank_transfer");
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
   // Best-effort record of which method the customer is being shown, for
-  // staff visibility on the quote detail page — not needed for branching
-  // here since that's fully determined by the props above.
+  // staff visibility — only fires automatically when bank transfer is the
+  // ONLY option (there's no real choice being made, just being told how to
+  // pay). When both are available, this instead fires when the customer
+  // actively switches to the bank transfer tab below — recording the
+  // method shown unconditionally here would wrongly log "bank_transfer"
+  // even for a customer about to pay by card.
   useEffect(() => {
-    if (bankTransferAvailable) {
+    if (bankTransferAvailable && !stripeAvailable) {
       choosePaymentMethodAction(token, "bank_transfer").catch(() => {});
     }
-  }, [token, bankTransferAvailable]);
+  }, [token, bankTransferAvailable, stripeAvailable]);
+
+  function selectBankTransfer() {
+    setMethod("bank_transfer");
+    choosePaymentMethodAction(token, "bank_transfer").catch(() => {});
+  }
 
   function payOnline() {
     setError(null);
@@ -59,7 +75,7 @@ export function PaymentChooser({
     });
   }
 
-  if (bankTransferAvailable) {
+  function renderBankTransfer() {
     return (
       <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5">
         <p className="text-center font-bold text-emerald-700">Please complete payment by bank transfer to confirm your booking.</p>
@@ -102,25 +118,55 @@ export function PaymentChooser({
     );
   }
 
-  return (
-    <div>
-      <p className="mb-3 text-center text-sm font-semibold text-slate-600">
-        Amount due now: <b className="text-primary-600">{amountDueLabel}</b>
-      </p>
-      {error && <p className="mb-3 text-center text-sm font-semibold text-red-600">{error}</p>}
-      {stripeAvailable ? (
+  function renderStripe() {
+    return (
+      <div>
+        {error && <p className="mb-3 text-center text-sm font-semibold text-red-600">{error}</p>}
         <button
           onClick={payOnline}
           disabled={pending}
           className="w-full rounded-xl bg-primary-500 px-5 py-3 text-sm font-black text-white disabled:opacity-60"
         >
-          {pending ? "Please wait…" : "Pay Online (Stripe)"}
+          {pending ? "Please wait…" : "Pay Online (Card)"}
         </button>
-      ) : (
-        <div className="rounded-2xl bg-amber-50 p-5 text-center font-bold text-amber-700">
-          No payment method is currently configured for this quote — please contact us.
+      </div>
+    );
+  }
+
+  if (!stripeAvailable && !bankTransferAvailable) {
+    return (
+      <div className="rounded-2xl bg-amber-50 p-5 text-center font-bold text-amber-700">
+        No payment method is currently configured for this quote — please contact us.
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <p className="mb-3 text-center text-sm font-semibold text-slate-600">
+        Amount due now: <b className="text-primary-600">{amountDueLabel}</b>
+      </p>
+
+      {bothAvailable && (
+        <div className="mb-4 grid grid-cols-2 gap-2">
+          <button
+            type="button"
+            onClick={() => setMethod("stripe")}
+            className={`rounded-xl border px-4 py-2.5 text-sm font-bold ${method === "stripe" ? "border-primary-400 bg-primary-50 text-primary-700" : "border-slate-200 text-slate-500"}`}
+          >
+            Pay by Card
+          </button>
+          <button
+            type="button"
+            onClick={selectBankTransfer}
+            className={`rounded-xl border px-4 py-2.5 text-sm font-bold ${method === "bank_transfer" ? "border-emerald-400 bg-emerald-50 text-emerald-700" : "border-slate-200 text-slate-500"}`}
+          >
+            Pay by Bank Transfer
+          </button>
         </div>
       )}
+
+      {method === "bank_transfer" ? renderBankTransfer() : renderStripe()}
     </div>
   );
 }

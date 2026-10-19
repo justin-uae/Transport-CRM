@@ -7,16 +7,17 @@ import { requireProfile } from "@/lib/auth";
 import { hasPermission, PERMISSIONS } from "@/lib/permissions";
 import { recordAudit } from "@/lib/audit";
 import { recordCustomerPayment, finalizeQuoteFromVerifiedPayments } from "@/lib/quotePayments";
-import { renderAndSendTemplate } from "@/lib/emailTemplates";
+import { renderAndSendTemplate, sendTemplatedEmail } from "@/lib/emailTemplates";
 import { generateQuotePdf } from "@/lib/quotePdf";
 import { generateInvoicePdf } from "@/lib/invoicePdf";
 import { cancelAllocation } from "@/lib/dispatchAllocations";
 import { persistGeneratedPdf } from "@/lib/documentArchive";
 import { sendWhatsAppTemplate, normalizeWhatsAppNumber, WHATSAPP_TEMPLATE_HEADER_IMAGE_URL } from "@/lib/whatsapp360";
 import { estimateQuoteTripPrice } from "@/lib/aiPriceEstimate";
-import { convertCurrency } from "@/lib/fxRates";
+import { convertCurrency, convertToGbp } from "@/lib/fxRates";
 import { computeHistoricalRatePerKm } from "@/lib/quotePricingBenchmark";
 import { getAiModelSetting } from "@/lib/aiProviders";
+import { STRIPE_PRICE_THRESHOLD } from "@/lib/quoteMoney";
 
 /**
  * Reassign who owns a quote — admin/sales manager only (enquiries.reassign,
@@ -1277,5 +1278,116 @@ export async function estimateQuotePriceAction(quoteId: string) {
     historicalSampleSize: result.historicalSampleSize,
     computedAt,
   };
+}
+
+/**
+ * Card payment is never offered on a quote at/above STRIPE_PRICE_THRESHOLD
+ * (lib/quoteMoney.ts) — a real card-processing/fraud-risk limit, not just a
+ * default. This is the one deliberate override path: staff asks, Master
+ * Admin decides (decideCardPaymentOverrideAction,
+ * app/(staff)/settings/card-payment-requests/actions.ts) — never
+ * self-approved, and never silent (recorded on both this quote's own
+ * Timeline, quote_events, and — since that's the lead's actual complaint
+ * channel — the originating lead's Assignment history, same dual-audit
+ * pattern lib/aiAutoQuote.ts already uses for its own quote-vs-lead split).
+ */
+export async function requestCardPaymentOverrideAction(quoteId: string, reason: string) {
+  const actor = await requireProfile();
+  const allowed = await hasPermission(actor, PERMISSIONS.QUOTES_CREATE);
+  if (!allowed) return { error: "You do not have permission to do this." };
+
+  const supabase = await createClient();
+  const { data: quote } = await supabase
+    .from("quotes")
+    .select(
+      "id, quote_number, enquiries(lead_id), quote_versions!quote_versions_quote_id_fkey(id, version_number, selling_price, currency, payment_methods)",
+    )
+    .eq("id", quoteId)
+    .maybeSingle();
+  if (!quote) return { error: "Quote not found." };
+
+  type VersionRow = { id: string; version_number: number; selling_price: number; currency: string; payment_methods: { stripe: boolean; bank_transfer: boolean } };
+  const versions = (quote.quote_versions as unknown as VersionRow[]) ?? [];
+  const currentVersion = [...versions].sort((a, b) => b.version_number - a.version_number)[0];
+  if (!currentVersion) return { error: "This quote has no pricing yet." };
+  if (currentVersion.payment_methods?.stripe) return { error: "Card payment is already available for this quote." };
+
+  const { data: existingPending } = await supabase
+    .from("card_payment_override_requests")
+    .select("id")
+    .eq("quote_id", quoteId)
+    .eq("status", "pending")
+    .maybeSingle();
+  if (existingPending) return { error: "A request is already pending Master Admin approval for this quote." };
+
+  let amountGbp: number;
+  try {
+    amountGbp = await convertToGbp(currentVersion.selling_price, currentVersion.currency);
+  } catch {
+    amountGbp = STRIPE_PRICE_THRESHOLD;
+  }
+
+  const trimmedReason = reason.trim();
+  const { error: insertError } = await supabase
+    .from("card_payment_override_requests")
+    .insert({ tenant_id: actor.tenant_id, quote_id: quoteId, requested_by: actor.id, reason: trimmedReason || null, amount_gbp: amountGbp });
+  if (insertError) return { error: insertError.message };
+
+  const requesterName = actor.full_name ?? "A staff member";
+  await recordAudit({
+    tenantId: actor.tenant_id,
+    actorId: actor.id,
+    action: "card_payment_override_requested",
+    entityType: "quote",
+    entityId: quoteId,
+    newValue: { amountGbp, reason: trimmedReason || null },
+  });
+
+  const leadId = (quote.enquiries as unknown as { lead_id: string | null } | null)?.lead_id;
+  if (leadId) {
+    await recordAudit({
+      tenantId: actor.tenant_id,
+      actorId: actor.id,
+      action: "card_payment_override_requested",
+      entityType: "lead",
+      entityId: leadId,
+      newValue: { quoteNumber: quote.quote_number, amountGbp, reason: trimmedReason || null },
+    });
+  }
+
+  // quote_events has no insert RLS policy for the request-scoped client (see
+  // assignQuoteAction above) — admin client, same reason.
+  const admin = createAdminClient();
+  await admin.from("quote_events").insert({
+    quote_id: quoteId,
+    event: "card_payment_requested",
+    detail: `${requesterName} requested card payment approval (£${amountGbp.toFixed(2)})${trimmedReason ? ` — ${trimmedReason}` : ""}`,
+  });
+
+  const { data: masterAdmins } = await admin
+    .from("profiles")
+    .select("email, full_name")
+    .eq("tenant_id", actor.tenant_id)
+    .eq("is_master_admin", true)
+    .eq("status", "active");
+  for (const ma of masterAdmins ?? []) {
+    if (!ma.email) continue;
+    await sendTemplatedEmail(admin, {
+      tenantId: actor.tenant_id,
+      key: "card_payment_override_requested",
+      to: ma.email,
+      variables: {
+        admin_name: ma.full_name ?? "there",
+        quote_number: quote.quote_number,
+        requested_by: requesterName,
+        amount: amountGbp.toFixed(2),
+        reason: trimmedReason || "No reason given",
+        link: `${process.env.NEXT_PUBLIC_APP_URL ?? ""}/settings/card-payment-requests`,
+      },
+    });
+  }
+
+  revalidatePath(`/quotes/${quoteId}`);
+  return { error: null };
 }
 

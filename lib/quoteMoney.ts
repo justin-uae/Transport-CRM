@@ -63,8 +63,13 @@ export function amountDueNow(version: VersionForDue, alreadyPaid: number, milest
  * GBP. The quote's selling price is converted to its GBP equivalent (see
  * lib/fxRates.ts's convertToGbp — quotes are priced in whatever currency the
  * brand/customer uses) before this is applied: below it, the customer pays
- * online (Stripe) only; at or above it, bank transfer only — the two are
- * mutually exclusive, never both offered on the same quote.
+ * online (Stripe) only; at or above it, bank transfer only by default — the
+ * two are mutually exclusive at creation time, never both offered on the
+ * same quote. The one exception is a Master-Admin-approved card payment
+ * request (card_payment_override_requests, 0102_card_payment_override_requests.sql)
+ * on an individual quote after the fact, which adds Stripe back in alongside
+ * bank transfer rather than replacing it — see decideCardPaymentOverrideAction,
+ * app/(staff)/settings/card-payment-requests/actions.ts.
  */
 export const STRIPE_PRICE_THRESHOLD = 1000;
 
