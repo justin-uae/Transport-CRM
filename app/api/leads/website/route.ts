@@ -3,6 +3,7 @@ import { z } from "zod";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { recordAudit } from "@/lib/audit";
 import { resolveCustomerId, notifyIfAutoAssigned } from "@/lib/leadIntake";
+import { formatDateAndTime } from "@/lib/formatDate";
 
 // Public website intake (Part 22). Authenticated by a per-brand shared
 // secret (brands.webhook_secret) rather than a Supabase session — the
@@ -77,10 +78,9 @@ function isReturnTrip(body: { returnTrip?: boolean; returnDate?: string; returnT
   return Boolean(body.returnTrip || body.returnDate || body.returnTime);
 }
 
-/** Combined "date at time" for the lead_assigned email, since the template has one {{travel_date}} slot rather than a separate time variable. */
+/** Combined "date at time" for the lead_assigned email, since the template has one {{travel_date}} slot rather than a separate time variable — "Monday 10th August 2026, 8:17 PM" via the app's one shared formatter, not the raw ISO value. */
 function formatWhen(date?: string, time?: string) {
-  const when = [date, time].filter(Boolean).join(" at ");
-  return when || "Not specified";
+  return date ? formatDateAndTime(date, time) : "Not specified";
 }
 
 async function resolveBrand(admin: AdminClient, brandSlug: string, secret: string) {

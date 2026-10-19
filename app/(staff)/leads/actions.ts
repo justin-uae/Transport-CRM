@@ -9,6 +9,7 @@ import { hasPermission, PERMISSIONS } from "@/lib/permissions";
 import { recordAudit } from "@/lib/audit";
 import { sendTemplatedEmail } from "@/lib/emailTemplates";
 import { createAndSendQuote, getAiProfileId, LEAD_FOR_SWEEP_COLUMNS, type LeadForSweep } from "@/lib/aiAutoQuote";
+import { formatDateAndTime } from "@/lib/formatDate";
 
 export async function claimLeadAction(leadId: string) {
   const actor = await requireProfile();
@@ -86,7 +87,7 @@ export async function assignLeadAction(leadId: string, targetUserId: string) {
     .update({ assigned_user_id: targetUserId, status: "assigned", claimed_at: new Date().toISOString() })
     .eq("id", leadId)
     .select(
-      "id, source, pickup_text, destination_text, travel_date, passenger_count, vehicle_requested, notes, brands(name)",
+      "id, source, pickup_text, destination_text, travel_date, pickup_time, passenger_count, vehicle_requested, notes, brands(name)",
     )
     .maybeSingle();
 
@@ -119,7 +120,7 @@ export async function assignLeadAction(leadId: string, targetUserId: string) {
       source: lead.source,
       pickup: lead.pickup_text ?? "Not specified",
       destination: lead.destination_text ?? "Not specified",
-      travel_date: lead.travel_date ?? "Not specified",
+      travel_date: lead.travel_date ? formatDateAndTime(lead.travel_date, lead.pickup_time) : "Not specified",
       passenger_count: lead.passenger_count ? String(lead.passenger_count) : "Not specified",
       vehicle_requested: lead.vehicle_requested ?? "Not specified",
       notes: lead.notes ?? "",

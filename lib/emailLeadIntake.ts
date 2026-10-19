@@ -7,6 +7,7 @@ import type { Database } from "./supabase/database.types";
 import { runAiStructuredTask, getAiModelSetting, type AiModelChoice } from "./aiProviders";
 import { recordAudit } from "./audit";
 import { resolveCustomerId, notifyIfAutoAssigned } from "./leadIntake";
+import { formatDateAndTime } from "./formatDate";
 
 type Admin = SupabaseClient<Database>;
 
@@ -293,7 +294,15 @@ async function processMessage(
     source: "Email enquiry",
     pickup: extraction.pickup ?? "Not specified",
     destination: extraction.destination ?? "Not specified",
-    travel_date: extraction.travel_date ?? "Not specified",
+    // extraction.travel_date is only a clean ISO date when the AI could resolve
+    // one — otherwise it's the customer's raw wording (e.g. "next Friday"),
+    // same distinction the lead's own `notes` field already preserves above
+    // — so only run the ISO case through the date formatter, not free text.
+    travel_date: extraction.travel_date
+      ? /^\d{4}-\d{2}-\d{2}$/.test(extraction.travel_date)
+        ? formatDateAndTime(extraction.travel_date, extraction.pickup_time)
+        : extraction.travel_date
+      : "Not specified",
     passenger_count: extraction.passenger_count ? String(extraction.passenger_count) : "Not specified",
     vehicle_requested: "Not specified",
     notes: extraction.notes ?? "",

@@ -198,13 +198,18 @@ export async function estimatePricing(
     schema: PRICING_SCHEMA,
     schemaName: "ai_auto_quote_pricing",
     // This reasoning-tier task takes noticeably longer than a quick
-    // classification call — several seconds up to ~30s in testing. Each
-    // provider adapter sets maxRetries: 0 itself: a retried timed-out/failed
+    // classification call — several seconds up to ~30s for OpenAI in
+    // testing, but Gemini's adapter forwards this value as the backend's
+    // own deadline (not just a client-side abort), and gemini-pro-latest's
+    // reasoning over this schema's multi-sentence pricing_rationale field
+    // hit a hard 60s "504 DEADLINE_EXCEEDED" from Google in production —
+    // raised so Gemini actually gets enough runway to finish. Each provider
+    // adapter still sets maxRetries: 0 itself: a retried timed-out/failed
     // request stacking into several minutes of total wait (exactly what
     // happened before that was set — one call ran past 4 minutes) would be
     // far worse than a clear failure on a button someone is sitting and
     // waiting on.
-    timeoutMs: 60000,
+    timeoutMs: 120000,
   });
 
   // "Use USD, never default to EUR" only lives in the prompt — enforce it
