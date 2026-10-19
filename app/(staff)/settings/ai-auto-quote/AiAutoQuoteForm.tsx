@@ -8,20 +8,23 @@ export function AiAutoQuoteForm({
   initialEnabled,
   initialSlaHours,
   initialWhatsappEnabled,
+  initialMarkupPercent,
 }: {
   initialEnabled: boolean;
   initialSlaHours: number;
   initialWhatsappEnabled: boolean;
+  initialMarkupPercent: number;
 }) {
   const notify = useToast();
   const [enabled, setEnabled] = useState(initialEnabled);
   const [slaHours, setSlaHours] = useState(String(initialSlaHours));
   const [whatsappEnabled, setWhatsappEnabled] = useState(initialWhatsappEnabled);
+  const [markupPercent, setMarkupPercent] = useState(String(initialMarkupPercent));
   const [pending, startTransition] = useTransition();
 
   function save() {
     startTransition(async () => {
-      const result = await updateAiAutoQuoteSettingsAction(enabled, Number(slaHours), whatsappEnabled);
+      const result = await updateAiAutoQuoteSettingsAction(enabled, Number(slaHours), whatsappEnabled, Number(markupPercent));
       if (result?.error) {
         notify(result.error);
         return;
@@ -57,6 +60,26 @@ export function AiAutoQuoteForm({
           max={500}
           value={slaHours}
           onChange={(e) => setSlaHours(e.target.value)}
+          disabled={!enabled}
+          className="mt-2 w-32 rounded-xl border px-3 py-2.5 text-sm font-semibold disabled:opacity-50"
+        />
+      </div>
+
+      <div>
+        <label className="block text-sm font-bold" htmlFor="ai-auto-quote-markup-percent">
+          Price increase on AI-priced quotes (%)
+        </label>
+        <p className="mt-1 text-xs text-slate-500">
+          Added on top of whatever Global Bus AI itself prices, before the quote is saved and sent. 0 = no change. Shown on the lead&rsquo;s own timeline whenever it&rsquo;s used.
+        </p>
+        <input
+          id="ai-auto-quote-markup-percent"
+          type="number"
+          min={0}
+          max={100}
+          step={0.1}
+          value={markupPercent}
+          onChange={(e) => setMarkupPercent(e.target.value)}
           disabled={!enabled}
           className="mt-2 w-32 rounded-xl border px-3 py-2.5 text-sm font-semibold disabled:opacity-50"
         />

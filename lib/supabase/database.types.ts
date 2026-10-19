@@ -22,6 +22,8 @@ export interface Tenant {
   ai_auto_quote_enabled_at: string | null;
   /** Master-Admin-only switch (Settings → AI Assistant) — when true, a lead captured over WhatsApp is priced and quoted by AI immediately at creation (email + WhatsApp), instead of waiting for the SLA sweep above. See 0094_whatsapp_auto_quote.sql. */
   whatsapp_auto_quote_enabled: boolean;
+  /** Every quote AI prices and sends on its own (createAndSendQuote, any trigger) has its selling price increased by this percentage before it's saved/sent — Master-Admin-only (Settings → AI Assistant). Default 0 (no change). See 0101_ai_auto_quote_markup.sql. */
+  ai_auto_quote_markup_percent: number;
   /** Every lead the email-lead-intake sweep creates lands on this brand — set once (backfilled to the tenant's "GLOBAL BUS RENTAL LIMITED" brand, see 0088_email_lead_intake.sql) since 300+ forwarded sites can't be reliably attributed from email content alone. Null disables the sweep for this tenant entirely. */
   default_lead_inbox_brand_id: string | null;
   /** Master-Admin-only per-feature AI provider/model picks (Settings -> AI Models, see 0098_ai_model_settings.sql and lib/aiProviders.ts) — keyed by AiFeatureKey ("whatsapp_intake" | "pricing_engine" | "email_intake" | "complex_booking"), each value an {provider, model}. A missing key falls back to OpenAI/gpt-5.5 in code. */

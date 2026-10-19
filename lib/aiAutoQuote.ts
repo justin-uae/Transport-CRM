@@ -40,7 +40,7 @@ type Admin = SupabaseClient<Database>;
 export const NOT_QUOTABLE_STATUSES = ["converted", "closed", "spam", "duplicate", "expired"] as const;
 
 export const LEAD_FOR_SWEEP_COLUMNS =
-  "id, tenant_id, brand_id, customer_id, assigned_user_id, source, pickup_text, destination_text, travel_date, pickup_time, return_trip, return_date, return_time, passenger_count, luggage_count, vehicle_requested, notes, created_at";
+  "id, tenant_id, brand_id, customer_id, assigned_user_id, source, pickup_text, destination_text, travel_date, pickup_time, return_trip, return_date, return_time, passenger_count, luggage_count, vehicle_requested, notes, created_at, claimed_at";
 
 export type AiQuoteTrigger = "sla_breach" | "whatsapp_lead" | "manual_assign";
 
@@ -69,6 +69,7 @@ export interface LeadForSweep {
   vehicle_requested: string | null;
   notes: string | null;
   created_at: string;
+  claimed_at: string | null;
 }
 
 export interface PricingEstimate {
@@ -318,7 +319,7 @@ async function ensureEnquiry(admin: Admin, lead: LeadForSweep, aiProfileId: stri
 async function releaseToPool(admin: Admin, lead: LeadForSweep) {
   if (!lead.assigned_user_id) return;
 
-  await admin.from("leads").update({ assigned_user_id: null, status: "open_pool" }).eq("id", lead.id);
+  await admin.from("leads").update({ assigned_user_id: null, status: "open_pool", claimed_at: null }).eq("id", lead.id);
 
   await recordAudit({
     client: admin,
@@ -380,6 +381,20 @@ export async function createAndSendQuote(
   const aiModel = await getAiModelSetting(admin, lead.tenant_id, "pricing_engine");
   const pricing = await estimatePricing(lead, brand.name, aiModel, { realDistanceKm, realDurationMinutes });
   const currency = pricing.currency;
+
+  // Settings -> AI Assistant's "price increase" — applied on top of
+  // whatever the AI itself priced, after its own floor/margin guard has
+  // already run (estimatePricing above), so this is always the last word on
+  // the final number. basePriceBeforeMarkup is kept only for the audit
+  // trail (recordAudit below) — every downstream use of pricing.selling_price
+  // (quote_versions, the customer email/WhatsApp, etc.) reads the
+  // already-marked-up figure, so nothing past this point needs its own copy.
+  const { data: tenantRow } = await admin.from("tenants").select("ai_auto_quote_markup_percent").eq("id", lead.tenant_id).maybeSingle();
+  const markupPercent = tenantRow?.ai_auto_quote_markup_percent ?? 0;
+  const basePriceBeforeMarkup = pricing.selling_price;
+  if (markupPercent > 0) {
+    pricing.selling_price = Math.round(basePriceBeforeMarkup * (1 + markupPercent / 100) * 100) / 100;
+  }
 
   const { data: quoteNumber, error: numberError } = await admin.rpc("next_document_number", {
     p_brand_id: brand.id,
@@ -533,6 +548,8 @@ export async function createAndSendQuote(
       leadId: lead.id,
       trigger: options.trigger,
       aiModel,
+      markupPercent,
+      basePriceBeforeMarkup,
     },
   });
 
@@ -547,7 +564,7 @@ export async function createAndSendQuote(
     action: LEAD_AUDIT_ACTION_FOR_TRIGGER[options.trigger],
     entityType: "lead",
     entityId: lead.id,
-    newValue: { quoteNumber: quote.quote_number, aiModel },
+    newValue: { quoteNumber: quote.quote_number, aiModel, markupPercent, currency, sellingPrice: pricing.selling_price, basePriceBeforeMarkup },
   });
 }
 
@@ -590,11 +607,27 @@ export async function runAiAutoQuoteSweep(admin: Admin): Promise<SweepResult> {
     if (!tenantConfig) continue;
     const { slaHours, enabledAt } = tenantConfig;
 
+    // The clock runs from whichever is most recent: the lead's own
+    // created_at, or — if a human currently has it claimed/assigned —
+    // claimed_at instead. Without this, a rep picking up a lead never reset
+    // anything: the countdown kept ticking from the lead's original
+    // creation regardless of who had it or how recently they took it, so an
+    // actively-worked lead could still get silently reassigned to AI and
+    // auto-quoted out from under a rep who'd only just claimed it (observed
+    // in production: a lead claimed 2 hours earlier got auto-quoted anyway
+    // once its creation-time countdown ran out). Giving every claim/assign
+    // a fresh window matches what "time limit before AI takes over" is
+    // actually meant to mean — how long a lead has gone un-quoted by
+    // whoever currently owns it, not just its raw age. An unclaimed lead
+    // (open_pool/new, no assigned_user_id/claimed_at) still counts from
+    // created_at exactly as before.
+    //
     // Floored at whenever the feature was last switched on, not just the
-    // lead's own created_at — otherwise every pre-existing "new"/"open_pool"
-    // lead reads as instantly overdue the moment Master Admin flips it on,
+    // lead's own base timestamp — otherwise every pre-existing lead reads
+    // as instantly overdue the moment Master Admin flips the feature on,
     // and the sweep fires on the whole backlog in its very first run.
-    const countdownStart = enabledAt && enabledAt > lead.created_at ? new Date(enabledAt) : new Date(lead.created_at);
+    const leadBase = lead.assigned_user_id && lead.claimed_at ? lead.claimed_at : lead.created_at;
+    const countdownStart = enabledAt && enabledAt > leadBase ? new Date(enabledAt) : new Date(leadBase);
     if (businessHoursElapsed(countdownStart, now) < slaHours) continue;
 
     // A trip whose date has already passed can't be served — same guard as

@@ -14,7 +14,7 @@ export default async function AiAutoQuotePage() {
   const supabase = await createClient();
   const { data: tenant } = await supabase
     .from("tenants")
-    .select("ai_auto_quote_enabled, ai_auto_quote_sla_hours, whatsapp_auto_quote_enabled")
+    .select("ai_auto_quote_enabled, ai_auto_quote_sla_hours, whatsapp_auto_quote_enabled, ai_auto_quote_markup_percent")
     .eq("id", profile.tenant_id)
     .single();
 
@@ -33,7 +33,7 @@ export default async function AiAutoQuotePage() {
                 heading: "How it decides a lead is overdue",
                 bullets: true,
                 body: [
-                  "The clock starts the moment a lead is created, whether or not it's ever assigned to a sales user.",
+                  "The clock starts when a lead is created — but if it's ever claimed or assigned to a sales user, the clock restarts from that moment instead, giving them a full fresh time-limit window before AI would ever take it. An unclaimed lead sitting in the open pool keeps counting from when it came in.",
                   "Only Monday-Saturday counts — Sunday never adds to the total, so a lead created Saturday evening with a 24-hour time limit breaches Monday evening, not on the Sunday in between.",
                   "Turning this on never treats existing leads as instantly overdue — every lead's countdown is floored at the moment you switch it on, so the first sweep only ever catches ones that are still unquoted after a fresh time limit window from now.",
                   "A lead that's already been quoted, closed, marked spam/duplicate, or whose travel date has already passed is never picked up.",
@@ -65,6 +65,15 @@ export default async function AiAutoQuotePage() {
                 ],
               },
               {
+                heading: "Price increase on AI-priced quotes",
+                bullets: true,
+                body: [
+                  "A percentage markup, below — applied on top of whatever price Global Bus AI itself calculated, right before the quote is saved and sent. 0% (the default) changes nothing.",
+                  "Applies to every quote AI prices and sends unattended, no matter which of the three triggers above created it.",
+                  "Shown on the lead's own Assignment history timeline whenever it was used — both the price before and after the increase.",
+                ],
+              },
+              {
                 heading: "Who can change this",
                 body: ["Master Admin only — this runs hourly for the whole organisation, so it's kept out of individual role permissions."],
               },
@@ -79,6 +88,7 @@ export default async function AiAutoQuotePage() {
           initialEnabled={tenant?.ai_auto_quote_enabled ?? false}
           initialSlaHours={tenant?.ai_auto_quote_sla_hours ?? 24}
           initialWhatsappEnabled={tenant?.whatsapp_auto_quote_enabled ?? false}
+          initialMarkupPercent={tenant?.ai_auto_quote_markup_percent ?? 0}
         />
       </Panel>
     </div>

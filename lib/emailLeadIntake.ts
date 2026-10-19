@@ -3,8 +3,9 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { ImapFlow } from "imapflow";
 import { simpleParser } from "mailparser";
 import { htmlToText } from "html-to-text";
+import mammoth from "mammoth";
 import type { Database } from "./supabase/database.types";
-import { runAiStructuredTask, getAiModelSetting, type AiModelChoice } from "./aiProviders";
+import { runAiStructuredTask, getAiModelSetting, AI_PROVIDER_REGISTRY, type AiModelChoice, type AiContentPart } from "./aiProviders";
 import { recordAudit } from "./audit";
 import { resolveCustomerId, notifyIfAutoAssigned } from "./leadIntake";
 import { formatDateAndTime } from "./formatDate";
@@ -24,12 +25,20 @@ function describeImapError(err: unknown): string {
 // sweep (runEmailLeadIntakeSweep, called hourly by
 // app/api/cron/email-lead-intake/route.ts) polls that inbox over IMAP
 // (imapflow + mailparser — same mechanism as the per-user Email Centre sync,
-// app/api/cron/email-sync/route.ts), has OpenAI decide whether each message
+// app/api/cron/email-sync/route.ts), has AI decide whether each message
 // is a genuine travel/transport enquiry, and creates a `leads` row for the
 // genuine ones. Spam/irrelevant mail is neither turned into a lead nor
 // stored anywhere beyond a one-line dedup/audit entry (per the user's
 // explicit choice) — every message is logged once by its Message-ID so a
 // re-scanned inbox never processes the same email twice.
+//
+// A genuine enquiry's trip details sometimes live in an attached file
+// rather than (or in addition to) the email body — a forwarded itinerary,
+// a screenshot of a booking form, a quote-request PDF/Word doc. Real
+// (non-inline) image/PDF/.docx attachments are read the same way Complex
+// Booking reads an uploaded document (lib/complexBookingExtraction.ts) and
+// handed to the AI alongside the body text, so those details make it into
+// the lead too instead of only whatever the forwarding email itself says.
 //
 // Every lead created here lands on the tenant's fixed
 // default_lead_inbox_brand_id (Settings/DB — no reliable way to tell which
@@ -123,17 +132,62 @@ const EXTRACTION_SCHEMA = {
   additionalProperties: false,
 } as const;
 
-/** One-shot classification — unlike the WhatsApp/AI-auto-quote flows, there's no back-and-forth: whatever the email says is all there'll ever be, so missing fields are expected and fine as long as is_travel_enquiry and a way to reach the sender are present. */
-async function classifyEnquiryEmail(subject: string, bodyText: string, emailDateIso: string, aiModel: AiModelChoice): Promise<EnquiryExtraction> {
+interface EmailAttachment {
+  data: Buffer;
+  mimeType: string;
+  fileName: string;
+}
+
+const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+// Bounds how many attachments get sent to the AI per email — a forwarded
+// thread can carry a dozen inline logos/signature images alongside the one
+// real itinerary file; this is plenty for the realistic case (one quote
+// request document, maybe a couple of photos) without one unusual email
+// blowing up a single AI call's cost/latency.
+const MAX_SCANNED_ATTACHMENTS = 3;
+
+/** Turns whichever of an email's real (non-inline) attachments are actually readable into AiContentParts — images and PDFs go through as-is (PDFs only when the configured provider supports them, see AI_PROVIDER_REGISTRY), a .docx is converted to plain text locally first (mirrors lib/complexBookingExtraction.ts). Anything else, or anything that fails to read, is silently skipped rather than failing the whole email — anonymous "transport_quote.xlsx" or a corrupt attachment shouldn't cost a genuine enquiry its lead. */
+async function attachmentsToContentParts(attachments: EmailAttachment[], aiModel: AiModelChoice): Promise<AiContentPart[]> {
+  const parts: AiContentPart[] = [];
+  for (const att of attachments.slice(0, MAX_SCANNED_ATTACHMENTS)) {
+    if (att.mimeType.startsWith("image/")) {
+      parts.push({ type: "image", data: att.data, mimeType: att.mimeType });
+    } else if (att.mimeType === "application/pdf") {
+      if (AI_PROVIDER_REGISTRY[aiModel.provider].supportsPdf) {
+        parts.push({ type: "pdf", data: att.data, fileName: att.fileName });
+      }
+    } else if (att.mimeType === DOCX_MIME || att.fileName.toLowerCase().endsWith(".docx")) {
+      try {
+        const { value: text } = await mammoth.extractRawText({ buffer: att.data });
+        if (text.trim()) parts.push({ type: "text", text: `Attachment "${att.fileName}":\n${text.slice(0, 8000)}` });
+      } catch {
+        // Unreadable/corrupt .docx — skip it, body text alone still gets classified.
+      }
+    }
+  }
+  return parts;
+}
+
+/** One-shot classification — unlike the WhatsApp/AI-auto-quote flows, there's no back-and-forth: whatever the email (and any attachment) says is all there'll ever be, so missing fields are expected and fine as long as is_travel_enquiry and a way to reach the sender are present. */
+async function classifyEnquiryEmail(
+  subject: string,
+  bodyText: string,
+  emailDateIso: string,
+  aiModel: AiModelChoice,
+  attachments: EmailAttachment[],
+): Promise<EnquiryExtraction> {
+  const attachmentParts = await attachmentsToContentParts(attachments, aiModel);
   return runAiStructuredTask<EnquiryExtraction>({
     provider: aiModel.provider,
     model: aiModel.model,
     instructions:
       `You are screening inbound emails forwarded from company transport-hire websites into one shared inbox. This ` +
       `email's own date is ${emailDateIso} — use that as "today" when resolving relative dates. Decide whether it's a ` +
-      `genuine customer enquiry, and if so extract whatever trip details are actually present. Never invent a value ` +
-      `that isn't there — leave a field null rather than guess, since there's no way to ask this sender a follow-up question.`,
-    content: [{ type: "text", text: `Subject: ${subject}\n\n${bodyText}`.slice(0, 8000) }],
+      `genuine customer enquiry, and if so extract whatever trip details are actually present — from the email text ` +
+      `AND from any attached image/document included below, which may be where the real itinerary or quote request ` +
+      `actually lives (the email body itself is sometimes just "see attached"). Never invent a value that isn't ` +
+      `there — leave a field null rather than guess, since there's no way to ask this sender a follow-up question.`,
+    content: [{ type: "text", text: `Subject: ${subject}\n\n${bodyText}`.slice(0, 8000) }, ...attachmentParts],
     schema: EXTRACTION_SCHEMA,
     schemaName: "email_lead_intake_extraction",
     // maxRetries: 0 (set inside each provider adapter) — a timed-out/failed
@@ -141,8 +195,10 @@ async function classifyEnquiryEmail(subject: string, bodyText: string, emailDate
     // minutes of delay into one email in the middle of a sweep over many
     // messages, same bug fixed in lib/aiAutoQuote.ts. A clear failure for
     // this one message (counted in SweepResult.failed, retried on the next
-    // hourly run) beats that.
-    timeoutMs: 30000,
+    // hourly run) beats that. A document/image attachment gets more headroom
+    // than a plain text-only email, same reasoning as Complex Booking's own
+    // 90s (lib/complexBookingExtraction.ts).
+    timeoutMs: attachmentParts.length > 0 ? 60000 : 30000,
   });
 }
 
@@ -211,7 +267,15 @@ async function processMessage(
   admin: Admin,
   tenantId: string,
   brand: { id: string; name: string },
-  parsed: { subject: string | null; text: string | null; html: string | null; date: Date | null; fromAddress: string | null; fromName: string | null },
+  parsed: {
+    subject: string | null;
+    text: string | null;
+    html: string | null;
+    date: Date | null;
+    fromAddress: string | null;
+    fromName: string | null;
+    attachments: EmailAttachment[];
+  },
   aiModel: AiModelChoice,
 ): Promise<ProcessResult> {
   const subject = parsed.subject ?? "(no subject)";
@@ -223,9 +287,12 @@ async function processMessage(
   // converting `.html` ourselves rather than discarding a genuine enquiry as
   // "empty" just because it only came with an HTML body.
   const bodyText = parsed.text?.trim() || (parsed.html ? htmlToText(parsed.html, { wordwrap: false }).trim() : "");
-  if (!bodyText) return { decision: "discarded_not_travel", detail: "Empty body." };
+  // An email that's genuinely just "see attached" (near-empty body, real
+  // content in the attachment) must still be scanned rather than discarded
+  // here as "empty" — only bail out early when there's neither.
+  if (!bodyText && parsed.attachments.length === 0) return { decision: "discarded_not_travel", detail: "Empty body." };
 
-  const extraction = await classifyEnquiryEmail(subject, bodyText, (parsed.date ?? new Date()).toISOString(), aiModel);
+  const extraction = await classifyEnquiryEmail(subject, bodyText, (parsed.date ?? new Date()).toISOString(), aiModel, parsed.attachments);
   if (!extraction.is_travel_enquiry) return { decision: "discarded_not_travel" };
 
   // The forwarded "From" header is often the forwarding service or a
@@ -394,6 +461,12 @@ export async function runEmailLeadIntakeSweep(admin: Admin): Promise<SweepResult
                 date: parsed.date ?? null,
                 fromAddress: parsed.from?.value?.[0]?.address ?? null,
                 fromName: parsed.from?.value?.[0]?.name ?? null,
+                // Real attachments only — "inline" ones are embedded images
+                // the HTML body itself references (signature logos, tracking
+                // pixels), never the actual enquiry content.
+                attachments: (parsed.attachments ?? [])
+                  .filter((a) => a.contentDisposition === "attachment" && a.content)
+                  .map((a) => ({ data: a.content as Buffer, mimeType: a.contentType, fileName: a.filename ?? "attachment" })),
               },
               aiModel,
             );

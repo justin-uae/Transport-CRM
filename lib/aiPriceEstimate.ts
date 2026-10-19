@@ -190,6 +190,7 @@ export async function estimateQuoteTripPrice(input: QuoteEstimateInput): Promise
     brand_id: null,
     customer_id: null,
     assigned_user_id: null,
+    claimed_at: null,
     source: "manual",
     pickup_text: aggregated.pickup,
     destination_text: aggregated.destination,

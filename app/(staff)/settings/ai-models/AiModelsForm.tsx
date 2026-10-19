@@ -30,13 +30,13 @@ const FEATURE_CARDS: { key: AiFeatureKey; label: string; icon: FeatureIcon; text
     key: "email_intake",
     label: "Email Lead Intake",
     icon: Mail,
-    text: "Reads the shared enquiry inbox every hour and decides which forwarded emails are genuine travel enquiries worth turning into a lead.",
+    text: "Reads the shared enquiry inbox every hour and decides which forwarded emails are genuine travel enquiries worth turning into a lead — including any attached image/PDF/Word document, not just the email text.",
   },
   {
     key: "complex_booking",
     label: "Complex Booking Extraction",
     icon: FileSearch,
-    text: "Reads a pasted itinerary or an uploaded image/PDF/Word document and extracts a structured multi-leg booking. The only feature here that sends images or files to the model, not just text.",
+    text: "Reads a pasted itinerary or an uploaded image/PDF/Word document and extracts a structured multi-leg booking.",
   },
 ];
 
@@ -128,6 +128,11 @@ export function AiModelsForm({ initialSettings }: { initialSettings: Settings })
               {key === "complex_booking" && !providerInfo.supportsPdf && (
                 <p className="mt-2 text-xs text-amber-600">
                   {providerInfo.label} doesn&rsquo;t support PDF uploads for this feature yet — image uploads and pasted text still work.
+                </p>
+              )}
+              {key === "email_intake" && !providerInfo.supportsPdf && (
+                <p className="mt-2 text-xs text-amber-600">
+                  {providerInfo.label} doesn&rsquo;t support PDF attachments for this feature yet — they&rsquo;re skipped, image attachments and the email text still work.
                 </p>
               )}
             </Panel>

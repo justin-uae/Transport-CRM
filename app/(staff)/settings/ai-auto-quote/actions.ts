@@ -9,6 +9,7 @@ export async function updateAiAutoQuoteSettingsAction(
   enabled: boolean,
   slaHours: number,
   whatsappAutoQuoteEnabled: boolean,
+  markupPercent: number,
 ) {
   const actor = await requireProfile();
   // tenants_update's RLS policy (0001_foundation.sql) is is_master_admin()
@@ -19,6 +20,9 @@ export async function updateAiAutoQuoteSettingsAction(
   }
   if (!Number.isFinite(slaHours) || slaHours < 1 || slaHours > 500) {
     return { error: "Enter an SLA between 1 and 500 hours." };
+  }
+  if (!Number.isFinite(markupPercent) || markupPercent < 0 || markupPercent > 100) {
+    return { error: "Enter a price increase between 0 and 100%." };
   }
   const supabase = await createClient();
 
@@ -44,6 +48,7 @@ export async function updateAiAutoQuoteSettingsAction(
       // once, at the instant a brand-new WhatsApp lead is created, so there's
       // no pre-existing backlog flipping it on could suddenly sweep up.
       whatsapp_auto_quote_enabled: whatsappAutoQuoteEnabled,
+      ai_auto_quote_markup_percent: markupPercent,
     })
     .eq("id", actor.tenant_id);
   if (error) return { error: error.message };
@@ -54,7 +59,7 @@ export async function updateAiAutoQuoteSettingsAction(
     action: "ai_auto_quote_settings_updated",
     entityType: "tenant",
     entityId: actor.tenant_id,
-    newValue: { enabled, slaHours: Math.round(slaHours), whatsappAutoQuoteEnabled },
+    newValue: { enabled, slaHours: Math.round(slaHours), whatsappAutoQuoteEnabled, markupPercent },
   });
 
   revalidatePath("/settings/ai-auto-quote");

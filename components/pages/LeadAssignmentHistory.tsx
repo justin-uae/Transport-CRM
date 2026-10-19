@@ -8,8 +8,25 @@ export interface LeadAssignmentEvent {
   id: string;
   action: string;
   created_at: string;
-  new_value: { assignedToName?: string; quoteNumber?: string; aiModel?: { provider: string; model: string } | null } | null;
+  new_value: {
+    assignedToName?: string;
+    quoteNumber?: string;
+    aiModel?: { provider: string; model: string } | null;
+    /** Settings -> AI Assistant's price-increase percentage, applied on top of whatever the AI itself priced — only present (and only non-zero) on the three ai_quote_created_* actions, see createAndSendQuote (lib/aiAutoQuote.ts). */
+    markupPercent?: number;
+    currency?: string;
+    sellingPrice?: number;
+    basePriceBeforeMarkup?: number;
+  } | null;
   actor: { full_name: string } | null;
+}
+
+/** " (12% AI markup applied — USD 892.50 -> USD 999.60)" — empty string when no markup was configured at the time this quote was created, so older/unmarked-up quotes read exactly as before. */
+function markupNote(newValue: LeadAssignmentEvent["new_value"]): string {
+  if (!newValue?.markupPercent) return "";
+  const { currency = "", basePriceBeforeMarkup: base, sellingPrice: final } = newValue;
+  if (base == null || final == null) return ` (${newValue.markupPercent}% AI markup applied)`;
+  return ` (${newValue.markupPercent}% AI markup applied — ${currency} ${base.toFixed(2)} → ${currency} ${final.toFixed(2)})`;
 }
 
 function describe(e: LeadAssignmentEvent): string {
@@ -24,11 +41,11 @@ function describe(e: LeadAssignmentEvent): string {
     case "lead_released_sla_breach":
       return "Automatically released back to the open pool — it sat unquoted past the AI Assistant's time limit";
     case "ai_quote_created_sla":
-      return `AI priced and sent quote ${e.new_value?.quoteNumber ?? ""} automatically — it sat unquoted past the AI Assistant's time limit`;
+      return `AI priced and sent quote ${e.new_value?.quoteNumber ?? ""} automatically — it sat unquoted past the AI Assistant's time limit${markupNote(e.new_value)}`;
     case "ai_quote_created_whatsapp_lead":
-      return `AI priced and sent quote ${e.new_value?.quoteNumber ?? ""} automatically the moment this WhatsApp lead was captured`;
+      return `AI priced and sent quote ${e.new_value?.quoteNumber ?? ""} automatically the moment this WhatsApp lead was captured${markupNote(e.new_value)}`;
     case "ai_quote_created_manual_assign":
-      return `AI priced and sent quote ${e.new_value?.quoteNumber ?? ""} automatically — ${actor} assigned this lead to it`;
+      return `AI priced and sent quote ${e.new_value?.quoteNumber ?? ""} automatically — ${actor} assigned this lead to it${markupNote(e.new_value)}`;
     default:
       return `${actor} updated this lead's ownership`;
   }
