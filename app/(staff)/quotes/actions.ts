@@ -1285,7 +1285,7 @@ export async function estimateQuotePriceAction(quoteId: string) {
  * (lib/quoteMoney.ts) — a real card-processing/fraud-risk limit, not just a
  * default. This is the one deliberate override path: staff asks, Master
  * Admin decides (decideCardPaymentOverrideAction,
- * app/(staff)/settings/card-payment-requests/actions.ts) — never
+ * app/(staff)/card-payment-requests/actions.ts) — never
  * self-approved, and never silent (recorded on both this quote's own
  * Timeline, quote_events, and — since that's the lead's actual complaint
  * channel — the originating lead's Assignment history, same dual-audit
@@ -1382,7 +1382,7 @@ export async function requestCardPaymentOverrideAction(quoteId: string, reason: 
         requested_by: requesterName,
         amount: amountGbp.toFixed(2),
         reason: trimmedReason || "No reason given",
-        link: `${process.env.NEXT_PUBLIC_APP_URL ?? ""}/settings/card-payment-requests`,
+        link: `${process.env.NEXT_PUBLIC_APP_URL ?? ""}/card-payment-requests`,
       },
     });
   }

@@ -69,7 +69,7 @@ export function amountDueNow(version: VersionForDue, alreadyPaid: number, milest
  * request (card_payment_override_requests, 0102_card_payment_override_requests.sql)
  * on an individual quote after the fact, which adds Stripe back in alongside
  * bank transfer rather than replacing it — see decideCardPaymentOverrideAction,
- * app/(staff)/settings/card-payment-requests/actions.ts.
+ * app/(staff)/card-payment-requests/actions.ts.
  */
 export const STRIPE_PRICE_THRESHOLD = 1000;
 

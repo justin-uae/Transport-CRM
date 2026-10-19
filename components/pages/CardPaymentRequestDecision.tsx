@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { useToast } from "@/components/ui/Toast";
 import { ConfirmDetailModal } from "@/components/ui/ConfirmDetailModal";
-import { decideCardPaymentOverrideAction } from "@/app/(staff)/settings/card-payment-requests/actions";
+import { decideCardPaymentOverrideAction } from "@/app/(staff)/card-payment-requests/actions";
 
 /** Approve/Reject for one pending card-payment-override request — a small
     client island next to its row on the (server-rendered) requests list. */

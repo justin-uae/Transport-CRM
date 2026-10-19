@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Users, ShieldCheck, Building2, History, Bot, Cpu, CreditCard } from "lucide-react";
+import { Users, ShieldCheck, Building2, History, Bot, Cpu } from "lucide-react";
 import { Panel } from "@/components/ui/Panel";
 import { PageHead } from "@/components/ui/PageHead";
 import { PageGuide } from "@/components/ui/PageGuide";
@@ -26,12 +26,6 @@ const MASTER_ADMIN_CARDS = [
     href: "/settings/ai-models",
     icon: Cpu,
     text: "Choose which AI provider — OpenAI, Claude, Gemini, or Grok — answers each AI-powered feature.",
-  },
-  {
-    label: "Card Payment Requests",
-    href: "/settings/card-payment-requests",
-    icon: CreditCard,
-    text: "Review staff requests to offer card payment on a quote that's normally bank-transfer-only above the amount limit.",
   },
 ];
 

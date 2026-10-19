@@ -29,7 +29,7 @@ export default async function StaffLayout({
   const profile = await requireProfile();
   const supabase = await createClient();
 
-  const [{ data: role }, { brands, activeBrandId }, granted, todaysAttendanceEvents, impersonation] = await Promise.all([
+  const [{ data: role }, { brands, activeBrandId }, granted, todaysAttendanceEvents, impersonation, pendingCardPaymentCount] = await Promise.all([
     profile.role_id
       ? supabase.from("roles").select("name").eq("id", profile.role_id).single()
       : Promise.resolve({ data: null }),
@@ -37,6 +37,17 @@ export default async function StaffLayout({
     getGrantedPermissions(profile),
     getEventsSince(supabase, profile.id, startOfTodayIso()),
     getImpersonationBanner(),
+    // Sidebar badge on "Card Payment Requests" — Master-Admin-only nav item,
+    // so skip the query entirely for anyone else rather than running a
+    // count they'll never see.
+    profile.is_master_admin
+      ? supabase
+          .from("card_payment_override_requests")
+          .select("id", { count: "exact", head: true })
+          .eq("tenant_id", profile.tenant_id)
+          .eq("status", "pending")
+          .then(({ count }) => count ?? 0)
+      : Promise.resolve(0),
   ]);
 
   // Icon components in NAV can't cross the server->client prop boundary
@@ -67,6 +78,7 @@ export default async function StaffLayout({
       initialAttendance={initialAttendance}
       locked={requiresClockIn}
       impersonation={impersonation}
+      pendingCardPaymentCount={pendingCardPaymentCount}
     >
       {children}
     </StaffShell>

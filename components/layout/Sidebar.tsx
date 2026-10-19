@@ -33,6 +33,7 @@ export function Sidebar({
   roleName,
   visibleHrefs,
   canSeeSettings,
+  pendingCardPaymentCount = 0,
 }: {
   mobileOpen: boolean;
   onCloseMobile: () => void;
@@ -40,6 +41,8 @@ export function Sidebar({
   roleName: string;
   visibleHrefs: string[];
   canSeeSettings: boolean;
+  /** Master-Admin-only badge on "Card Payment Requests" — how many are still awaiting a decision, same pattern as SupplierSidebar's newJobsCount. 0 for anyone who can't see that item at all. */
+  pendingCardPaymentCount?: number;
 }) {
   const pathname = usePathname();
   const initials = userName
@@ -92,6 +95,7 @@ export function Sidebar({
   function renderItem(item: NavItem) {
     const active = isActive(item.href, allHrefs);
     const Icon = item.icon;
+    const badge = item.href === "/card-payment-requests" && pendingCardPaymentCount > 0 ? pendingCardPaymentCount : null;
     return (
       <Link
         key={item.href}
@@ -105,7 +109,10 @@ export function Sidebar({
         )}
       >
         <Icon size={18} />
-        <span>{item.label}</span>
+        <span className="flex-1">{item.label}</span>
+        {badge != null && (
+          <span className="rounded-full bg-amber-500 px-2 py-0.5 text-xs font-bold text-white">{badge}</span>
+        )}
       </Link>
     );
   }

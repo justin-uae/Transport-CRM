@@ -94,7 +94,7 @@ export async function decideCardPaymentOverrideAction(requestId: string, approve
     }
   }
 
-  revalidatePath("/settings/card-payment-requests");
+  revalidatePath("/card-payment-requests");
   revalidatePath(`/quotes/${request.quote_id}`);
   return { error: null };
 }

@@ -24,6 +24,7 @@ import {
   MessageSquareWarning,
   TriangleAlert,
   Settings,
+  CreditCard,
   type LucideIcon,
 } from "lucide-react";
 import { PERMISSIONS, type PermissionKey } from "@/lib/permissionKeys";
@@ -220,6 +221,17 @@ export const NAV: NavItem[] = [
   // AI Optimisation — hidden from the sidebar for now (not ready), route/page left in place for when
   // it's finished. Restore by re-adding the entry below (group: "insights") and importing Bot again:
   // { label: "AI Optimisation", href: "/ai-optimisation", icon: Bot, group: "insights", anyOf: WORKSPACE },
+  {
+    label: "Card Payment Requests",
+    href: "/card-payment-requests",
+    icon: CreditCard,
+    group: "administration",
+    // A recurring, time-sensitive action inbox (a customer may be waiting
+    // to pay), not one-time configuration — lives in the sidebar rather
+    // than buried in Settings, where Master Admin wouldn't think to check
+    // it regularly. See the pending-count badge, rendered in Sidebar.tsx.
+    masterAdminOnly: true,
+  },
 ];
 
 /**
