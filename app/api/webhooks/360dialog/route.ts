@@ -168,6 +168,12 @@ async function logInboundIfNew(
   return true;
 }
 
+/** Matches the "I don't have one" sentinel the AI records for a declined
+    field (email or notes, see lib/whatsappAiIntake.ts's system prompt) —
+    shared so both fields strip it back to a real null the same way before
+    it ever reaches the customer/lead record. */
+const NONE_LIKE_RE = /^(none|no|n\/a|nil|nothing)\.?$/i;
+
 /** Best-effort only — an unparseable date is kept as the raw text the
     contact typed (in the lead's notes/raw_payload) rather than guessed at or
     rejected; staff can correct it on the lead like any other manually-
@@ -181,14 +187,20 @@ function parseLenientDate(text: string): string | null {
 async function createLeadFromSession(admin: AdminClient, brand: Brand, waId: string, customerId: string, sessionId: string, collected: CollectedTrip) {
   const travelDate = collected.travel_date ? parseLenientDate(collected.travel_date) : null;
   const name = collected.name?.trim() || waId;
-  const email = collected.email?.trim() || null;
+  // A customer who declines to give an email is recorded as "None" (see
+  // lib/whatsappAiIntake.ts) so the bot knows it already asked rather than
+  // asking again — that sentinel is never worth keeping as the actual
+  // contact email, so it's stripped back to null here, same as "None" notes
+  // below. WhatsApp itself (waId) is always a working contact either way.
+  const emailRaw = collected.email?.trim();
+  const email = emailRaw && !NONE_LIKE_RE.test(emailRaw) ? emailRaw : null;
 
   // Merge the customer's own "anything else?" answer with the unparsed-date
   // fallback (both, one, or neither may apply) rather than one clobbering
   // the other — "None" isn't worth keeping on the lead, so it's dropped.
   const noteParts: string[] = [];
   const customerNotes = collected.notes?.trim();
-  if (customerNotes && !/^(none|no|n\/a|nil|nothing)\.?$/i.test(customerNotes)) noteParts.push(customerNotes);
+  if (customerNotes && !NONE_LIKE_RE.test(customerNotes)) noteParts.push(customerNotes);
   if (!travelDate && collected.travel_date) noteParts.push(`Requested date (as typed via WhatsApp): ${collected.travel_date}`);
   const notes = noteParts.length ? noteParts.join(" | ") : null;
 
