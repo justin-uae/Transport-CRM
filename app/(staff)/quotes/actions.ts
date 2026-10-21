@@ -891,6 +891,15 @@ export async function amendBookingAction(quoteId: string, input: AmendBookingInp
       await supabase.from("quotes").update({ status: "partially_paid" }).eq("id", quoteId);
       await supabase.from("quote_events").insert({ quote_id: quoteId, event: "partially_paid" });
     } else if (newBalance <= 0.01 && totalPaidVerified > 0 && adjustment < 0) {
+      // Mirror of the branch above — a reduction that clears the balance on
+      // a quote an earlier increase knocked back to partially_paid puts it
+      // back to paid. Its invoice number and job survived that round trip,
+      // so only the status needs restoring (no finalize/receipt re-run).
+      if (quote.status === "partially_paid") {
+        newStatus = "paid";
+        await supabase.from("quotes").update({ status: "paid" }).eq("id", quoteId);
+        await supabase.from("quote_events").insert({ quote_id: quoteId, event: "paid" });
+      }
       // The reduction leaves the customer having paid more than the new
       // total — record it as a pending refund via the same table/flow
       // cancelBookingAction already uses, rather than inventing a second one.
