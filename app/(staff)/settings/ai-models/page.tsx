@@ -5,6 +5,7 @@ import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { DEFAULT_MODEL_SETTING, type AiFeatureKey, type AiProvider } from "@/lib/aiProviders";
 import { AiModelsForm } from "./AiModelsForm";
+import { AiAccountsPanel } from "./AiAccountsPanel";
 
 export default async function AiModelsPage() {
   const profile = await requireProfile();
@@ -58,6 +59,7 @@ export default async function AiModelsPage() {
       />
 
       <AiModelsForm initialSettings={initialSettings} />
+      <AiAccountsPanel />
     </div>
   );
 }

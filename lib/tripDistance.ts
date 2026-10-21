@@ -17,6 +17,39 @@ export interface TripDistance {
  * rather than the whole feature breaking — same fail-open pattern as
  * lib/reverseGeocode.ts, which already uses this same key server-side.
  */
+export interface RouteSegment {
+  from: string;
+  to: string;
+  distance: TripDistance | null;
+}
+
+export interface RouteDistance {
+  segments: RouteSegment[];
+  /** Null when any segment couldn't be resolved — a partial sum would understate the trip. */
+  total: TripDistance | null;
+}
+
+/**
+ * Stop-by-stop driving distance along an ordered list of stops (A→B, B→C, …)
+ * — used for a leg with via points or a multi-leg journey, where a single
+ * pickup→destination figure would hide the real route.
+ */
+export async function estimateRouteDistance(stops: (string | null)[]): Promise<RouteDistance> {
+  const clean = stops.map((s) => s?.trim() ?? "").filter(Boolean);
+  const pairs = clean.slice(1).map((to, i) => ({ from: clean[i]!, to }));
+  const segments = await Promise.all(
+    pairs.map(async ({ from, to }) => ({ from, to, distance: await estimateTripDistance(from, to) })),
+  );
+  const total =
+    segments.length > 0 && segments.every((s) => s.distance)
+      ? {
+          distanceKm: Math.round(segments.reduce((sum, s) => sum + s.distance!.distanceKm, 0) * 10) / 10,
+          durationMinutes: segments.reduce((sum, s) => sum + s.distance!.durationMinutes, 0),
+        }
+      : null;
+  return { segments, total };
+}
+
 export async function estimateTripDistance(pickup: string | null, destination: string | null): Promise<TripDistance | null> {
   const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
   if (!apiKey || !pickup?.trim() || !destination?.trim()) return null;

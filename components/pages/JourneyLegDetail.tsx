@@ -1,5 +1,7 @@
 import { formatDateAndTime } from "@/lib/formatDate";
 import { FormattedText } from "@/components/ui/FormattedText";
+import { formatDuration } from "@/lib/formatDuration";
+import type { RouteDistance } from "@/lib/tripDistance";
 
 export interface JourneyLeg {
   /** Only present where a leg needs to be individually addressable (e.g. editing) — read-only display contexts don't select it. */
@@ -22,7 +24,18 @@ export interface JourneyLeg {
 }
 
 /** Full detail block for one enquiry leg — used on both the quote and job detail pages so a multi-leg or return journey shows every field instead of just the first leg's pickup/destination/date. */
-export function JourneyLegDetail({ leg, index, total }: { leg: JourneyLeg; index: number; total: number }) {
+export function JourneyLegDetail({
+  leg,
+  index,
+  total,
+  distance,
+}: {
+  leg: JourneyLeg;
+  index: number;
+  total: number;
+  /** Stop-by-stop driving distance — optional, only pages that look it up pass it. */
+  distance?: RouteDistance;
+}) {
   return (
     <div className={index > 0 ? "mt-4 border-t pt-4" : ""}>
       {total > 1 && (
@@ -43,6 +56,38 @@ export function JourneyLegDetail({ leg, index, total }: { leg: JourneyLeg; index
           <div className="sm:col-span-2">
             <dt className="text-xs font-bold uppercase text-slate-400">Via</dt>
             <dd className="mt-0.5 font-semibold">{leg.via_points.join(" → ")}</dd>
+          </div>
+        )}
+        {distance && distance.segments.length > 0 && (
+          <div className="sm:col-span-2">
+            <dt className="text-xs font-bold uppercase text-slate-400">Distance</dt>
+            <dd className="mt-0.5 font-semibold">
+              {distance.segments.length > 1 && (
+                <ul className="mb-1 space-y-0.5">
+                  {distance.segments.map((s, i) => (
+                    <li key={i}>
+                      <span className="font-normal text-slate-500">
+                        {s.from} → {s.to}:
+                      </span>{" "}
+                      {s.distance ? `${s.distance.distanceKm} km · ${formatDuration(s.distance.durationMinutes)}` : "—"}
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {distance.total ? (
+                <>
+                  {distance.segments.length > 1 && "Total "}
+                  {distance.total.distanceKm} km
+                  <span className="ml-2 font-normal text-slate-500">
+                    ≈{formatDuration(distance.total.durationMinutes)}
+                    {leg.journey_type === "return" &&
+                      ` each way · ${Math.round(distance.total.distanceKm * 2 * 10) / 10} km round trip`}
+                  </span>
+                </>
+              ) : (
+                distance.segments.length === 1 && <span className="font-normal text-slate-500">Couldn&apos;t calculate</span>
+              )}
+            </dd>
           </div>
         )}
         <div>

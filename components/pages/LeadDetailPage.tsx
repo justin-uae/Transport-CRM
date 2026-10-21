@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { Fragment, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Wand2 } from "lucide-react";
@@ -29,6 +29,8 @@ import { updateCustomerAction } from "@/app/(staff)/customers/actions";
 import { formatDate, formatTimeOnly } from "@/lib/formatDate";
 import { SOURCE_LABEL } from "@/lib/leadSource";
 import type { LeadSource, LeadStatus } from "@/lib/supabase/database.types";
+import type { RouteDistance, RouteSegment, TripDistance } from "@/lib/tripDistance";
+import { formatDuration } from "@/lib/formatDuration";
 
 const STATUS_LABEL: Record<LeadStatus, string> = {
   new: "New",
@@ -114,6 +116,10 @@ export interface LeadSourceDocument {
 export function LeadDetailPage({
   lead,
   legs,
+  legDistances,
+  legConnections,
+  tripDistance,
+  isReturnTrip,
   enquiryId,
   quote,
   sourceDocument,
@@ -129,6 +135,13 @@ export function LeadDetailPage({
 }: {
   lead: LeadDetail;
   legs: JourneyLeg[];
+  /** Stop-by-stop route distance per leg, index-aligned with `legs`. */
+  legDistances: RouteDistance[];
+  /** Gap from leg N's end to leg N+1's start (length legs-1); null where they're the same address. */
+  legConnections: (RouteSegment | null)[];
+  /** Driving distance for a simple one-way/return trip; null for complex/multi-leg bookings or when it couldn't be resolved. */
+  tripDistance: TripDistance | null;
+  isReturnTrip: boolean;
   enquiryId: string | null;
   quote: LeadDetailQuote | null;
   sourceDocument: LeadSourceDocument | null;
@@ -466,6 +479,20 @@ export function LeadDetailPage({
               <div className="mt-4 text-sm">
                 <Row label="Pickup" value={lead.pickup_text} />
                 <Row label="Destination" value={lead.destination_text} />
+                {tripDistance && (
+                  <Row
+                    label="Distance"
+                    value={
+                      <>
+                        {tripDistance.distanceKm} km
+                        <span className="ml-2 font-normal text-slate-500">
+                          ≈{formatDuration(tripDistance.durationMinutes)}
+                          {isReturnTrip && ` each way · ${Math.round(tripDistance.distanceKm * 2 * 10) / 10} km round trip`}
+                        </span>
+                      </>
+                    }
+                  />
+                )}
                 <WhenRow label="Travel date" date={lead.travel_date} time={lead.pickup_time} />
                 {lead.return_trip && (
                   <WhenRow label="Return" date={lead.return_date} time={lead.return_time} />
@@ -564,10 +591,51 @@ export function LeadDetailPage({
             <Panel>
               <SectionTitle title="Journey legs" sub="Structured legs on the enquiry created from this lead" />
               <div className="mt-4">
-                {legs.map((leg, i) => (
-                  <JourneyLegDetail key={leg.id ?? i} leg={leg} index={i} total={legs.length} />
-                ))}
+                {legs.map((leg, i) => {
+                  const connection = i > 0 ? legConnections[i - 1] : null;
+                  return (
+                    <Fragment key={leg.id ?? i}>
+                      {connection && (
+                        <div className="mt-4 rounded-xl border border-dashed px-4 py-2 text-sm">
+                          <div className="text-xs font-bold uppercase text-slate-400">
+                            Leg {legs[i - 1]?.sequence} → Leg {leg.sequence}
+                          </div>
+                          <div className="mt-0.5">
+                            <span className="text-slate-500">
+                              {connection.from} → {connection.to}:
+                            </span>{" "}
+                            <b>
+                              {connection.distance
+                                ? `${connection.distance.distanceKm} km · ${formatDuration(connection.distance.durationMinutes)}`
+                                : "—"}
+                            </b>
+                          </div>
+                        </div>
+                      )}
+                      <JourneyLegDetail leg={leg} index={i} total={legs.length} distance={legDistances[i]} />
+                    </Fragment>
+                  );
+                })}
               </div>
+              {legs.length > 1 && legDistances.length === legs.length && legDistances.every((d) => d.total) && (() => {
+                const legsKm = legDistances.reduce((sum, d, i) => sum + d.total!.distanceKm * (legs[i]?.journey_type === "return" ? 2 : 1), 0);
+                const connectionsResolved = legConnections.every((c) => !c || c.distance);
+                const betweenKm = legConnections.reduce((sum, c) => sum + (c?.distance?.distanceKm ?? 0), 0);
+                return (
+                  <div className="mt-4 border-t pt-4 text-sm">
+                    <div className="flex flex-wrap justify-between gap-x-3 gap-y-1">
+                      <span className="text-slate-500">Total distance (all legs, returns counted both ways)</span>
+                      <b>{Math.round(legsKm * 10) / 10} km</b>
+                    </div>
+                    {betweenKm > 0 && connectionsResolved && (
+                      <div className="mt-1 flex flex-wrap justify-between gap-x-3 gap-y-1">
+                        <span className="text-slate-500">Including travel between legs</span>
+                        <b>{Math.round((legsKm + betweenKm) * 10) / 10} km</b>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
             </Panel>
           )}
 

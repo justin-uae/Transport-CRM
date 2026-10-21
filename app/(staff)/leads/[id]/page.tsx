@@ -7,6 +7,7 @@ import { getAssignableSalesUsers } from "@/lib/leadAssignees";
 import type { JourneyLeg } from "@/components/pages/JourneyLegDetail";
 import type { LeadEditRecord } from "@/components/pages/LeadEditHistory";
 import type { LeadAssignmentEvent } from "@/components/pages/LeadAssignmentHistory";
+import { estimateRouteDistance, estimateTripDistance } from "@/lib/tripDistance";
 
 export default async function Page({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -60,7 +61,31 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
     }
   }
 
-  const [canAddEnquiry, canClaim, canRelease, canEditCustomer, canAssign, canViewAuditLog, { data: editsRaw }] = await Promise.all([
+  // Each structured leg gets a stop-by-stop route distance (pickup → via
+  // points → destination). The single intake-panel figure is only shown for
+  // a simple one-way/return trip — a complex or multi-leg booking (or one
+  // with via points) has no single pickup→destination pair it would be
+  // meaningful for. Prefer the structured leg's addresses once an enquiry
+  // exists, since edits after that point land on the leg rather than the
+  // raw intake text.
+  // Sorted so "leg N → leg N+1" connections below follow the real order.
+  const enquiryLegs = [...((enquiry?.enquiry_legs ?? []) as unknown as JourneyLeg[])].sort((a, b) => a.sequence - b.sequence);
+  const singleLeg = enquiryLegs.length === 1 ? enquiryLegs[0] : null;
+  const isSimpleTrip = !lead.is_complex_booking && enquiryLegs.length <= 1 && !(singleLeg?.via_points.length);
+
+  // The gap between consecutive legs: where one leg finishes (its pickup
+  // again, for a return leg) to where the next one starts. Null when both
+  // are the same address — there's no gap to drive.
+  const sameAddress = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
+  const connectionLookups = enquiryLegs.slice(1).map((next, i) => {
+    const prev = enquiryLegs[i]!;
+    const from = prev.journey_type === "return" ? prev.pickup_address : prev.destination_address;
+    return sameAddress(from, next.pickup_address)
+      ? Promise.resolve(null)
+      : estimateTripDistance(from, next.pickup_address).then((distance) => ({ from, to: next.pickup_address, distance }));
+  });
+
+  const [canAddEnquiry, canClaim, canRelease, canEditCustomer, canAssign, canViewAuditLog, { data: editsRaw }, legDistances, intakeDistance, legConnections] = await Promise.all([
     hasPermission(profile, PERMISSIONS.ENQUIRIES_ADD),
     hasPermission(profile, PERMISSIONS.ENQUIRIES_CLAIM_OPEN_LEADS),
     hasPermission(profile, PERMISSIONS.ENQUIRIES_RETURN_TO_POOL),
@@ -68,7 +93,13 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
     hasPermission(profile, PERMISSIONS.ENQUIRIES_REASSIGN),
     hasPermission(profile, PERMISSIONS.ADMIN_VIEW_AUDIT_LOGS),
     supabase.from("lead_edits").select("id, reason, changes, created_at, profiles(full_name)").eq("lead_id", id).order("created_at", { ascending: false }),
+    Promise.all(enquiryLegs.map((leg) => estimateRouteDistance([leg.pickup_address, ...leg.via_points, leg.destination_address]))),
+    // A single leg's figure comes from legDistances below — only a lead
+    // with no enquiry yet needs its own lookup from the intake text.
+    isSimpleTrip && !singleLeg ? estimateTripDistance(lead.pickup_text, lead.destination_text) : Promise.resolve(null),
+    Promise.all(connectionLookups),
   ]);
+  const tripDistance = isSimpleTrip ? (singleLeg ? (legDistances[0]?.total ?? null) : intakeDistance) : null;
 
   // Only fetched for someone who can actually use it — the dropdown of
   // sales users a lead can be handed to.
@@ -100,7 +131,11 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
   return (
     <LeadDetailPage
       lead={lead as unknown as LeadDetail}
-      legs={(enquiry?.enquiry_legs ?? []) as unknown as JourneyLeg[]}
+      legs={enquiryLegs}
+      legDistances={legDistances}
+      legConnections={legConnections}
+      tripDistance={tripDistance}
+      isReturnTrip={singleLeg ? singleLeg.journey_type === "return" : lead.return_trip}
       enquiryId={enquiry?.id ?? null}
       quote={quote}
       sourceDocument={sourceDocument}
