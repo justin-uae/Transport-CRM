@@ -44,7 +44,7 @@ export default async function CardPaymentRequestsPage() {
   return (
     <div>
       <PageHead
-        eyebrow="Administration"
+        eyebrow="Finance"
         title="Card Payment Requests"
         text="Decide whether a specific quote can offer card payment even though its amount is normally bank-transfer-only."
         action={

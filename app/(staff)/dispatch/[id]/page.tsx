@@ -3,6 +3,7 @@ import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { hasPermission, PERMISSIONS } from "@/lib/permissions";
 import { getAssignableSalesUsers } from "@/lib/leadAssignees";
+import { legRouteDistances } from "@/lib/tripDistance";
 import { DispatchJobDetail, type JobDetailRow, type JobAllocationRow, type JobRejectionRecord } from "@/components/pages/DispatchJobDetail";
 import type { SupplierOption } from "@/components/pages/DispatchBoard";
 import type { BookingEditRecord } from "@/components/pages/BookingEditHistory";
@@ -49,7 +50,13 @@ export default async function DispatchJobDetailPage({ params }: { params: Promis
 
   if (!job) notFound();
   const jobRow = job as unknown as JobDetailRow;
-  const assignableUsers = canAssign ? await getAssignableSalesUsers(supabase) : [];
+  const jobLegs = jobRow.quotes?.enquiries?.enquiry_legs ?? [];
+  const [assignableUsers, distances] = await Promise.all([
+    canAssign ? getAssignableSalesUsers(supabase) : Promise.resolve([]),
+    legRouteDistances(jobLegs),
+  ]);
+  // Keyed by leg id — DispatchJobDetail re-sorts the legs itself.
+  const legDistances = Object.fromEntries(jobLegs.map((leg, i) => [leg.id, distances[i]!]));
 
   // Mirrors canDispatch() in app/(staff)/dispatch/actions.ts — owning the
   // job (it was created from a quote this user handled) is enough even
@@ -91,6 +98,7 @@ export default async function DispatchJobDetailPage({ params }: { params: Promis
       assignableUsers={assignableUsers}
       amendments={(amendmentsRaw ?? []) as unknown as BookingEditRecord[]}
       rejections={(rejectionsRaw ?? []) as unknown as JobRejectionRecord[]}
+      legDistances={legDistances}
     />
   );
 }

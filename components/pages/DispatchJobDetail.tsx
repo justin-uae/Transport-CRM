@@ -33,6 +33,7 @@ export type { JobRejectionRecord };
 import { formatDateTime, formatDateAndTime } from "@/lib/formatDate";
 import type { JobOfferStatus, JobStatus, JobSupplierInvoice, SupplierPaymentStatus, QuoteStatus } from "@/lib/supabase/database.types";
 import type { SupplierOption } from "@/components/pages/DispatchBoard";
+import type { RouteDistance } from "@/lib/tripDistance";
 
 type DispatchLeg = JourneyLeg & { id: string };
 
@@ -599,6 +600,7 @@ export function DispatchJobDetail({
   assignableUsers,
   amendments,
   rejections,
+  legDistances,
 }: {
   job: JobDetailRow;
   allocations: JobAllocationRow[];
@@ -612,6 +614,8 @@ export function DispatchJobDetail({
   assignableUsers: AssignableUser[];
   amendments: BookingEditRecord[];
   rejections: JobRejectionRecord[];
+  /** Stop-by-stop route distance per leg, keyed by enquiry leg id. */
+  legDistances: Record<string, RouteDistance>;
 }) {
   const router = useRouter();
   const notify = useToast();
@@ -816,7 +820,7 @@ export function DispatchJobDetail({
                         )}
                       </label>
                     </div>
-                    <JourneyLegDetail leg={leg} index={i} total={legs.length} />
+                    <JourneyLegDetail leg={leg} index={i} total={legs.length} distance={legDistances[leg.id]} />
                   </div>
                 );
               })}

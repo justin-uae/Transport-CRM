@@ -7,7 +7,7 @@ import { getAssignableSalesUsers } from "@/lib/leadAssignees";
 import type { JourneyLeg } from "@/components/pages/JourneyLegDetail";
 import type { LeadEditRecord } from "@/components/pages/LeadEditHistory";
 import type { LeadAssignmentEvent } from "@/components/pages/LeadAssignmentHistory";
-import { estimateRouteDistance, estimateTripDistance } from "@/lib/tripDistance";
+import { estimateTripDistance, legRouteDistances } from "@/lib/tripDistance";
 
 export default async function Page({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -93,7 +93,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
     hasPermission(profile, PERMISSIONS.ENQUIRIES_REASSIGN),
     hasPermission(profile, PERMISSIONS.ADMIN_VIEW_AUDIT_LOGS),
     supabase.from("lead_edits").select("id, reason, changes, created_at, profiles(full_name)").eq("lead_id", id).order("created_at", { ascending: false }),
-    Promise.all(enquiryLegs.map((leg) => estimateRouteDistance([leg.pickup_address, ...leg.via_points, leg.destination_address]))),
+    legRouteDistances(enquiryLegs),
     // A single leg's figure comes from legDistances below — only a lead
     // with no enquiry yet needs its own lookup from the intake text.
     isSimpleTrip && !singleLeg ? estimateTripDistance(lead.pickup_text, lead.destination_text) : Promise.resolve(null),

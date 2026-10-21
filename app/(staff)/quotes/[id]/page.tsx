@@ -19,6 +19,7 @@ import { formatDateTime, formatDate } from "@/lib/formatDate";
 import type { QuoteStatus, QuoteEventType, QuoteDecisionType, CustomerPaymentMethod, JobStatus } from "@/lib/supabase/database.types";
 import { QUOTE_STATUS_LABEL, QUOTE_STATUS_STYLE } from "@/lib/quoteStatus";
 import { getAiModelLabel } from "@/lib/aiProviderRegistry";
+import { legRouteDistances } from "@/lib/tripDistance";
 
 interface LineItemRow {
   id: string;
@@ -133,7 +134,9 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
   const quote = quoteRaw as unknown as QuoteDetailRow;
   const canCancel = actor.is_master_admin || (canCancelPermission && quote.enquiries?.assigned_user_id === actor.id);
 
-  const [{ data: job }, { data: refunds }, { data: amendmentsRaw }, { data: latestCardPaymentRequest }] = await Promise.all([
+  const legs = [...(quote.enquiries?.enquiry_legs ?? [])].sort((a, b) => a.sequence - b.sequence);
+
+  const [{ data: job }, { data: refunds }, { data: amendmentsRaw }, { data: latestCardPaymentRequest }, legDistances] = await Promise.all([
     supabase.from("jobs").select("id, status, suppliers(name)").eq("quote_id", id).maybeSingle(),
     supabase
       .from("refunds")
@@ -156,12 +159,12 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
       .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle(),
+    legRouteDistances(legs),
   ]);
 
   const canAmend = actor.is_master_admin || (canAmendPermission && quote.enquiries?.assigned_user_id === actor.id);
 
   const customer = quote.customers;
-  const legs = [...(quote.enquiries?.enquiry_legs ?? [])].sort((a, b) => a.sequence - b.sequence);
   const amendableLegs: AmendableLeg[] = legs.map((l) => ({
     id: l.id,
     sequence: l.sequence,
@@ -217,7 +220,7 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
             </div>
             <div className="mt-4">
               {legs.map((leg, i) => (
-                <JourneyLegDetail key={leg.sequence} leg={leg} index={i} total={legs.length} />
+                <JourneyLegDetail key={leg.sequence} leg={leg} index={i} total={legs.length} distance={legDistances[i]} />
               ))}
               {legs.length === 0 && <p className="text-sm text-slate-500">No journey details recorded.</p>}
             </div>

@@ -50,6 +50,20 @@ export async function estimateRouteDistance(stops: (string | null)[]): Promise<R
   return { segments, total };
 }
 
+/**
+ * One stop-by-stop route distance per leg (pickup → via points →
+ * destination), index-aligned with `legs` — what every page showing
+ * JourneyLegDetail passes as its `distance` prop (lead, quote, new-quote,
+ * dispatch job, supplier job).
+ */
+export function legRouteDistances(
+  legs: { pickup_address: string; destination_address: string; via_points: string[] | null }[],
+): Promise<RouteDistance[]> {
+  return Promise.all(
+    legs.map((leg) => estimateRouteDistance([leg.pickup_address, ...(leg.via_points ?? []), leg.destination_address])),
+  );
+}
+
 export async function estimateTripDistance(pickup: string | null, destination: string | null): Promise<TripDistance | null> {
   const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
   if (!apiKey || !pickup?.trim() || !destination?.trim()) return null;

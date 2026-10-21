@@ -10,6 +10,7 @@ import { SearchableSelect } from "@/components/ui/SearchableSelect";
 import { RichText } from "@/components/ui/RichText";
 import { RichTextToolbar } from "@/components/ui/RichTextToolbar";
 import { JourneyLegDetail, type JourneyLeg } from "@/components/pages/JourneyLegDetail";
+import type { RouteDistance } from "@/lib/tripDistance";
 import { CURRENCIES } from "@/lib/currencies";
 import { STRIPE_PRICE_THRESHOLD, paymentMethodsForGbpValue } from "@/lib/quoteMoney";
 import { createQuoteAction } from "./actions";
@@ -77,12 +78,15 @@ export function NewQuoteForm({
   enquiryId,
   customer,
   legs,
+  legDistances,
   defaultCurrency,
   canSend,
 }: {
   enquiryId: string;
   customer: CustomerInfo;
   legs: JourneyLeg[];
+  /** Stop-by-stop route distance per leg, index-aligned with `legs`. */
+  legDistances: RouteDistance[];
   defaultCurrency: string;
   canSend: boolean;
 }) {
@@ -227,7 +231,7 @@ export function NewQuoteForm({
           Journey{legs.length > 1 ? ` (${legs.length} legs)` : ""}
         </div>
         {legs.map((leg, i) => (
-          <JourneyLegDetail key={leg.sequence} leg={leg} index={i} total={legs.length} />
+          <JourneyLegDetail key={leg.sequence} leg={leg} index={i} total={legs.length} distance={legDistances[i]} />
         ))}
         {legs.length === 0 && <p className="text-sm text-slate-500">No journey details recorded.</p>}
       </div>
@@ -373,7 +377,7 @@ export function NewQuoteForm({
             <div className="mt-5 space-y-5">
               <CustomerSummary customer={customer} />
               {legs.map((leg, i) => (
-                <JourneyLegDetail key={leg.sequence} leg={leg} index={i} total={legs.length} />
+                <JourneyLegDetail key={leg.sequence} leg={leg} index={i} total={legs.length} distance={legDistances[i]} />
               ))}
               {legs.length === 0 && <p className="text-sm text-slate-500">No journey details recorded.</p>}
             </div>

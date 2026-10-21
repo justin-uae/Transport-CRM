@@ -7,6 +7,7 @@ import { createClient } from "@/lib/supabase/server";
 import { hasPermission, PERMISSIONS } from "@/lib/permissions";
 import { landingHrefForProfile } from "@/lib/landing";
 import type { JourneyLeg } from "@/components/pages/JourneyLegDetail";
+import { legRouteDistances } from "@/lib/tripDistance";
 import { NewQuoteForm } from "./NewQuoteForm";
 
 export default async function NewQuotePage({
@@ -78,7 +79,8 @@ export default async function NewQuotePage({
 
   if (!enquiry) redirect("/quotes/new");
 
-  const canSend = await hasPermission(profile, PERMISSIONS.QUOTES_SEND);
+  const legs = [...((enquiry.enquiry_legs as unknown as JourneyLeg[] | null) ?? [])].sort((a, b) => a.sequence - b.sequence);
+  const [canSend, legDistances] = await Promise.all([hasPermission(profile, PERMISSIONS.QUOTES_SEND), legRouteDistances(legs)]);
   const customer = enquiry.customers as unknown as {
     company_name: string | null;
     contact_name: string;
@@ -86,7 +88,6 @@ export default async function NewQuotePage({
     phone: string | null;
     country: string | null;
   } | null;
-  const legs = [...((enquiry.enquiry_legs as unknown as JourneyLeg[] | null) ?? [])].sort((a, b) => a.sequence - b.sequence);
   const brand = enquiry.brands as unknown as { default_currency: string } | null;
 
   return (
@@ -102,6 +103,7 @@ export default async function NewQuotePage({
           country: customer?.country ?? null,
         }}
         legs={legs}
+        legDistances={legDistances}
         defaultCurrency={brand?.default_currency ?? "EUR"}
         canSend={canSend}
       />

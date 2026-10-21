@@ -22,6 +22,7 @@ import {
 import { statusDetailText } from "@/lib/supplierJobStatus";
 import { formatDateAndTime, formatDateTime } from "@/lib/formatDate";
 import type { JobAllocationOfferView, JobSupplierInvoice, SupplierPaymentStatus } from "@/lib/supabase/database.types";
+import type { RouteDistance } from "@/lib/tripDistance";
 
 const PAYMENT_STATUS_STYLE: Record<SupplierPaymentStatus, string> = {
   unpaid: "bg-blue-50 text-blue-700",
@@ -49,6 +50,7 @@ function money(amount: number | null, currency: string) {
  */
 export function SupplierJobDetail({
   job,
+  legDistances,
   invoice,
   invoiceUrl,
   supplierId,
@@ -58,6 +60,8 @@ export function SupplierJobDetail({
   refunds,
 }: {
   job: JobAllocationOfferView;
+  /** Stop-by-stop route distance per leg, index-aligned with `job.legs`. */
+  legDistances: RouteDistance[];
   invoice: JobSupplierInvoice | null;
   invoiceUrl: string | null;
   supplierId: string;
@@ -249,7 +253,7 @@ export function SupplierJobDetail({
         {job.legs && job.legs.length > 0 ? (
           <div className="mt-4 rounded-2xl bg-slate-50 p-4 text-sm">
             {job.legs.map((leg, i) => (
-              <JourneyLegDetail key={i} leg={leg} index={i} total={job.legs!.length} />
+              <JourneyLegDetail key={i} leg={leg} index={i} total={job.legs!.length} distance={legDistances[i]} />
             ))}
           </div>
         ) : (
