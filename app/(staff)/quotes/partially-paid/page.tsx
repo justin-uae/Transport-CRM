@@ -66,7 +66,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ q
   let listQuery = supabase
     .from("quotes")
     .select(
-      "id, quote_number, currency, invoice_number, created_at, customers(company_name, contact_name), enquiries(assigned_user_id, leads(source), enquiry_legs(pickup_address, destination_address)), quote_versions!quotes_current_version_id_fkey(selling_price), profiles!quotes_created_by_fkey(full_name), customer_payments(amount, verification_status)",
+      "id, quote_number, currency, invoice_number, created_at, customers(company_name, contact_name, email), enquiries(assigned_user_id, leads(source), enquiry_legs(pickup_address, destination_address)), quote_versions!quotes_current_version_id_fkey(selling_price), profiles!quotes_created_by_fkey(full_name), customer_payments(amount, verification_status)",
     )
     .eq("status", "partially_paid");
   if (q) {

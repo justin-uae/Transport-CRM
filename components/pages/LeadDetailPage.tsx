@@ -30,6 +30,7 @@ import { formatDate, formatTimeOnly } from "@/lib/formatDate";
 import { SOURCE_LABEL } from "@/lib/leadSource";
 import type { LeadSource, LeadStatus } from "@/lib/supabase/database.types";
 import type { RouteDistance, RouteSegment, TripDistance } from "@/lib/tripDistance";
+import { SendEmailButton } from "@/components/ui/SendEmailButton";
 import { formatDuration } from "@/lib/formatDuration";
 
 const STATUS_LABEL: Record<LeadStatus, string> = {
@@ -581,6 +582,7 @@ export function LeadDetailPage({
                 >
                   View customer record →
                 </Link>
+                <SendEmailButton email={lead.customers.email} quoteNumber={quote?.quote_number} className="mt-2" />
               </div>
             ) : (
               <p className="mt-4 text-sm text-slate-400">No customer linked yet.</p>

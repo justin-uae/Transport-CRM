@@ -20,6 +20,8 @@ import type { QuoteStatus, QuoteEventType, QuoteDecisionType, CustomerPaymentMet
 import { QUOTE_STATUS_LABEL, QUOTE_STATUS_STYLE } from "@/lib/quoteStatus";
 import { getAiModelLabel } from "@/lib/aiProviderRegistry";
 import { legRouteDistances } from "@/lib/tripDistance";
+import { SendEmailButton } from "@/components/ui/SendEmailButton";
+import { QuoteRemindersPanel, type QuoteReminderRow } from "@/components/pages/QuoteRemindersPanel";
 
 interface LineItemRow {
   id: string;
@@ -79,13 +81,16 @@ interface QuoteDetailRow {
   created_by_profile: { full_name: string } | null;
   ai_generated: boolean;
   ai_model: { provider: string; model: string } | null;
-  customers: { id: string; company_name: string | null; contact_name: string; phone: string | null; email: string | null } | null;
+  customers: { id: string; company_name: string | null; contact_name: string; phone: string | null; email: string | null; reminders_opted_out_at: string | null } | null;
   enquiries: { id: string; lead_id: string | null; assigned_user_id: string | null; enquiry_legs: (JourneyLeg & { id: string })[] } | null;
   quote_versions: VersionRow[];
   quote_events: { event: QuoteEventType; detail: string | null; created_at: string }[];
   quote_decisions: { decision: QuoteDecisionType; reason: string | null; free_text: string | null; decided_at: string }[];
   customer_payments: PaymentRow[];
   quote_payment_milestones: MilestoneRow[];
+  reminders_paused_at: string | null;
+  reminders_pause_reason: string | null;
+  quote_reminders: QuoteReminderRow[];
 }
 
 const EVENT_LABEL: Record<QuoteEventType, string> = {
@@ -101,6 +106,11 @@ const EVENT_LABEL: Record<QuoteEventType, string> = {
   card_payment_requested: "Card payment requested",
   card_payment_approved: "Card payment approved",
   card_payment_rejected: "Card payment request rejected",
+  reminder_sent: "Reminder email sent",
+  reminders_paused: "Reminders paused",
+  reminders_resumed: "Reminders resumed",
+  reminders_opted_out: "Customer stopped reminders",
+  reminders_opt_out_cleared: "Reminders allowed again for this customer",
 };
 
 function money(amount: number | undefined | null, currency: string) {
@@ -112,19 +122,21 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
   const { id } = await params;
   const actor = await requireProfile();
   const supabase = await createClient();
-  const [canCancelPermission, canProcessRefunds, canAmendPermission, canCreateQuote, canAssign] = await Promise.all([
+  const [canCancelPermission, canProcessRefunds, canAmendPermission, canCreateQuote, canAssign, canSendQuotes, { data: tenantSettings }] = await Promise.all([
     hasPermission(actor, PERMISSIONS.QUOTES_CANCEL),
     hasPermission(actor, PERMISSIONS.FINANCE_PROCESS_REFUNDS),
     hasPermission(actor, PERMISSIONS.BOOKINGS_AMEND),
     hasPermission(actor, PERMISSIONS.QUOTES_CREATE),
     hasPermission(actor, PERMISSIONS.ENQUIRIES_REASSIGN),
+    hasPermission(actor, PERMISSIONS.QUOTES_SEND),
+    supabase.from("tenants").select("quote_reminders_enabled, quote_reminders_enabled_at").eq("id", actor.tenant_id).single(),
   ]);
   const assignableUsers = canAssign ? await getAssignableSalesUsers(supabase) : [];
 
   const { data: quoteRaw, error: quoteError } = await supabase
     .from("quotes")
     .select(
-      "id, quote_number, status, currency, expiry_at, invoice_number, invoiced_at, public_token, created_at, sent_at, viewed_at, decided_at, cancellation_reason, cancelled_by, cancelled_by_profile:profiles!quotes_cancelled_by_fkey(full_name), created_by, created_by_profile:profiles!quotes_created_by_fkey(full_name), ai_generated, ai_model, customers(id, company_name, contact_name, phone, email), enquiries(id, lead_id, assigned_user_id, enquiry_legs(id, sequence, journey_type, pickup_address, destination_address, via_points, pickup_date, pickup_time, return_date, return_time, passenger_count, luggage_count, wheelchair_required, child_seats, special_requirements, vehicle_types(name))), quote_versions!quote_versions_quote_id_fkey(id, version_number, vehicle_description, supplier_estimated_cost, selling_price, currency, deposit_percentage, deposit_fixed_amount, payment_methods, customer_notes, terms_snapshot, created_at, quote_line_items(id, description, amount, category)), quote_events(event, detail, created_at), quote_decisions(decision, reason, free_text, decided_at), customer_payments(id, amount, method, paid_at), quote_payment_milestones(id, sequence, label, amount, due_date)",
+      "id, quote_number, status, currency, expiry_at, invoice_number, invoiced_at, public_token, created_at, sent_at, viewed_at, decided_at, cancellation_reason, cancelled_by, cancelled_by_profile:profiles!quotes_cancelled_by_fkey(full_name), created_by, created_by_profile:profiles!quotes_created_by_fkey(full_name), ai_generated, ai_model, customers(id, company_name, contact_name, phone, email, reminders_opted_out_at), enquiries(id, lead_id, assigned_user_id, enquiry_legs(id, sequence, journey_type, pickup_address, destination_address, via_points, pickup_date, pickup_time, return_date, return_time, passenger_count, luggage_count, wheelchair_required, child_seats, special_requirements, vehicle_types(name))), quote_versions!quote_versions_quote_id_fkey(id, version_number, vehicle_description, supplier_estimated_cost, selling_price, currency, deposit_percentage, deposit_fixed_amount, payment_methods, customer_notes, terms_snapshot, created_at, quote_line_items(id, description, amount, category)), quote_events(event, detail, created_at), quote_decisions(decision, reason, free_text, decided_at), customer_payments(id, amount, method, paid_at), quote_payment_milestones(id, sequence, label, amount, due_date), reminders_paused_at, reminders_pause_reason, quote_reminders(kind, step, sent_at, error)",
     )
     .eq("id", id)
     .single();
@@ -373,6 +385,26 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
             )}
           </Panel>
 
+          <QuoteRemindersPanel
+            quoteId={quote.id}
+            status={quote.status}
+            sentAt={quote.sent_at}
+            decidedAt={quote.decided_at}
+            expiryAt={quote.expiry_at}
+            legs={legs}
+            enabled={tenantSettings?.quote_reminders_enabled ?? false}
+            enabledAt={tenantSettings?.quote_reminders_enabled_at ?? null}
+            customerEmail={customer?.email ?? null}
+            optedOutAt={customer?.reminders_opted_out_at ?? null}
+            pausedAt={quote.reminders_paused_at}
+            pauseReason={quote.reminders_pause_reason}
+            hasPayments={quote.customer_payments.length > 0}
+            reminders={quote.quote_reminders ?? []}
+            // Mirrors loadManageableQuote in app/(staff)/quotes/reminderActions.ts.
+            canManage={actor.is_master_admin || quote.enquiries?.assigned_user_id === actor.id || quote.created_by === actor.id || canSendQuotes}
+            isMasterAdmin={actor.is_master_admin}
+          />
+
           <Panel>
             <SectionTitle title="Timeline" sub="Every recorded event on this quote" />
             <ol className="mt-4 space-y-3">
@@ -470,6 +502,7 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
                 jobStatus={jobRow?.status ?? null}
                 refunds={(refunds ?? []) as unknown as QuoteRefund[]}
               />
+              <SendEmailButton email={customer?.email} quoteNumber={quote.quote_number} className="mt-2" />
             </div>
           </Panel>
 

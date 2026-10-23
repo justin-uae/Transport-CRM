@@ -20,7 +20,13 @@ export type EmailTemplateKey =
   | "job_reapproval_required"
   | "job_reapproval_rejected"
   | "card_payment_override_requested"
-  | "card_payment_override_decided";
+  | "card_payment_override_decided"
+  | "quote_reminder_1"
+  | "quote_reminder_2"
+  | "quote_reminder_3"
+  | "quote_reminder_4"
+  | "quote_reminder_5"
+  | "quote_payment_reminder";
 
 /** Friendly labels + the {{variable}} tokens each template supports — shown as an editing hint in Email Centre -> Templates. */
 export const EMAIL_TEMPLATE_INFO: Record<EmailTemplateKey, { label: string; description: string; variables: string[] }> = {
@@ -124,5 +130,35 @@ export const EMAIL_TEMPLATE_INFO: Record<EmailTemplateKey, { label: string; desc
     label: "Card payment request decided",
     description: "Sent to the staff member who requested it, once a Master Admin approves or rejects their card-payment request.",
     variables: ["requested_by", "quote_number", "decision", "decided_by", "decision_note", "link"],
+  },
+  quote_reminder_1: {
+    label: "Quote reminder 1 (2 hours)",
+    description: "Automatic follow-up to the customer 2 hours after a quote is sent and not yet accepted — friendly reminder and easy booking. Shortened for trips coming up soon. Settings -> Quote Reminders.",
+    variables: ["customer_name", "quote_number", "brand_name", "travel_date", "vehicle", "pickup", "destination", "currency", "selling_price", "link", "stop_link"],
+  },
+  quote_reminder_2: {
+    label: "Quote reminder 2 (24 hours)",
+    description: "Automatic follow-up to the customer 24 hours after a quote is sent and not yet accepted — explains the benefits of booking and encourages a decision. Shortened for trips coming up soon. Settings -> Quote Reminders.",
+    variables: ["customer_name", "quote_number", "brand_name", "travel_date", "vehicle", "pickup", "destination", "currency", "selling_price", "link", "stop_link"],
+  },
+  quote_reminder_3: {
+    label: "Quote reminder 3 (48 hours)",
+    description: "Automatic follow-up to the customer 48 hours after a quote is sent and not yet accepted — offers to review the price. Shortened for trips coming up soon. Settings -> Quote Reminders.",
+    variables: ["customer_name", "quote_number", "brand_name", "travel_date", "vehicle", "pickup", "destination", "currency", "selling_price", "link", "stop_link"],
+  },
+  quote_reminder_4: {
+    label: "Quote reminder 4 (72 hours)",
+    description: "Automatic follow-up to the customer 72 hours after a quote is sent and not yet accepted — asks the customer to reply 1-4 with their decision. Shortened for trips coming up soon. Settings -> Quote Reminders.",
+    variables: ["customer_name", "quote_number", "brand_name", "travel_date", "vehicle", "pickup", "destination", "currency", "selling_price", "link", "stop_link"],
+  },
+  quote_reminder_5: {
+    label: "Quote reminder 5 (5 days)",
+    description: "Automatic follow-up to the customer 5 days after a quote is sent and not yet accepted — final follow-up asking for a decision. Shortened for trips coming up soon. Settings -> Quote Reminders.",
+    variables: ["customer_name", "quote_number", "brand_name", "travel_date", "vehicle", "pickup", "destination", "currency", "selling_price", "link", "stop_link"],
+  },
+  quote_payment_reminder: {
+    label: "Payment reminder",
+    description: "Automatic reminder (1, 3 and 5 days after acceptance) to a customer who accepted a quote but hasn't paid yet, with their secure payment link. Settings -> Quote Reminders.",
+    variables: ["customer_name", "quote_number", "brand_name", "travel_date", "currency", "amount_due", "link", "stop_link"],
   },
 };

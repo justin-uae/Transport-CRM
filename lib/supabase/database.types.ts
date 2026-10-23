@@ -24,6 +24,10 @@ export interface Tenant {
   whatsapp_auto_quote_enabled: boolean;
   /** Every quote AI prices and sends on its own (createAndSendQuote, any trigger) has its selling price increased by this percentage before it's saved/sent — Master-Admin-only (Settings → AI Assistant). Default 0 (no change). See 0101_ai_auto_quote_markup.sql. */
   ai_auto_quote_markup_percent: number;
+  /** Master-Admin-only switch (Settings -> Quote Reminders) — when true, the quote-reminders cron emails customers follow-up reminders on unaccepted quotes and payment reminders on accepted-but-unpaid ones. See 0103_quote_reminders.sql and lib/quoteReminders.ts. */
+  quote_reminders_enabled: boolean;
+  /** When the switch last flipped off -> on — each quote's reminder schedule counts from whichever is later, this or when the quote was sent, so turning it on never fires a burst at every open quote. */
+  quote_reminders_enabled_at: string | null;
   /** Every lead the email-lead-intake sweep creates lands on this brand — set once (backfilled to the tenant's "GLOBAL BUS RENTAL LIMITED" brand, see 0088_email_lead_intake.sql) since 300+ forwarded sites can't be reliably attributed from email content alone. Null disables the sweep for this tenant entirely. */
   default_lead_inbox_brand_id: string | null;
   /** Master-Admin-only per-feature AI provider/model picks (Settings -> AI Models, see 0098_ai_model_settings.sql and lib/aiProviders.ts) — keyed by AiFeatureKey ("whatsapp_intake" | "pricing_engine" | "email_intake" | "complex_booking"), each value an {provider, model}. A missing key falls back to OpenAI/gpt-5.5 in code. */
@@ -297,7 +301,12 @@ export type QuoteEventType =
   | "reassigned"
   | "card_payment_requested"
   | "card_payment_approved"
-  | "card_payment_rejected";
+  | "card_payment_rejected"
+  | "reminder_sent"
+  | "reminders_paused"
+  | "reminders_resumed"
+  | "reminders_opted_out"
+  | "reminders_opt_out_cleared";
 
 export interface Customer {
   id: string;
@@ -315,6 +324,8 @@ export interface Customer {
   account_manager_id: string | null;
   default_brand_id: string | null;
   notes: string | null;
+  /** Customer used "Stop reminders" in a reminder email (or staff marked it) — no more automatic quote reminders for any of their quotes. */
+  reminders_opted_out_at: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -451,6 +462,11 @@ export interface Quote {
   ai_estimated_price: number | null;
   ai_estimated_price_currency: string | null;
   ai_estimated_price_computed_at: string | null;
+  /** Follow-up reminders paused for this quote — automatically when the customer replies by email, or by staff from the quote page. See 0103_quote_reminders.sql. */
+  reminders_paused_at: string | null;
+  reminders_pause_reason: string | null;
+  /** Last "Resume" — customer replies before this don't re-pause it. */
+  reminders_resumed_at: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -600,6 +616,17 @@ export interface QuoteEvent {
   event: QuoteEventType;
   detail: string | null;
   created_at: string;
+}
+
+/** One automatic follow-up email the quote-reminders cron attempted — kind "sales" (steps 1-5, quote not yet accepted) or "payment" (steps 1-3, accepted but unpaid). error is set when the send failed. See 0103_quote_reminders.sql. */
+export interface QuoteReminder {
+  id: string;
+  tenant_id: string;
+  quote_id: string;
+  kind: "sales" | "payment";
+  step: number;
+  sent_at: string;
+  error: string | null;
 }
 
 /** Settings -> Card Payment Requests — staff asking Master Admin to allow Stripe on a specific quote that's normally bank-transfer-only above STRIPE_PRICE_THRESHOLD (lib/quoteMoney.ts). See 0102_card_payment_override_requests.sql. */
@@ -1215,6 +1242,7 @@ export interface Database {
       quote_versions: Table<QuoteVersion>;
       quote_decisions: Table<QuoteDecision>;
       quote_events: Table<QuoteEvent>;
+      quote_reminders: Table<QuoteReminder>;
       card_payment_override_requests: Table<CardPaymentOverrideRequest>;
       number_sequences: Table<NumberSequence>;
       bank_accounts: Table<BankAccount>;

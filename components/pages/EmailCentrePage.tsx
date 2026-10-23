@@ -46,19 +46,22 @@ export function EmailCentrePage({
   account,
   messages,
   signatureProfile,
+  initialCompose,
 }: {
   templates: EmailTemplate[];
   canManageTemplates: boolean;
   account: EmailAccount | null;
   messages: EmailMessage[];
   signatureProfile: SignatureProfileInfo;
+  /** From a "Send Email" button elsewhere in the CRM (components/ui/SendEmailButton.tsx) — opens Compose straight away with the customer and quote reference already filled in. */
+  initialCompose?: { to: string; subject: string } | null;
 }) {
   const router = useRouter();
   const notify = useToast();
   const [tab, setTab] = useState<"inbox" | "templates" | "signature">("inbox");
   const [folder, setFolder] = useState<EmailFolder>("inbox");
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [composeOpen, setComposeOpen] = useState(false);
+  const [composeOpen, setComposeOpen] = useState(!!initialCompose && !!account);
   const [pending, startTransition] = useTransition();
   const showTemplates = canManageTemplates && tab === "templates";
   const showSignature = tab === "signature";
@@ -75,12 +78,12 @@ export function EmailCentrePage({
   const [replyBcc, setReplyBcc] = useState("");
   const [showReplyCc, setShowReplyCc] = useState(false);
   const [showReplyBcc, setShowReplyBcc] = useState(false);
-  const [composeTo, setComposeTo] = useState("");
+  const [composeTo, setComposeTo] = useState(initialCompose?.to ?? "");
   const [composeCc, setComposeCc] = useState("");
   const [composeBcc, setComposeBcc] = useState("");
   const [showComposeCc, setShowComposeCc] = useState(false);
   const [showComposeBcc, setShowComposeBcc] = useState(false);
-  const [composeSubject, setComposeSubject] = useState("");
+  const [composeSubject, setComposeSubject] = useState(initialCompose?.subject ?? "");
   const [composeBody, setComposeBody] = useState("");
   const [composeAttachments, setComposeAttachments] = useState<PendingAttachment[]>([]);
   const [invalidAddresses, setInvalidAddresses] = useState<string[]>([]);

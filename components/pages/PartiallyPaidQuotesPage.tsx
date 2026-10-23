@@ -10,6 +10,7 @@ import { SearchInput } from "@/components/ui/SearchInput";
 import { SortSelect } from "@/components/ui/SortSelect";
 import { Pagination } from "@/components/ui/Pagination";
 import { JourneyCell } from "@/components/ui/JourneyCell";
+import { SendEmailButton } from "@/components/ui/SendEmailButton";
 import { Breadcrumb } from "@/components/ui/Breadcrumb";
 import { ConfirmDetailModal } from "@/components/ui/ConfirmDetailModal";
 import { useToast } from "@/components/ui/Toast";
@@ -34,7 +35,7 @@ export interface PartiallyPaidQuoteRow {
   currency: string;
   invoice_number: string | null;
   created_at: string;
-  customers: { company_name: string | null; contact_name: string } | null;
+  customers: { company_name: string | null; contact_name: string; email: string | null } | null;
   enquiries: {
     assigned_user_id: string | null;
     leads: { source: keyof typeof SOURCE_LABEL } | null;
@@ -177,6 +178,7 @@ export function PartiallyPaidQuotesPage({
                 >
                   View
                 </Link>
+                <SendEmailButton email={q.customers?.email} quoteNumber={q.quote_number} variant="row" className="flex-1" />
                 {canAssign && (
                   <button
                     onClick={() => openAssign(q)}
@@ -232,6 +234,7 @@ export function PartiallyPaidQuotesPage({
                       >
                         View
                       </Link>
+                      <SendEmailButton email={q.customers?.email} quoteNumber={q.quote_number} variant="row" />
                       {canAssign && (
                         <button
                           onClick={() => openAssign(q)}

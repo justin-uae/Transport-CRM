@@ -21,6 +21,12 @@ const EMAIL_HEADLINES: Record<EmailTemplateKey, string> = {
   job_reapproval_rejected: "Job rejected",
   card_payment_override_requested: "Approval needed",
   card_payment_override_decided: "Request decided",
+  quote_reminder_1: "Your quote is waiting",
+  quote_reminder_2: "Still thinking it over?",
+  quote_reminder_3: "Can we help?",
+  quote_reminder_4: "Shall we go ahead?",
+  quote_reminder_5: "One last check-in",
+  quote_payment_reminder: "Secure your booking",
 };
 
 /**

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Users, ShieldCheck, Building2, History, Bot, Cpu } from "lucide-react";
+import { Users, ShieldCheck, Building2, History, Bot, Cpu, BellRing } from "lucide-react";
 import { Panel } from "@/components/ui/Panel";
 import { PageHead } from "@/components/ui/PageHead";
 import { PageGuide } from "@/components/ui/PageGuide";
@@ -26,6 +26,12 @@ const MASTER_ADMIN_CARDS = [
     href: "/settings/ai-models",
     icon: Cpu,
     text: "Choose which AI provider — OpenAI, Claude, Gemini, or Grok — answers each AI-powered feature.",
+  },
+  {
+    label: "Quote Reminders",
+    href: "/settings/quote-reminders",
+    icon: BellRing,
+    text: "Automatically email customers who haven't accepted or paid a quote yet, and see how many bookings it brings back.",
   },
 ];
 

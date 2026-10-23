@@ -34,6 +34,7 @@ import { formatDateTime, formatDateAndTime } from "@/lib/formatDate";
 import type { JobOfferStatus, JobStatus, JobSupplierInvoice, SupplierPaymentStatus, QuoteStatus } from "@/lib/supabase/database.types";
 import type { SupplierOption } from "@/components/pages/DispatchBoard";
 import type { RouteDistance } from "@/lib/tripDistance";
+import { SendEmailButton } from "@/components/ui/SendEmailButton";
 
 type DispatchLeg = JourneyLeg & { id: string };
 
@@ -770,6 +771,7 @@ export function DispatchJobDetail({
                     className="rounded-xl border px-3 py-1.5 text-xs font-bold"
                   />
                 )}
+                {job.quotes && <SendEmailButton email={customer?.email} quoteNumber={job.quotes.quote_number} variant="row" />}
                 {job.quotes && canAssign && (
                   <button
                     type="button"

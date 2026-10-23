@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { SendEmailButton } from "@/components/ui/SendEmailButton";
 import { PageHead } from "@/components/ui/PageHead";
 import { Panel } from "@/components/ui/Panel";
 import { SortSelect } from "@/components/ui/SortSelect";
@@ -23,7 +24,7 @@ const SORT_OPTIONS = [
   { value: "value_asc", label: "Lowest value" },
 ];
 
-type CustomerRef = { company_name: string | null; contact_name: string } | null;
+type CustomerRef = { company_name: string | null; contact_name: string; email: string | null } | null;
 type LegsRef = {
   leads: { source: keyof typeof SOURCE_LABEL } | null;
   enquiry_legs: { pickup_address: string; destination_address: string; pickup_date: string | null }[];
@@ -142,12 +143,15 @@ export function BookingsConfirmedPage({ jobs }: { jobs: ConfirmedBookingJob[] })
                 {allocationSummary(job.job_allocations) && (
                   <p className="mt-1 text-xs text-slate-500">{allocationSummary(job.job_allocations)}</p>
                 )}
-                <Link
-                  href={`/dispatch/${job.id}`}
-                  className="mt-3 inline-block rounded-lg border border-primary-300 px-3 py-2 text-xs font-bold text-primary-700"
-                >
-                  View job
-                </Link>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <Link
+                    href={`/dispatch/${job.id}`}
+                    className="inline-block rounded-lg border border-primary-300 px-3 py-2 text-xs font-bold text-primary-700"
+                  >
+                    View job
+                  </Link>
+                  <SendEmailButton email={job.quotes?.customers?.email} quoteNumber={job.quotes?.quote_number} variant="row" />
+                </div>
               </div>
             );
           })}

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { SendEmailButton } from "@/components/ui/SendEmailButton";
 import { PageHead } from "@/components/ui/PageHead";
 import { Panel } from "@/components/ui/Panel";
 import { SortSelect } from "@/components/ui/SortSelect";
@@ -30,7 +31,7 @@ export interface LostBookingQuote {
   status: QuoteStatus;
   decided_at: string | null;
   expiry_at: string | null;
-  customers: { company_name: string | null; contact_name: string } | null;
+  customers: { company_name: string | null; contact_name: string; email: string | null } | null;
   enquiries: {
     leads: { source: keyof typeof SOURCE_LABEL } | null;
     enquiry_legs: { pickup_address: string; destination_address: string; pickup_date: string | null }[];
@@ -158,12 +159,15 @@ export function BookingsLostPage({ quotes, expiredLeads }: { quotes: LostBooking
                 {isCancelled && q.decided_at && (
                   <p className="mt-2 text-xs text-slate-500">Cancelled {formatDateTime(q.decided_at)}</p>
                 )}
-                <Link
-                  href={`/quotes/${q.id}`}
-                  className="mt-3 inline-block rounded-lg border border-primary-300 px-3 py-2 text-xs font-bold text-primary-700"
-                >
-                  View quote
-                </Link>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <Link
+                    href={`/quotes/${q.id}`}
+                    className="inline-block rounded-lg border border-primary-300 px-3 py-2 text-xs font-bold text-primary-700"
+                  >
+                    View quote
+                  </Link>
+                  <SendEmailButton email={q.customers?.email} quoteNumber={q.quote_number} variant="row" />
+                </div>
               </div>
             );
           })}

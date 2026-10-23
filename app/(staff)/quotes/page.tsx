@@ -93,7 +93,7 @@ export default async function Page({
   let listQuery = supabase
     .from("quotes")
     .select(
-      "id, quote_number, status, currency, expiry_at, invoice_number, public_token, created_at, sent_at, viewed_at, ai_generated, ai_model, ai_estimated_price, ai_estimated_price_currency, customers(company_name, contact_name), enquiries(assigned_user_id, leads(source), enquiry_legs(pickup_address, destination_address, pickup_date, pickup_time)), quote_versions!quotes_current_version_id_fkey(selling_price), profiles!quotes_created_by_fkey(full_name)",
+      "id, quote_number, status, currency, expiry_at, invoice_number, public_token, created_at, sent_at, viewed_at, ai_generated, ai_model, ai_estimated_price, ai_estimated_price_currency, customers(company_name, contact_name, email), enquiries(assigned_user_id, leads(source), enquiry_legs(pickup_address, destination_address, pickup_date, pickup_time)), quote_versions!quotes_current_version_id_fkey(selling_price), profiles!quotes_created_by_fkey(full_name)",
     )
     .in("status", statusFilter ?? ["draft", "sent", "viewed", "accepted"]);
   if (q) {

@@ -22,6 +22,7 @@ import type { QuoteStatus } from "@/lib/supabase/database.types";
 import { QUOTE_STATUS_LABEL, QUOTE_STATUS_STYLE } from "@/lib/quoteStatus";
 import { formatDateTime, formatDateAndTime, isPastDate } from "@/lib/formatDate";
 import { SOURCE_LABEL } from "@/lib/leadSource";
+import { SendEmailButton } from "@/components/ui/SendEmailButton";
 import type { AssignableUser } from "@/components/pages/LeadDetailPage";
 
 export type QuoteSortKey =
@@ -65,7 +66,7 @@ export interface QuoteRow {
   created_at: string;
   sent_at: string | null;
   viewed_at: string | null;
-  customers: { company_name: string | null; contact_name: string } | null;
+  customers: { company_name: string | null; contact_name: string; email: string | null } | null;
   enquiries: {
     assigned_user_id: string | null;
     leads: { source: keyof typeof SOURCE_LABEL } | null;
@@ -623,6 +624,7 @@ export function QuotesPage({
                   >
                     View
                   </Link>
+                  <SendEmailButton email={q.customers?.email} quoteNumber={q.quote_number} variant="row" />
                   {(q.status === "sent" || q.status === "viewed") && (
                     <button
                       onClick={() => copyLink(q.public_token)}

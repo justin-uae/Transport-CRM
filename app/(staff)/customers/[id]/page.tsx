@@ -7,6 +7,7 @@ import { BackLink } from "@/components/ui/BackLink";
 import { Panel } from "@/components/ui/Panel";
 import { SectionTitle } from "@/components/ui/SectionTitle";
 import { FormattedText } from "@/components/ui/FormattedText";
+import { SendEmailButton } from "@/components/ui/SendEmailButton";
 import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { formatDateTime } from "@/lib/formatDate";
@@ -195,6 +196,8 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
               </div>
             )}
           </div>
+          {/* Subject uses their most recent quote (quoteRows is newest-first). */}
+          <SendEmailButton email={customer.email} quoteNumber={quoteRows[0]?.quote_number} className="mt-4" />
         </Panel>
 
         <Panel>

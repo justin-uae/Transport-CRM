@@ -8,6 +8,7 @@ import { PageGuide } from "@/components/ui/PageGuide";
 import { CustomerPaymentsDiagram } from "@/components/ui/guide-diagrams/CustomerPaymentsDiagram";
 import { useToast } from "@/components/ui/Toast";
 import { ConfirmDetailModal } from "@/components/ui/ConfirmDetailModal";
+import { SendEmailButton } from "@/components/ui/SendEmailButton";
 import { createClient } from "@/lib/supabase/client";
 import { recordCustomerPaymentAction, verifyBankTransferAction, processRefundAction } from "@/app/(staff)/quotes/actions";
 import { amountDueNow } from "@/lib/quoteMoney";
@@ -475,6 +476,7 @@ export function CustomerPaymentsPage({
                   </div>
                 )}
                 <div className="mt-3 flex items-center gap-3">
+                  <SendEmailButton email={q.customers?.email} quoteNumber={q.quote_number} variant="row" />
                   {(q.status === "accepted" || q.status === "partially_paid") && (
                     <button
                       disabled={pending}

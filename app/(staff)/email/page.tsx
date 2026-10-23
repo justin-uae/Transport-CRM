@@ -5,7 +5,8 @@ import { EmailCentrePage } from "@/components/pages/EmailCentrePage";
 import { sanitizeEmailHtml } from "@/lib/sanitizeEmailHtml";
 import type { EmailAccount, EmailMessage } from "@/lib/supabase/database.types";
 
-export default async function Page() {
+export default async function Page({ searchParams }: { searchParams: Promise<{ compose?: string; to?: string; subject?: string }> }) {
+  const params = await searchParams;
   const profile = await requireProfile();
   const canManageTemplates = await hasPermission(profile, PERMISSIONS.ADMIN_MANAGE_TEMPLATES);
   const supabase = await createClient();
@@ -36,6 +37,7 @@ export default async function Page() {
       canManageTemplates={canManageTemplates}
       account={(account as EmailAccount) ?? null}
       messages={messages}
+      initialCompose={params.compose ? { to: params.to ?? "", subject: params.subject ?? "" } : null}
       signatureProfile={{
         id: profile.id,
         tenant_id: profile.tenant_id,
