@@ -5,6 +5,7 @@ import { amountDueNow } from "@/lib/quotePayments";
 import { formatDateTime, formatDate } from "@/lib/formatDate";
 import { JourneyLegDetail, type JourneyLeg } from "@/components/pages/JourneyLegDetail";
 import { RichText } from "@/components/ui/RichText";
+import { vatBreakdown, formatVatRate } from "@/lib/vat";
 import { QuoteDecisionButtons } from "./QuoteDecisionButtons";
 import { PaymentChooser, type BankAccountRow } from "./PaymentChooser";
 
@@ -23,6 +24,7 @@ interface LineItemRow {
 interface VersionRow {
   vehicle_description: string | null;
   selling_price: number;
+  vat_rate: number;
   deposit_percentage: number | null;
   deposit_fixed_amount: number | null;
   payment_methods: { stripe: boolean; bank_transfer: boolean };
@@ -49,7 +51,7 @@ export default async function PublicQuotePage({ params }: { params: Promise<{ to
   const { data: quote } = await admin
     .from("quotes")
     .select(
-      "id, quote_number, status, currency, expiry_at, brand_id, tenant_id, invoice_number, invoiced_at, payment_method_chosen, customers(company_name, contact_name), enquiries(enquiry_legs(sequence, journey_type, pickup_address, destination_address, via_points, pickup_date, pickup_time, return_date, return_time, passenger_count, luggage_count, wheelchair_required, child_seats, special_requirements, vehicle_types(name))), quote_versions!quotes_current_version_id_fkey(vehicle_description, selling_price, deposit_percentage, deposit_fixed_amount, payment_methods, customer_notes, terms_snapshot, brand_snapshot, quote_line_items(description, amount, category)), customer_payments(amount), quote_payment_milestones(sequence, label, amount, due_date)",
+      "id, quote_number, status, currency, expiry_at, brand_id, tenant_id, invoice_number, invoiced_at, payment_method_chosen, customers(company_name, contact_name), enquiries(enquiry_legs(sequence, journey_type, pickup_address, destination_address, via_points, pickup_date, pickup_time, return_date, return_time, passenger_count, luggage_count, wheelchair_required, child_seats, special_requirements, vehicle_types(name))), quote_versions!quotes_current_version_id_fkey(vehicle_description, selling_price, vat_rate, deposit_percentage, deposit_fixed_amount, payment_methods, customer_notes, terms_snapshot, brand_snapshot, quote_line_items(description, amount, category)), customer_payments(amount), quote_payment_milestones(sequence, label, amount, due_date)",
     )
     .eq("public_token", token)
     .single();
@@ -143,8 +145,23 @@ export default async function PublicQuotePage({ params }: { params: Promise<{ to
                   ))}
                 </div>
               )}
+              {version && version.vat_rate > 0 && (() => {
+                const { net, vat } = vatBreakdown(version.selling_price, version.vat_rate);
+                return (
+                  <div className="space-y-1 border-b py-2">
+                    <div className="flex justify-between text-slate-500">
+                      <span>Subtotal (excl. VAT)</span>
+                      <span>{money(net)}</span>
+                    </div>
+                    <div className="flex justify-between text-slate-500">
+                      <span>VAT ({formatVatRate(version.vat_rate)})</span>
+                      <span>{money(vat)}</span>
+                    </div>
+                  </div>
+                );
+              })()}
               <div className="flex justify-between py-2">
-                <span className="text-slate-500">Total</span>
+                <span className="text-slate-500">{version && version.vat_rate > 0 ? "Total incl. VAT" : "Total"}</span>
                 <b className="text-lg text-primary-600">{version ? money(version.selling_price) : "—"}</b>
               </div>
             </div>

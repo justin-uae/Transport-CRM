@@ -2,6 +2,7 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getGbpRates } from "@/lib/fxRates";
 import type { Database } from "@/lib/supabase/database.types";
+import { netOfVat } from "./vat";
 
 export type AgeBucket = "current" | "d1_30" | "d31_60" | "d61plus";
 
@@ -42,7 +43,7 @@ interface QuoteRow {
   currency: string;
   decided_at: string | null;
   customers: { company_name: string | null; contact_name: string } | null;
-  quote_versions: { selling_price: number; supplier_estimated_cost: number | null } | null;
+  quote_versions: { selling_price: number; vat_rate: number; supplier_estimated_cost: number | null } | null;
   customer_payments: { amount: number; paid_at: string; verification_status: string }[] | null;
 }
 
@@ -82,7 +83,7 @@ export async function getAccountingSummary(
     supabase
       .from("quotes")
       .select(
-        "id, quote_number, status, currency, decided_at, customers(company_name, contact_name), quote_versions!quotes_current_version_id_fkey(selling_price, supplier_estimated_cost), customer_payments(amount, paid_at, verification_status)",
+        "id, quote_number, status, currency, decided_at, customers(company_name, contact_name), quote_versions!quotes_current_version_id_fkey(selling_price, vat_rate, supplier_estimated_cost), customer_payments(amount, paid_at, verification_status)",
       )
       .in("status", ["accepted", "partially_paid", "paid"]),
     // supplier_payments has no direct FK to job_supplier_invoices — both key
@@ -153,7 +154,8 @@ export async function getAccountingSummary(
     }
 
     if (q.status === "paid" && q.decided_at && q.decided_at >= monthStart && q.quote_versions) {
-      const sellingPriceConverted = toGbp(q.quote_versions.selling_price, q.currency, rates);
+      // Profit/revenue excluding VAT — the balance owed above stays VAT-inclusive (lib/vat.ts).
+      const sellingPriceConverted = toGbp(netOfVat(q.quote_versions.selling_price, q.quote_versions.vat_rate), q.currency, rates);
       const costConverted = toGbp(q.quote_versions.supplier_estimated_cost ?? 0, q.currency, rates);
       if (sellingPriceConverted.usedFallback || costConverted.usedFallback) fxFallbackUsed = true;
       grossProfitGbp += sellingPriceConverted.value - costConverted.value;

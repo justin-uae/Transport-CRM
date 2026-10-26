@@ -24,6 +24,7 @@ import { SendEmailButton } from "@/components/ui/SendEmailButton";
 import { QuoteRemindersPanel, type QuoteReminderRow } from "@/components/pages/QuoteRemindersPanel";
 import { QuoteExpiryEditor } from "@/components/pages/QuoteExpiryEditor";
 import { EXPIRY_EDITABLE_STATUSES } from "@/lib/quoteExpiry";
+import { vatBreakdown, formatVatRate } from "@/lib/vat";
 
 interface LineItemRow {
   id: string;
@@ -38,6 +39,7 @@ interface VersionRow {
   vehicle_description: string | null;
   supplier_estimated_cost: number | null;
   selling_price: number;
+  vat_rate: number;
   currency: string;
   deposit_percentage: number | null;
   deposit_fixed_amount: number | null;
@@ -116,6 +118,11 @@ const EVENT_LABEL: Record<QuoteEventType, string> = {
   expiry_changed: "Expiry date changed",
 };
 
+/** Pence-accurate — for the VAT breakdown, where whole-unit rounding would make net + VAT not visibly add up. */
+function moneyExact(amount: number, currency: string) {
+  return new Intl.NumberFormat("en-GB", { style: "currency", currency, maximumFractionDigits: 2 }).format(amount);
+}
+
 function money(amount: number | undefined | null, currency: string) {
   if (amount === undefined || amount === null) return "—";
   return new Intl.NumberFormat("en-GB", { style: "currency", currency, maximumFractionDigits: 0 }).format(amount);
@@ -140,7 +147,7 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
   const { data: quoteRaw, error: quoteError } = await supabase
     .from("quotes")
     .select(
-      "id, quote_number, status, currency, expiry_at, invoice_number, invoiced_at, public_token, created_at, sent_at, viewed_at, decided_at, cancellation_reason, cancelled_by, cancelled_by_profile:profiles!quotes_cancelled_by_fkey(full_name), created_by, created_by_profile:profiles!quotes_created_by_fkey(full_name), ai_generated, ai_model, customers(id, company_name, contact_name, phone, email, reminders_opted_out_at), enquiries(id, lead_id, assigned_user_id, enquiry_legs(id, sequence, journey_type, pickup_address, destination_address, via_points, pickup_date, pickup_time, return_date, return_time, passenger_count, luggage_count, wheelchair_required, child_seats, special_requirements, vehicle_types(name))), quote_versions!quote_versions_quote_id_fkey(id, version_number, vehicle_description, supplier_estimated_cost, selling_price, currency, deposit_percentage, deposit_fixed_amount, payment_methods, customer_notes, terms_snapshot, created_at, quote_line_items(id, description, amount, category)), quote_events(event, detail, created_at), quote_decisions(decision, reason, free_text, decided_at), customer_payments(id, amount, method, paid_at), quote_payment_milestones(id, sequence, label, amount, due_date), reminders_paused_at, reminders_pause_reason, quote_reminders(kind, step, sent_at, error)",
+      "id, quote_number, status, currency, expiry_at, invoice_number, invoiced_at, public_token, created_at, sent_at, viewed_at, decided_at, cancellation_reason, cancelled_by, cancelled_by_profile:profiles!quotes_cancelled_by_fkey(full_name), created_by, created_by_profile:profiles!quotes_created_by_fkey(full_name), ai_generated, ai_model, customers(id, company_name, contact_name, phone, email, reminders_opted_out_at), enquiries(id, lead_id, assigned_user_id, enquiry_legs(id, sequence, journey_type, pickup_address, destination_address, via_points, pickup_date, pickup_time, return_date, return_time, passenger_count, luggage_count, wheelchair_required, child_seats, special_requirements, vehicle_types(name))), quote_versions!quote_versions_quote_id_fkey(id, version_number, vehicle_description, supplier_estimated_cost, selling_price, vat_rate, currency, deposit_percentage, deposit_fixed_amount, payment_methods, customer_notes, terms_snapshot, created_at, quote_line_items(id, description, amount, category)), quote_events(event, detail, created_at), quote_decisions(decision, reason, free_text, decided_at), customer_payments(id, amount, method, paid_at), quote_payment_milestones(id, sequence, label, amount, due_date), reminders_paused_at, reminders_pause_reason, quote_reminders(kind, step, sent_at, error)",
     )
     .eq("id", id)
     .single();
@@ -264,8 +271,16 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
                 <dd className="mt-0.5 font-semibold">{money(currentVersion?.supplier_estimated_cost, quote.currency)}</dd>
               </div>
               <div>
-                <dt className="text-xs font-bold uppercase text-slate-400">Selling price</dt>
+                <dt className="text-xs font-bold uppercase text-slate-400">{currentVersion?.vat_rate ? "Selling price incl. VAT" : "Selling price"}</dt>
                 <dd className="mt-0.5 text-base font-black text-primary-600">{money(currentVersion?.selling_price, quote.currency)}</dd>
+                {currentVersion && currentVersion.vat_rate > 0 && (() => {
+                  const { net, vat } = vatBreakdown(currentVersion.selling_price, currentVersion.vat_rate);
+                  return (
+                    <dd className="mt-0.5 text-xs text-slate-500">
+                      {moneyExact(net, quote.currency)} + {formatVatRate(currentVersion.vat_rate)} VAT ({moneyExact(vat, quote.currency)})
+                    </dd>
+                  );
+                })()}
               </div>
               <div className="col-span-2">
                 <dt className="text-xs font-bold uppercase text-slate-400">Payment method</dt>

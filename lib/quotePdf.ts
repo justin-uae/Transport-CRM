@@ -1,4 +1,5 @@
 import "server-only";
+import { vatBreakdown, formatVatRate } from "./vat";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "./supabase/database.types";
 import {
@@ -41,6 +42,7 @@ interface QuoteMilestoneRow {
 interface VersionRow {
   vehicle_description: string | null;
   selling_price: number;
+  vat_rate: number;
   deposit_percentage: number | null;
   deposit_fixed_amount: number | null;
   payment_methods: { stripe: boolean; bank_transfer: boolean } | null;
@@ -134,7 +136,7 @@ export async function generateQuotePdf(
       "id, quote_number, status, currency, expiry_at, created_at, brand_id, tenant_id, " +
         "customers(company_name, contact_name, email, phone), " +
         "enquiries(enquiry_legs(sequence, journey_type, pickup_address, destination_address, via_points, pickup_date, pickup_time, return_date, return_time, passenger_count, luggage_count, wheelchair_required, child_seats, special_requirements, vehicle_types(name))), " +
-        "quote_versions!quotes_current_version_id_fkey(vehicle_description, selling_price, deposit_percentage, deposit_fixed_amount, payment_methods, customer_notes, terms_snapshot, brand_snapshot, quote_line_items(description, amount)), " +
+        "quote_versions!quotes_current_version_id_fkey(vehicle_description, selling_price, vat_rate, deposit_percentage, deposit_fixed_amount, payment_methods, customer_notes, terms_snapshot, brand_snapshot, quote_line_items(description, amount)), " +
         "quote_payment_milestones(sequence, label, amount, due_date)",
     )
     .eq("id", quoteId)
@@ -323,9 +325,23 @@ export async function generateQuotePdf(
     doc.moveDown(0.6);
   }
 
+  if (version.vat_rate > 0) {
+    const { net, vat } = vatBreakdown(version.selling_price, version.vat_rate);
+    ensureSpace(doc, 58);
+    drawKeyValueBox(
+      doc,
+      [
+        ["Subtotal (excl. VAT)", money(net, quote.currency)],
+        [`VAT (${formatVatRate(version.vat_rate)})`, money(vat, quote.currency)],
+      ],
+      contentWidth,
+    );
+    doc.moveDown(0.6);
+  }
+
   ensureSpace(doc, 44);
   const priceBoxTop = doc.y;
-  doc.font(FONT_REGULAR).fontSize(11).fillColor(MUTED).text("Total price", PAGE_MARGIN, priceBoxTop);
+  doc.font(FONT_REGULAR).fontSize(11).fillColor(MUTED).text(version.vat_rate > 0 ? "Total price incl. VAT" : "Total price", PAGE_MARGIN, priceBoxTop);
   doc
     .font(FONT_BOLD)
     .fontSize(20)

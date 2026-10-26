@@ -2,6 +2,7 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getGbpRates } from "@/lib/fxRates";
 import type { Database } from "@/lib/supabase/database.types";
+import { netOfVat } from "@/lib/vat";
 
 export interface CommissionSummary {
   pendingApprovalGbp: number;
@@ -25,7 +26,7 @@ interface PipelineJobRow {
   quotes: {
     currency: string;
     created_by: string | null;
-    quote_versions: { selling_price: number; supplier_estimated_cost: number | null } | null;
+    quote_versions: { selling_price: number; vat_rate: number; supplier_estimated_cost: number | null } | null;
   } | null;
 }
 
@@ -65,7 +66,7 @@ export async function getCommissionSummary(
     commissionsQuery,
     supabase
       .from("jobs")
-      .select("id, quotes(currency, created_by, quote_versions!quotes_current_version_id_fkey(selling_price, supplier_estimated_cost))")
+      .select("id, quotes(currency, created_by, quote_versions!quotes_current_version_id_fkey(selling_price, vat_rate, supplier_estimated_cost))")
       .neq("status", "completed")
       .neq("status", "cancelled"),
     supabase.from("commission_plans").select("profile_id, rate_percent"),
@@ -104,7 +105,7 @@ export async function getCommissionSummary(
     const quote = job.quotes;
     if (!quote?.created_by || !quote.quote_versions) continue;
     if (profileId && quote.created_by !== profileId) continue;
-    const grossProfit = quote.quote_versions.selling_price - (quote.quote_versions.supplier_estimated_cost ?? 0);
+    const grossProfit = netOfVat(quote.quote_versions.selling_price, quote.quote_versions.vat_rate) - (quote.quote_versions.supplier_estimated_cost ?? 0);
     const estimate = Math.max(0, grossProfit) * (rateFor(quote.created_by) / 100);
     estimatedPipelineGbp += toGbp(estimate, quote.currency, rates);
     estimatedPipelineCount += 1;

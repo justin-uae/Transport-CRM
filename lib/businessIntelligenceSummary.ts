@@ -3,6 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { getGbpRates } from "@/lib/fxRates";
 import { toGbp } from "@/lib/accountingSummary";
 import type { Database } from "@/lib/supabase/database.types";
+import { netOfVat } from "./vat";
 
 export interface MonthlyRevenuePoint {
   m: string;
@@ -29,7 +30,7 @@ interface PaidQuoteRow {
   currency: string;
   invoiced_at: string | null;
   brands: { name: string } | null;
-  quote_versions: { selling_price: number; supplier_estimated_cost: number | null } | null;
+  quote_versions: { selling_price: number; vat_rate: number; supplier_estimated_cost: number | null } | null;
 }
 
 /**
@@ -51,7 +52,7 @@ export async function getBusinessIntelligenceSummary(
     supabase
       .from("quotes")
       .select(
-        "brand_id, currency, invoiced_at, brands(name), quote_versions!quotes_current_version_id_fkey(selling_price, supplier_estimated_cost)",
+        "brand_id, currency, invoiced_at, brands(name), quote_versions!quotes_current_version_id_fkey(selling_price, vat_rate, supplier_estimated_cost)",
       )
       .eq("status", "paid")
       .gte("invoiced_at", since.toISOString()),
@@ -78,7 +79,8 @@ export async function getBusinessIntelligenceSummary(
     if (!q.invoiced_at || !q.quote_versions) continue;
     const invoicedDate = new Date(q.invoiced_at);
     const monthKey = `${invoicedDate.getUTCFullYear()}-${invoicedDate.getUTCMonth()}`;
-    const sellingConverted = toGbp(q.quote_versions.selling_price, q.currency, rates);
+    // Revenue and profit excluding VAT (lib/vat.ts).
+    const sellingConverted = toGbp(netOfVat(q.quote_versions.selling_price, q.quote_versions.vat_rate), q.currency, rates);
     if (sellingConverted.usedFallback) fxFallbackUsed = true;
 
     const bucket = monthBuckets.find((b) => b.key === monthKey);

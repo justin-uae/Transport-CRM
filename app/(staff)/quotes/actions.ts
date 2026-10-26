@@ -622,7 +622,7 @@ export async function amendBookingAction(quoteId: string, input: AmendBookingInp
       "id, tenant_id, brand_id, customer_id, enquiry_id, status, quote_number, public_token, currency, invoice_number, " +
         "brands(name, invoice_number_prefix), customers(contact_name, company_name, email), " +
         "enquiries(assigned_user_id), " +
-        "quote_versions!quotes_current_version_id_fkey(id, version_number, vehicle_type_id, vehicle_description, supplier_estimated_cost, selling_price, currency, payment_methods, customer_notes, terms_snapshot, brand_snapshot, deposit_percentage, deposit_fixed_amount, quote_line_items(sequence, description, amount, category)), " +
+        "quote_versions!quotes_current_version_id_fkey(id, version_number, vehicle_type_id, vehicle_description, supplier_estimated_cost, selling_price, vat_rate, currency, payment_methods, customer_notes, terms_snapshot, brand_snapshot, deposit_percentage, deposit_fixed_amount, quote_line_items(sequence, description, amount, category)), " +
         "customer_payments(amount, verification_status)",
     )
     .eq("id", quoteId)
@@ -650,6 +650,7 @@ export async function amendBookingAction(quoteId: string, input: AmendBookingInp
       vehicle_description: string | null;
       supplier_estimated_cost: number | null;
       selling_price: number;
+      vat_rate: number;
       currency: string;
       payment_methods: unknown;
       customer_notes: string | null;
@@ -834,6 +835,10 @@ export async function amendBookingAction(quoteId: string, input: AmendBookingInp
         vehicle_description: version.vehicle_description,
         supplier_estimated_cost: version.supplier_estimated_cost,
         selling_price: newSellingPrice,
+        // Same VAT rate as before — the adjustment is VAT-inclusive (it's
+        // added straight onto the total), and the split is re-derived from
+        // the new total (lib/vat.ts).
+        vat_rate: version.vat_rate,
         currency: version.currency,
         payment_methods: version.payment_methods,
         customer_notes: version.customer_notes,

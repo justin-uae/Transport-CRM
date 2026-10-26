@@ -13,6 +13,7 @@ import { JourneyLegDetail, type JourneyLeg } from "@/components/pages/JourneyLeg
 import type { RouteDistance } from "@/lib/tripDistance";
 import { CURRENCIES } from "@/lib/currencies";
 import { STRIPE_PRICE_THRESHOLD, paymentMethodsForGbpValue } from "@/lib/quoteMoney";
+import { grossFromNet } from "@/lib/vat";
 import { createQuoteAction } from "./actions";
 
 const STEPS = ["Enquiry", "Pricing", "Review & Send"];
@@ -104,6 +105,7 @@ export function NewQuoteForm({
   const [currency, setCurrency] = useState(defaultCurrency);
   const [supplierEstimatedCost, setSupplierEstimatedCost] = useState("");
   const [sellingPrice, setSellingPrice] = useState("");
+  const [vatRate, setVatRate] = useState("0");
   const [expiryDays, setExpiryDays] = useState(String(defaultExpiryDays));
   const [depositMode, setDepositMode] = useState<DepositMode>("full");
   const [depositPercentage, setDepositPercentage] = useState<25 | 50 | 75>(25);
@@ -134,7 +136,13 @@ export function NewQuoteForm({
       .catch(() => setGbpRates(null));
   }, []);
 
-  const sellingPriceNum = Number(sellingPrice) || 0;
+  // sellingPrice is entered before VAT; totalNum (incl. VAT) is what the
+  // customer pays and what gets stored as selling_price — so the payment
+  // method, deposit and schedule previews below all work off the total.
+  const netPriceNum = Number(sellingPrice) || 0;
+  const vatRateNum = Number(vatRate) || 0;
+  const sellingPriceNum = grossFromNet(netPriceNum, vatRateNum);
+  const vatAmountNum = Math.round((sellingPriceNum - netPriceNum) * 100) / 100;
   const currencyCode = currency.toUpperCase();
   const sellingPriceGbp =
     currencyCode === "GBP"
@@ -247,8 +255,13 @@ export function NewQuoteForm({
             <dd className="mt-0.5 font-semibold">{currency}</dd>
           </div>
           <div>
-            <dt className="text-xs font-bold uppercase text-slate-400">Selling price</dt>
+            <dt className="text-xs font-bold uppercase text-slate-400">{vatRateNum > 0 ? "Total incl. VAT" : "Selling price"}</dt>
             <dd className="mt-0.5 text-base font-black text-primary-600">{sellingPriceNum ? money(sellingPriceNum) : "—"}</dd>
+            {vatRateNum > 0 && netPriceNum > 0 && (
+              <dd className="mt-0.5 text-xs text-slate-500">
+                {money(netPriceNum)} + {vatRateNum}% VAT ({money(vatAmountNum)})
+              </dd>
+            )}
           </div>
           <div>
             <dt className="text-xs font-bold uppercase text-slate-400">Payment plan</dt>
@@ -414,7 +427,7 @@ export function NewQuoteForm({
                 </span>
               </label>
               <label className="text-sm font-bold">
-                Selling price
+                Selling price (before VAT)
                 <input
                   name="sellingPrice"
                   type="number"
@@ -425,6 +438,24 @@ export function NewQuoteForm({
                   onChange={(e) => setSellingPrice(e.target.value)}
                   className="mt-2 w-full rounded-xl border px-3 py-3 font-normal"
                 />
+              </label>
+              <label className="text-sm font-bold">
+                VAT (%)
+                <input
+                  name="vatRate"
+                  type="number"
+                  min={0}
+                  max={100}
+                  step="0.01"
+                  value={vatRate}
+                  onChange={(e) => setVatRate(e.target.value)}
+                  className="mt-2 w-full rounded-xl border px-3 py-3 font-normal"
+                />
+                <span className="mt-1 block text-xs font-normal text-slate-400">
+                  {vatRateNum > 0 && netPriceNum > 0
+                    ? `VAT ${money(vatAmountNum)} — customer pays ${money(sellingPriceNum)} in total.`
+                    : "Leave at 0 for no VAT. Added on top of the selling price."}
+                </span>
               </label>
               <label className="text-sm font-bold">
                 Quote expiry (days)
@@ -569,7 +600,7 @@ export function NewQuoteForm({
                     </button>
                     {validMilestones.length > 0 && sellingPriceNum > 0 && (
                       <p className="text-xs font-normal text-slate-400">
-                        Schedule total {money(milestonesTotal)} of {money(sellingPriceNum)} selling price
+                        Schedule total {money(milestonesTotal)} of {money(sellingPriceNum)} {vatRateNum > 0 ? "total incl. VAT" : "selling price"}
                         {Math.abs(milestonesTotal - sellingPriceNum) > 0.01 ? " — doesn't add up to the full price yet" : ""}.
                       </p>
                     )}

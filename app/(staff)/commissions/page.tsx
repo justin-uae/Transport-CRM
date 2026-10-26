@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getCommissionSummary } from "@/lib/commissionSummary";
 import { CommissionsPage, type CommissionRow, type PipelineRow, type RateRow } from "@/components/pages/CommissionsPage";
 import type { CommissionStatus } from "@/lib/supabase/database.types";
+import { netOfVat } from "@/lib/vat";
 
 const PAGE_SIZE = 25;
 const STATUS_TABS: CommissionStatus[] = ["pending_approval", "approved", "paid", "reversed"];
@@ -32,7 +33,7 @@ interface PipelineJobRow {
   quotes: {
     currency: string;
     created_by: string | null;
-    quote_versions: { selling_price: number; supplier_estimated_cost: number | null } | null;
+    quote_versions: { selling_price: number; vat_rate: number; supplier_estimated_cost: number | null } | null;
   } | null;
 }
 
@@ -79,7 +80,7 @@ export default async function CommissionsRoutePage({
   // normally the same person anyway; this list is a preview, not the ledger.
   let pipelineQuery = supabase
     .from("jobs")
-    .select("id, region, quotes(currency, created_by, quote_versions!quotes_current_version_id_fkey(selling_price, supplier_estimated_cost))")
+    .select("id, region, quotes(currency, created_by, quote_versions!quotes_current_version_id_fkey(selling_price, vat_rate, supplier_estimated_cost))")
     .neq("status", "completed")
     .neq("status", "cancelled")
     .order("created_at", { ascending: false })
@@ -128,7 +129,7 @@ export default async function CommissionsRoutePage({
     .map((j) => {
       const quote = j.quotes!;
       const version = quote.quote_versions!;
-      const grossProfit = version.selling_price - (version.supplier_estimated_cost ?? 0);
+      const grossProfit = netOfVat(version.selling_price, version.vat_rate) - (version.supplier_estimated_cost ?? 0);
       const estimatedAmount = Math.max(0, grossProfit) * (rateForProfile(quote.created_by) / 100);
       return { jobId: j.id, region: j.region, estimatedAmount, currency: quote.currency };
     });

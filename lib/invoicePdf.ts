@@ -1,4 +1,5 @@
 import "server-only";
+import { vatBreakdown, formatVatRate } from "./vat";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "./supabase/database.types";
 import {
@@ -33,6 +34,7 @@ interface LineItemRow {
 interface VersionRow {
   vehicle_description: string | null;
   selling_price: number;
+  vat_rate: number;
   brand_snapshot: BrandSnapshot | null;
   quote_line_items: LineItemRow[] | null;
   terms_snapshot: string | null;
@@ -91,7 +93,7 @@ export async function generateInvoicePdf(
     .select(
       "id, quote_number, currency, brand_id, tenant_id, invoice_number, invoiced_at, " +
         "customers(company_name, contact_name, email, phone, billing_address), " +
-        "quote_versions!quotes_current_version_id_fkey(vehicle_description, selling_price, brand_snapshot, quote_line_items(description, amount), terms_snapshot), " +
+        "quote_versions!quotes_current_version_id_fkey(vehicle_description, selling_price, vat_rate, brand_snapshot, quote_line_items(description, amount), terms_snapshot), " +
         "customer_payments(amount, method, paid_at)",
     )
     .eq("id", quoteId)
@@ -233,13 +235,20 @@ export async function generateInvoicePdf(
 
   // ---- Line items -------------------------------------------------------------
   sectionHeading(doc, "Summary", brandColor, contentWidth);
+  // With VAT, the service line is the net amount and VAT + the VAT-inclusive
+  // total follow as their own rows (0105_quote_vat.sql, lib/vat.ts).
+  const { net, vat } = vatBreakdown(version.selling_price, version.vat_rate);
   const summaryRows: [string, string][] = [
-    [version.vehicle_description ?? "Transport service", money(version.selling_price, quote.currency)],
+    [version.vehicle_description ?? "Transport service", money(net, quote.currency)],
   ];
   if (version.quote_line_items && version.quote_line_items.length > 0) {
     for (const li of version.quote_line_items) {
       summaryRows.push([li.description, money(li.amount, quote.currency)]);
     }
+  }
+  if (version.vat_rate > 0) {
+    summaryRows.push([`VAT (${formatVatRate(version.vat_rate)})`, money(vat, quote.currency)]);
+    summaryRows.push(["Total incl. VAT", money(version.selling_price, quote.currency)]);
   }
   drawKeyValueBox(doc, summaryRows, contentWidth);
   doc.moveDown(0.6);

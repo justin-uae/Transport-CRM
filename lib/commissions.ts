@@ -1,6 +1,7 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/supabase/database.types";
+import { netOfVat } from "@/lib/vat";
 
 /**
  * Resolves the commission rate for a salesperson: their own commission_plans
@@ -47,12 +48,12 @@ export async function calculateAndRecordCommission(supabase: SupabaseClient<Data
 
   const { data: quote } = await supabase
     .from("quotes")
-    .select("currency, created_by, quote_versions!quotes_current_version_id_fkey(selling_price, supplier_estimated_cost)")
+    .select("currency, created_by, quote_versions!quotes_current_version_id_fkey(selling_price, vat_rate, supplier_estimated_cost)")
     .eq("id", job.quote_id)
     .single();
   if (!quote?.created_by) return;
 
-  const version = quote.quote_versions as unknown as { selling_price: number; supplier_estimated_cost: number | null } | null;
+  const version = quote.quote_versions as unknown as { selling_price: number; vat_rate: number; supplier_estimated_cost: number | null } | null;
   if (!version) return;
 
   // Prefer the real, agreed-at-dispatch-time cost recorded per allocation
@@ -64,7 +65,8 @@ export async function calculateAndRecordCommission(supabase: SupabaseClient<Data
   const hasAgreedCost = (allocations ?? []).some((a) => a.agreed_cost != null);
   const allocationCostTotal = (allocations ?? []).reduce((sum, a) => sum + (a.agreed_cost ?? 0), 0);
 
-  const sellingPrice = version.selling_price;
+  // Commission is on profit excluding VAT — VAT is owed to the tax authority, not earned (lib/vat.ts).
+  const sellingPrice = netOfVat(version.selling_price, version.vat_rate);
   const supplierCost = hasAgreedCost ? allocationCostTotal : (version.supplier_estimated_cost ?? 0);
   const grossProfit = sellingPrice - supplierCost;
   const ratePercent = await getCommissionRate(supabase, job.tenant_id, quote.created_by);

@@ -481,7 +481,10 @@ export interface QuoteVersion {
   vehicle_type_id: string | null;
   vehicle_description: string | null;
   supplier_estimated_cost: number | null;
+  /** The total the customer pays, INCLUDING VAT when vat_rate > 0. */
   selling_price: number;
+  /** VAT % applied on top of the pre-VAT price (0 = none). Net/VAT split is derived — lib/vat.ts, 0105_quote_vat.sql. */
+  vat_rate: number;
   currency: string;
   deposit_percentage: 25 | 50 | 75 | null;
   payment_methods: { stripe: boolean; bank_transfer: boolean };

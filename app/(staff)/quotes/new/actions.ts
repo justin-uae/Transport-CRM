@@ -6,6 +6,7 @@ import { requireProfile } from "@/lib/auth";
 import { hasPermission, PERMISSIONS } from "@/lib/permissions";
 import { recordAudit } from "@/lib/audit";
 import { STRIPE_PRICE_THRESHOLD, paymentMethodsForGbpValue } from "@/lib/quoteMoney";
+import { grossFromNet } from "@/lib/vat";
 import { convertToGbp } from "@/lib/fxRates";
 import { renderAndSendTemplate } from "@/lib/emailTemplates";
 import { sendWhatsAppTemplate, normalizeWhatsAppNumber, WHATSAPP_TEMPLATE_HEADER_IMAGE_URL } from "@/lib/whatsapp360";
@@ -54,8 +55,16 @@ export async function createQuoteAction(
     return { error: "Brand not found.", link: null };
   }
 
-  const sellingPrice = Number(formData.get("sellingPrice") ?? 0);
-  if (!sellingPrice || sellingPrice <= 0) {
+  // The form's price is before VAT; selling_price stores the VAT-inclusive
+  // total the customer actually pays (0105_quote_vat.sql), so everything
+  // below — Stripe threshold, deposits, emails — works on that total.
+  const netPrice = Number(formData.get("sellingPrice") ?? 0);
+  const vatRate = Number(formData.get("vatRate") ?? 0) || 0;
+  if (vatRate < 0 || vatRate > 100) {
+    return { error: "VAT must be between 0 and 100%.", link: null };
+  }
+  const sellingPrice = grossFromNet(netPrice, vatRate);
+  if (!netPrice || netPrice <= 0) {
     return { error: "Enter a selling price greater than zero.", link: null };
   }
 
@@ -193,6 +202,7 @@ export async function createQuoteAction(
       vehicle_description: firstLeg?.vehicle_types?.name ?? firstLeg?.vehicle_description ?? null,
       supplier_estimated_cost: supplierEstimatedCost,
       selling_price: sellingPrice,
+      vat_rate: vatRate,
       currency,
       deposit_percentage: depositPercentage,
       deposit_fixed_amount: depositFixedAmount,
@@ -345,7 +355,7 @@ export async function createQuoteAction(
     action: publicLink ? "quote_sent" : "quote_created",
     entityType: "quote",
     entityId: quote.id,
-    newValue: { quoteNumber: quote.quote_number, sellingPrice, currency },
+    newValue: { quoteNumber: quote.quote_number, sellingPrice, vatRate, currency },
   });
 
   revalidatePath("/quotes");
