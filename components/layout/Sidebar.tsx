@@ -33,7 +33,7 @@ export function Sidebar({
   roleName,
   visibleHrefs,
   canSeeSettings,
-  pendingCardPaymentCount = 0,
+  navCounts = {},
 }: {
   mobileOpen: boolean;
   onCloseMobile: () => void;
@@ -41,8 +41,8 @@ export function Sidebar({
   roleName: string;
   visibleHrefs: string[];
   canSeeSettings: boolean;
-  /** Master-Admin-only badge on "Card Payment Requests" — how many are still awaiting a decision, same pattern as SupplierSidebar's newJobsCount. 0 for anyone who can't see that item at all. */
-  pendingCardPaymentCount?: number;
+  /** Badge number per nav href — how many things there need this user (lib/navCounts.ts, computed per user in app/(staff)/layout.tsx). Missing/0 = no badge. */
+  navCounts?: Record<string, number>;
 }) {
   const pathname = usePathname();
   const initials = userName
@@ -95,7 +95,8 @@ export function Sidebar({
   function renderItem(item: NavItem) {
     const active = isActive(item.href, allHrefs);
     const Icon = item.icon;
-    const badge = item.href === "/card-payment-requests" && pendingCardPaymentCount > 0 ? pendingCardPaymentCount : null;
+    const count = navCounts[item.href] ?? 0;
+    const badge = count > 0 ? (count > 99 ? "99+" : String(count)) : null;
     return (
       <Link
         key={item.href}
@@ -111,7 +112,18 @@ export function Sidebar({
         <Icon size={18} />
         <span className="flex-1">{item.label}</span>
         {badge != null && (
-          <span className="rounded-full bg-amber-500 px-2 py-0.5 text-xs font-bold text-white">{badge}</span>
+          <span
+            className={clsx(
+              "inline-flex h-5 min-w-[1.25rem] shrink-0 items-center justify-center rounded-full px-1.5 text-[11px] font-semibold leading-none tabular-nums",
+              // Quiet translucent chip rather than a loud solid colour — with
+              // several items counting at once, solid chips turn the whole
+              // sidebar into noise. Slightly stronger on the active row so it
+              // still reads against the orange.
+              active ? "bg-white/25 text-white" : "bg-white/10 text-slate-200",
+            )}
+          >
+            {badge}
+          </span>
         )}
       </Link>
     );
@@ -153,6 +165,8 @@ export function Sidebar({
           )}
           {groups.map((group) => {
             const isCollapsed = collapsed.has(group.key) && group.key !== activeGroupKey;
+            // A collapsed section still shows how much is waiting inside it.
+            const groupTotal = group.items.reduce((sum, item) => sum + (navCounts[item.href] ?? 0), 0);
             return (
               <div key={group.key} className="mb-1">
                 <button
@@ -161,7 +175,14 @@ export function Sidebar({
                   aria-expanded={!isCollapsed}
                   className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-[10px] font-bold uppercase tracking-[.2em] text-slate-500 hover:text-slate-300"
                 >
-                  {group.label}
+                  <span className="flex items-center gap-2">
+                    {group.label}
+                    {isCollapsed && groupTotal > 0 && (
+                      <span className="inline-flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-white/10 px-1 text-[10px] font-semibold leading-none tracking-normal text-slate-300 tabular-nums">
+                        {groupTotal > 99 ? "99+" : groupTotal}
+                      </span>
+                    )}
+                  </span>
                   <ChevronDown size={14} className={clsx("transition-transform", isCollapsed && "-rotate-90")} />
                 </button>
                 {!isCollapsed && <div className="mt-0.5">{group.items.map(renderItem)}</div>}

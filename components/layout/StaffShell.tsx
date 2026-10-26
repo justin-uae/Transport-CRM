@@ -22,7 +22,7 @@ export function StaffShell({
   initialAttendance,
   locked,
   impersonation,
-  pendingCardPaymentCount,
+  navCounts,
   children,
 }: {
   userName: string;
@@ -36,7 +36,8 @@ export function StaffShell({
   initialAttendance: AttendanceState;
   locked: boolean;
   impersonation: { targetName: string; adminName: string } | null;
-  pendingCardPaymentCount: number;
+  /** Sidebar badge numbers keyed by nav href — see lib/navCounts.ts. */
+  navCounts: Record<string, number>;
   children: React.ReactNode;
 }) {
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -54,7 +55,7 @@ export function StaffShell({
               roleName={roleName}
               visibleHrefs={visibleHrefs}
               canSeeSettings={canSeeSettings}
-              pendingCardPaymentCount={pendingCardPaymentCount}
+              navCounts={navCounts}
             />
           </div>
           <main className="lg:pl-72">

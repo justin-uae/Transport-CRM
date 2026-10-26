@@ -7,6 +7,7 @@ import { createClient } from "@/lib/supabase/server";
 import { StaffShell } from "@/components/layout/StaffShell";
 import { computeVisibleHrefs } from "@/components/layout/nav";
 import { getEventsSince, startOfTodayIso, deriveAttendanceState } from "@/lib/attendance";
+import { getNavCounts } from "@/lib/navCounts";
 
 /** Only ever reads the two display fields out of the cookie loginAsUserAction sets — never the return token itself, which stays server-only. */
 async function getImpersonationBanner(): Promise<{ targetName: string; adminName: string } | null> {
@@ -29,7 +30,7 @@ export default async function StaffLayout({
   const profile = await requireProfile();
   const supabase = await createClient();
 
-  const [{ data: role }, { brands, activeBrandId }, granted, todaysAttendanceEvents, impersonation, pendingCardPaymentCount] = await Promise.all([
+  const [{ data: role }, { brands, activeBrandId }, granted, todaysAttendanceEvents, impersonation] = await Promise.all([
     profile.role_id
       ? supabase.from("roles").select("name").eq("id", profile.role_id).single()
       : Promise.resolve({ data: null }),
@@ -37,17 +38,6 @@ export default async function StaffLayout({
     getGrantedPermissions(profile),
     getEventsSince(supabase, profile.id, startOfTodayIso()),
     getImpersonationBanner(),
-    // Sidebar badge on "Card Payment Requests" — Master-Admin-only nav item,
-    // so skip the query entirely for anyone else rather than running a
-    // count they'll never see.
-    profile.is_master_admin
-      ? supabase
-          .from("card_payment_override_requests")
-          .select("id", { count: "exact", head: true })
-          .eq("tenant_id", profile.tenant_id)
-          .eq("status", "pending")
-          .then(({ count }) => count ?? 0)
-      : Promise.resolve(0),
   ]);
 
   // Icon components in NAV can't cross the server->client prop boundary
@@ -55,6 +45,8 @@ export default async function StaffLayout({
   // we compute which hrefs are visible here and let the Client Component
   // Sidebar filter its own client-side NAV import by that list.
   const visibleHrefs = computeVisibleHrefs(granted, profile.is_master_admin);
+  // Sidebar badge numbers, scoped to this user and only for items they can see (lib/navCounts.ts).
+  const navCounts = await getNavCounts(supabase, profile, visibleHrefs);
   const canSeeSettings = ADMIN_SURFACE_PERMISSIONS.some((key) => granted.has(key));
   const canCreateQuote = granted.has(PERMISSIONS.QUOTES_CREATE);
   const canAddLead = granted.has(PERMISSIONS.ENQUIRIES_ADD);
@@ -78,7 +70,7 @@ export default async function StaffLayout({
       initialAttendance={initialAttendance}
       locked={requiresClockIn}
       impersonation={impersonation}
-      pendingCardPaymentCount={pendingCardPaymentCount}
+      navCounts={navCounts}
     >
       {children}
     </StaffShell>
