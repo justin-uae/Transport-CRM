@@ -25,9 +25,10 @@ interface SendTemplatedEmailInput {
    * anything with a real actor, as opposed to a webhook/customer-triggered
    * template like payment confirmations or feedback requests). When set:
    * the email is signed with that person's own signature, and if they have
-   * a mailbox connected (Settings -> Users), it's actually sent from their
-   * own address instead of the shared SMTP_* sender — falling back to the
-   * shared sender (still signed) when they don't have one connected.
+   * a mailbox connected (Settings -> Users), it's sent From their own
+   * address — still through SendGrid like every other email (lib/email.ts),
+   * never their mailbox's own SMTP server — falling back to the shared
+   * SMTP_FROM sender (still signed) when they don't have one connected.
    */
   senderId?: string;
 }

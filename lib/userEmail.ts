@@ -1,14 +1,14 @@
 import "server-only";
-import nodemailer from "nodemailer";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { decryptSecret } from "@/lib/crypto";
 import { htmlToPlainText } from "@/lib/htmlToPlainText";
 import type { Database, EmailAccount, EmailAttachmentMeta } from "@/lib/supabase/database.types";
-import type { EmailAttachment } from "@/lib/email";
+import { sendEmailAs, type EmailAttachment } from "@/lib/email";
 
 /**
- * Sends mail through a staff member's own connected SMTP account (not the
- * shared transactional SMTP_* config in lib/email.ts) and records the
+ * Sends mail as a staff member (From: their own connected address) through
+ * the shared SendGrid transport in lib/email.ts — never their mailbox's own
+ * SMTP server, whose per-domain hourly cap delays everyone's mail (see the
+ * note in lib/email.ts) — and records the
  * outbound copy in email_messages immediately, so it shows up in the Email
  * Centre's Sent folder without waiting for the next IMAP poll — only INBOX
  * is polled by app/api/cron/email-sync/route.ts.
@@ -36,13 +36,6 @@ export async function sendUserEmail(
     attachments?: EmailAttachmentMeta[];
   },
 ) {
-  const transporter = nodemailer.createTransport({
-    host: account.smtp_host,
-    port: account.smtp_port,
-    secure: account.smtp_security === "ssl",
-    auth: { user: account.smtp_username, pass: decryptSecret(account.smtp_password_enc) },
-  });
-
   let mailAttachments: { filename: string; content: Buffer; contentType?: string }[] | undefined;
   if (attachments && attachments.length > 0) {
     mailAttachments = [];
@@ -63,15 +56,15 @@ export async function sendUserEmail(
 
   const text = htmlToPlainText(html);
 
-  const info = await transporter.sendMail({
-    from: `"${account.display_name}" <${account.email_address}>`,
-    to: to.join(", "),
-    cc: cc && cc.length > 0 ? cc.join(", ") : undefined,
-    bcc: bcc && bcc.length > 0 ? bcc.join(", ") : undefined,
+  const info = await sendEmailAs({
+    fromName: account.display_name,
+    fromAddress: account.email_address,
+    to,
+    cc,
+    bcc,
     subject,
     html,
-    text,
-    inReplyTo: inReplyTo ?? undefined,
+    inReplyTo,
     attachments: mailAttachments,
   });
 
@@ -102,9 +95,9 @@ export async function sendUserEmail(
 }
 
 /**
- * Sends a system-triggered transactional email (a quote, an invoice) from a
- * staff member's own connected mailbox instead of the shared SMTP_* sender
- * in lib/email.ts — used by lib/emailTemplates.ts whenever the action has a
+ * Sends a system-triggered transactional email (a quote, an invoice) as a
+ * staff member (From: their own connected address, through SendGrid like
+ * everything else — see lib/email.ts) — used by lib/emailTemplates.ts whenever the action has a
  * logged-in actor with a mailbox connected. Takes raw Buffer attachments
  * (the PDF is generated in memory, never uploaded to the email-attachments
  * bucket first) rather than sendUserEmail's EmailAttachmentMeta shape.
@@ -116,23 +109,9 @@ export async function sendTransactionalEmailFromAccount(
   account: EmailAccount,
   { to, subject, html, attachments }: { to: string; subject: string; html: string; attachments?: EmailAttachment[] },
 ): Promise<void> {
-  const transporter = nodemailer.createTransport({
-    host: account.smtp_host,
-    port: account.smtp_port,
-    secure: account.smtp_security === "ssl",
-    auth: { user: account.smtp_username, pass: decryptSecret(account.smtp_password_enc) },
-  });
-
   const text = htmlToPlainText(html);
 
-  const info = await transporter.sendMail({
-    from: `"${account.display_name}" <${account.email_address}>`,
-    to,
-    subject,
-    html,
-    text,
-    attachments,
-  });
+  const info = await sendEmailAs({ fromName: account.display_name, fromAddress: account.email_address, to, subject, html, attachments });
 
   const { error } = await supabase.from("email_messages").insert({
     tenant_id: account.tenant_id,

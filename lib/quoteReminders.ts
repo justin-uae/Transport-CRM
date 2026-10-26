@@ -151,9 +151,10 @@ export async function runQuoteReminderSweep(admin: Admin) {
           link: `${process.env.NEXT_PUBLIC_APP_URL ?? ""}/q/${q.public_token}`,
           stop_link: `${process.env.NEXT_PUBLIC_APP_URL ?? ""}/q/${q.public_token}/stop-reminders`,
         },
-        // Sent as (and signed by) the quote's salesperson, from their own
-        // mailbox when connected — so a reply lands in a CRM-synced inbox,
-        // which is what lets the reply check above pause the sequence.
+        // Sent as (and signed by) the quote's salesperson — From their own
+        // address when they have a mailbox connected (via SendGrid, see
+        // lib/email.ts) — so a reply lands in a CRM-synced inbox, which is
+        // what lets the reply check above pause the sequence.
         senderId: q.enquiries?.assigned_user_id ?? q.created_by ?? undefined,
       });
 
