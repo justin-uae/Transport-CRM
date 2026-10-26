@@ -313,7 +313,8 @@ export type QuoteEventType =
   | "reminders_resumed"
   | "reminders_opted_out"
   | "reminders_opt_out_cleared"
-  | "expiry_changed";
+  | "expiry_changed"
+  | "price_changed";
 
 export interface Customer {
   id: string;

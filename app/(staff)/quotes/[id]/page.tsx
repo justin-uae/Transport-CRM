@@ -23,6 +23,7 @@ import { legRouteDistances } from "@/lib/tripDistance";
 import { SendEmailButton } from "@/components/ui/SendEmailButton";
 import { QuoteRemindersPanel, type QuoteReminderRow } from "@/components/pages/QuoteRemindersPanel";
 import { QuoteExpiryEditor } from "@/components/pages/QuoteExpiryEditor";
+import { EditQuotePriceButton } from "@/components/pages/EditQuotePriceButton";
 import { EXPIRY_EDITABLE_STATUSES } from "@/lib/quoteExpiry";
 import { vatBreakdown, formatVatRate } from "@/lib/vat";
 
@@ -116,6 +117,7 @@ const EVENT_LABEL: Record<QuoteEventType, string> = {
   reminders_opted_out: "Customer stopped reminders",
   reminders_opt_out_cleared: "Reminders allowed again for this customer",
   expiry_changed: "Expiry date changed",
+  price_changed: "Price changed",
 };
 
 /** Pence-accurate — for the VAT breakdown, where whole-unit rounding would make net + VAT not visibly add up. */
@@ -132,7 +134,7 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
   const { id } = await params;
   const actor = await requireProfile();
   const supabase = await createClient();
-  const [canCancelPermission, canProcessRefunds, canAmendPermission, canCreateQuote, canAssign, canSendQuotes, canChangeExpiry, { data: tenantSettings }] = await Promise.all([
+  const [canCancelPermission, canProcessRefunds, canAmendPermission, canCreateQuote, canAssign, canSendQuotes, canChangeExpiry, canEditQuotes, { data: tenantSettings }] = await Promise.all([
     hasPermission(actor, PERMISSIONS.QUOTES_CANCEL),
     hasPermission(actor, PERMISSIONS.FINANCE_PROCESS_REFUNDS),
     hasPermission(actor, PERMISSIONS.BOOKINGS_AMEND),
@@ -140,6 +142,7 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
     hasPermission(actor, PERMISSIONS.ENQUIRIES_REASSIGN),
     hasPermission(actor, PERMISSIONS.QUOTES_SEND),
     hasPermission(actor, PERMISSIONS.QUOTES_CHANGE_EXPIRY),
+    hasPermission(actor, PERMISSIONS.QUOTES_EDIT),
     supabase.from("tenants").select("quote_reminders_enabled, quote_reminders_enabled_at").eq("id", actor.tenant_id).single(),
   ]);
   const assignableUsers = canAssign ? await getAssignableSalesUsers(supabase) : [];
@@ -468,21 +471,30 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
 
           {versions.length > 1 && (
             <Panel>
-              <SectionTitle title="Version history" />
+              <SectionTitle title="Version history" sub="Every price this quote has had — each Edit Price or booking amendment adds a version" />
               <div className="mt-4 overflow-x-auto">
                 <table className="w-full min-w-[520px] text-left text-sm">
                   <thead className="text-xs uppercase text-slate-400">
                     <tr>
                       <th className="pb-2">Version</th>
                       <th className="pb-2">Selling price</th>
+                      <th className="pb-2">VAT</th>
+                      <th className="pb-2">Supplier cost</th>
                       <th className="pb-2">Created</th>
                     </tr>
                   </thead>
                   <tbody>
                     {versions.map((v) => (
                       <tr key={v.id} className="border-t">
-                        <td className="whitespace-nowrap py-2 font-bold">v{v.version_number}</td>
+                        <td className="whitespace-nowrap py-2 font-bold">
+                          v{v.version_number}
+                          {v.id === currentVersion?.id && (
+                            <span className="ml-2 rounded-full bg-primary-50 px-2 py-0.5 text-xs font-bold text-primary-700">Current</span>
+                          )}
+                        </td>
                         <td className="whitespace-nowrap py-2">{money(v.selling_price, v.currency)}</td>
+                        <td className="whitespace-nowrap py-2 text-slate-500">{v.vat_rate > 0 ? formatVatRate(v.vat_rate) : "—"}</td>
+                        <td className="whitespace-nowrap py-2 text-slate-500">{money(v.supplier_estimated_cost, v.currency)}</td>
                         <td className="min-w-[11rem] py-2 text-slate-500">{formatDateTime(v.created_at)}</td>
                       </tr>
                     ))}
@@ -528,6 +540,19 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
                 refunds={(refunds ?? []) as unknown as QuoteRefund[]}
               />
               <SendEmailButton email={customer?.email} quoteNumber={quote.quote_number} className="mt-2" />
+              {currentVersion &&
+                ["draft", "sent", "viewed"].includes(quote.status) &&
+                // Any sales-side role — mirrors editQuotePriceAction (app/(staff)/quotes/priceActions.ts).
+                (actor.is_master_admin || canEditQuotes || canCreateQuote || canSendQuotes) && (
+                  <EditQuotePriceButton
+                    quoteId={quote.id}
+                    status={quote.status}
+                    currency={quote.currency}
+                    sellingPrice={currentVersion.selling_price}
+                    vatRate={currentVersion.vat_rate}
+                    supplierEstimatedCost={currentVersion.supplier_estimated_cost}
+                  />
+                )}
             </div>
           </Panel>
 
