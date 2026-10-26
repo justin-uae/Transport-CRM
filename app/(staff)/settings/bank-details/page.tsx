@@ -8,6 +8,7 @@ import { hasPermission, PERMISSIONS } from "@/lib/permissions";
 import { createClient } from "@/lib/supabase/server";
 import { BankProfilesManager } from "./BankProfilesManager";
 import { TermsForm } from "./TermsForm";
+import { QuoteValidityForm } from "./QuoteValidityForm";
 import type { BankAccount } from "@/lib/supabase/database.types";
 
 export default async function BankDetailsPage() {
@@ -17,7 +18,7 @@ export default async function BankDetailsPage() {
 
   const [{ data: profiles }, { data: tenant }] = await Promise.all([
     supabase.from("bank_accounts").select("*").eq("tenant_id", profile.tenant_id).order("sort_order"),
-    supabase.from("tenants").select("terms_and_conditions").eq("id", profile.tenant_id).single(),
+    supabase.from("tenants").select("terms_and_conditions, quote_validity_days").eq("id", profile.tenant_id).single(),
   ]);
 
   return (
@@ -25,7 +26,7 @@ export default async function BankDetailsPage() {
       <PageHead
         eyebrow="Administration"
         title="Bank Details & Terms"
-        text="Payment profiles and the Terms & Conditions boilerplate shown to customers on quotes and invoices."
+        text="Payment profiles, how long quotes stay valid, and the Terms & Conditions boilerplate shown to customers on quotes and invoices."
         action={
           <PageGuide
             title="Bank Details & Terms"
@@ -36,6 +37,12 @@ export default async function BankDetailsPage() {
                 heading: "Payment profiles",
                 body: [
                   "One profile per currency you accept bank transfers in. The correct profile is picked automatically to match a quote's own currency on the public quote page, the invoice and the quote PDF — customers only ever see the one that matches what they're paying in.",
+                ],
+              },
+              {
+                heading: "Quote validity",
+                body: [
+                  "How many days a new quote stays valid before it expires — 30 by default. It pre-fills the New Quote form (where it can still be changed for that one quote) and sets the expiry of every quote AI sends automatically. Changing it never alters quotes already sent; an individual quote's expiry can be changed from its own page.",
                 ],
               },
               {
@@ -56,6 +63,13 @@ export default async function BankDetailsPage() {
         />
         <BankProfilesManager profiles={(profiles ?? []) as BankAccount[]} canManage={canManage} />
       </Panel>
+
+      <div className="mt-6">
+        <Panel>
+          <SectionTitle title="Quote validity" sub="Default number of days a new quote stays valid — can still be changed per quote" />
+          <QuoteValidityForm initialDays={tenant?.quote_validity_days ?? 30} canManage={canManage} />
+        </Panel>
+      </div>
 
       <div className="mt-6">
         <Panel>

@@ -80,7 +80,11 @@ export default async function NewQuotePage({
   if (!enquiry) redirect("/quotes/new");
 
   const legs = [...((enquiry.enquiry_legs as unknown as JourneyLeg[] | null) ?? [])].sort((a, b) => a.sequence - b.sequence);
-  const [canSend, legDistances] = await Promise.all([hasPermission(profile, PERMISSIONS.QUOTES_SEND), legRouteDistances(legs)]);
+  const [canSend, legDistances, { data: tenant }] = await Promise.all([
+    hasPermission(profile, PERMISSIONS.QUOTES_SEND),
+    legRouteDistances(legs),
+    supabase.from("tenants").select("quote_validity_days").eq("id", profile.tenant_id).single(),
+  ]);
   const customer = enquiry.customers as unknown as {
     company_name: string | null;
     contact_name: string;
@@ -106,6 +110,7 @@ export default async function NewQuotePage({
         legDistances={legDistances}
         defaultCurrency={brand?.default_currency ?? "EUR"}
         canSend={canSend}
+        defaultExpiryDays={tenant?.quote_validity_days ?? 30}
       />
     </div>
   );

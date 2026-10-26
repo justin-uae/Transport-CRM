@@ -22,6 +22,8 @@ import { getAiModelLabel } from "@/lib/aiProviderRegistry";
 import { legRouteDistances } from "@/lib/tripDistance";
 import { SendEmailButton } from "@/components/ui/SendEmailButton";
 import { QuoteRemindersPanel, type QuoteReminderRow } from "@/components/pages/QuoteRemindersPanel";
+import { QuoteExpiryEditor } from "@/components/pages/QuoteExpiryEditor";
+import { EXPIRY_EDITABLE_STATUSES } from "@/lib/quoteExpiry";
 
 interface LineItemRow {
   id: string;
@@ -111,6 +113,7 @@ const EVENT_LABEL: Record<QuoteEventType, string> = {
   reminders_resumed: "Reminders resumed",
   reminders_opted_out: "Customer stopped reminders",
   reminders_opt_out_cleared: "Reminders allowed again for this customer",
+  expiry_changed: "Expiry date changed",
 };
 
 function money(amount: number | undefined | null, currency: string) {
@@ -122,13 +125,14 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
   const { id } = await params;
   const actor = await requireProfile();
   const supabase = await createClient();
-  const [canCancelPermission, canProcessRefunds, canAmendPermission, canCreateQuote, canAssign, canSendQuotes, { data: tenantSettings }] = await Promise.all([
+  const [canCancelPermission, canProcessRefunds, canAmendPermission, canCreateQuote, canAssign, canSendQuotes, canChangeExpiry, { data: tenantSettings }] = await Promise.all([
     hasPermission(actor, PERMISSIONS.QUOTES_CANCEL),
     hasPermission(actor, PERMISSIONS.FINANCE_PROCESS_REFUNDS),
     hasPermission(actor, PERMISSIONS.BOOKINGS_AMEND),
     hasPermission(actor, PERMISSIONS.QUOTES_CREATE),
     hasPermission(actor, PERMISSIONS.ENQUIRIES_REASSIGN),
     hasPermission(actor, PERMISSIONS.QUOTES_SEND),
+    hasPermission(actor, PERMISSIONS.QUOTES_CHANGE_EXPIRY),
     supabase.from("tenants").select("quote_reminders_enabled, quote_reminders_enabled_at").eq("id", actor.tenant_id).single(),
   ]);
   const assignableUsers = canAssign ? await getAssignableSalesUsers(supabase) : [];
@@ -247,7 +251,13 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
               </div>
               <div>
                 <dt className="text-xs font-bold uppercase text-slate-400">Valid until</dt>
-                <dd className="mt-0.5 font-semibold">{quote.expiry_at ? formatDateTime(quote.expiry_at) : "—"}</dd>
+                <dd className="mt-0.5 font-semibold">
+                  <QuoteExpiryEditor
+                    quoteId={quote.id}
+                    expiryAt={quote.expiry_at}
+                    canChange={canChangeExpiry && EXPIRY_EDITABLE_STATUSES.includes(quote.status)}
+                  />
+                </dd>
               </div>
               <div>
                 <dt className="text-xs font-bold uppercase text-slate-400">Supplier cost (est.)</dt>

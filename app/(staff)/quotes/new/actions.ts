@@ -83,7 +83,11 @@ export async function createQuoteAction(
     return { error: numberError?.message ?? "Could not generate a quote number.", link: null };
   }
 
-  const expiryDays = Number(formData.get("expiryDays") ?? 7) || 7;
+  // The form pre-fills the tenant default (Settings -> Bank Details & Terms);
+  // anything missing or out of range falls back to that same default.
+  const { data: tenantRow } = await supabase.from("tenants").select("quote_validity_days").eq("id", actor.tenant_id).single();
+  const requestedDays = Math.round(Number(formData.get("expiryDays")));
+  const expiryDays = requestedDays >= 1 && requestedDays <= 365 ? requestedDays : (tenantRow?.quote_validity_days ?? 30);
 
   const { data: quote, error: quoteError } = await supabase
     .from("quotes")

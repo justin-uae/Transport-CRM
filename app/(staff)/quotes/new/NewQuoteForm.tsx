@@ -81,6 +81,7 @@ export function NewQuoteForm({
   legDistances,
   defaultCurrency,
   canSend,
+  defaultExpiryDays,
 }: {
   enquiryId: string;
   customer: CustomerInfo;
@@ -89,6 +90,8 @@ export function NewQuoteForm({
   legDistances: RouteDistance[];
   defaultCurrency: string;
   canSend: boolean;
+  /** Tenant default from Settings -> Bank Details & Terms (0104_quote_validity_days.sql). */
+  defaultExpiryDays: number;
 }) {
   const notify = useToast();
   const [step, setStep] = useState(1);
@@ -101,7 +104,7 @@ export function NewQuoteForm({
   const [currency, setCurrency] = useState(defaultCurrency);
   const [supplierEstimatedCost, setSupplierEstimatedCost] = useState("");
   const [sellingPrice, setSellingPrice] = useState("");
-  const [expiryDays, setExpiryDays] = useState("7");
+  const [expiryDays, setExpiryDays] = useState(String(defaultExpiryDays));
   const [depositMode, setDepositMode] = useState<DepositMode>("full");
   const [depositPercentage, setDepositPercentage] = useState<25 | 50 | 75>(25);
   const [depositFixedAmount, setDepositFixedAmount] = useState("");
@@ -283,7 +286,7 @@ export function NewQuoteForm({
           </div>
           <div>
             <dt className="text-xs font-bold uppercase text-slate-400">Quote expiry</dt>
-            <dd className="mt-0.5 font-semibold">{expiryDays || 7} days</dd>
+            <dd className="mt-0.5 font-semibold">{expiryDays || defaultExpiryDays} days</dd>
           </div>
           <div>
             <dt className="text-xs font-bold uppercase text-slate-400">Supplier cost (est.)</dt>
@@ -429,6 +432,7 @@ export function NewQuoteForm({
                   name="expiryDays"
                   type="number"
                   min={1}
+                  max={365}
                   value={expiryDays}
                   onChange={(e) => setExpiryDays(e.target.value)}
                   className="mt-2 w-full rounded-xl border px-3 py-3 font-normal"

@@ -157,3 +157,29 @@ export async function updateTermsAction(text: string) {
   revalidatePath("/settings/bank-details");
   return { error: null };
 }
+
+/** Default validity for new quotes (0104_quote_validity_days.sql) — pre-fills the New Quote form and sets every AI-sent quote's expiry. */
+export async function updateQuoteValidityAction(days: number) {
+  const actor = await requireBankDetailsManager();
+  if (!Number.isInteger(days) || days < 1 || days > 365) {
+    return { error: "Enter a whole number of days between 1 and 365." };
+  }
+  const supabase = await createClient();
+  // .select() so an RLS no-op (tenants_update is Master-Admin-only) comes
+  // back as a readable error instead of a silent "saved" that didn't save.
+  const { data, error } = await supabase.from("tenants").update({ quote_validity_days: days }).eq("id", actor.tenant_id).select("id");
+  if (error) return { error: error.message };
+  if (!data?.length) return { error: "Only Master Admin can change the default quote validity." };
+
+  await recordAudit({
+    tenantId: actor.tenant_id,
+    actorId: actor.id,
+    action: "quote_validity_updated",
+    entityType: "tenant",
+    entityId: actor.tenant_id,
+    newValue: { quoteValidityDays: days },
+  });
+
+  revalidatePath("/settings/bank-details");
+  return { error: null };
+}

@@ -17,3 +17,6 @@ export async function healExpiredQuotes(supabase: Awaited<ReturnType<typeof crea
     .in("status", ["sent", "viewed"])
     .lt("expiry_at", new Date().toISOString());
 }
+
+/** Statuses whose expiry still means something (changeQuoteExpiryAction, app/(staff)/quotes/expiryActions.ts) — once accepted/paid/rejected/cancelled it no longer applies. */
+export const EXPIRY_EDITABLE_STATUSES: string[] = ["draft", "sent", "viewed", "expired"];

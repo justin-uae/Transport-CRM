@@ -403,7 +403,9 @@ export async function createAndSendQuote(
   });
   if (numberError || !quoteNumber) throw new Error(numberError?.message ?? "Could not generate a quote number.");
 
-  const expiryDays = 7;
+  // Tenant-wide default (Settings -> Bank Details & Terms, 0104_quote_validity_days.sql).
+  const { data: validityRow } = await admin.from("tenants").select("quote_validity_days").eq("id", lead.tenant_id).maybeSingle();
+  const expiryDays = validityRow?.quote_validity_days ?? 30;
   const { data: quote, error: quoteError } = await admin
     .from("quotes")
     .insert({
