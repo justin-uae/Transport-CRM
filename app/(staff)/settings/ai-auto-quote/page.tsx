@@ -14,7 +14,7 @@ export default async function AiAutoQuotePage() {
   const supabase = await createClient();
   const { data: tenant } = await supabase
     .from("tenants")
-    .select("ai_auto_quote_enabled, ai_auto_quote_sla_hours, whatsapp_auto_quote_enabled, ai_auto_quote_markup_percent")
+    .select("ai_auto_quote_enabled, ai_auto_quote_sla_hours, whatsapp_auto_quote_enabled, website_auto_quote_enabled, email_auto_quote_enabled, manual_auto_quote_enabled, ai_auto_quote_markup_percent")
     .eq("id", profile.tenant_id)
     .single();
 
@@ -49,11 +49,13 @@ export default async function AiAutoQuotePage() {
                 ],
               },
               {
-                heading: "Instant quoting for a new WhatsApp lead",
+                heading: "Instant quote for new leads",
                 bullets: true,
                 body: [
-                  "A separate switch, below — once a WhatsApp conversation gathers everything needed to create a lead, AI prices and sends a quote for it immediately, over email AND WhatsApp, instead of waiting for the time limit above.",
-                  "Off by default. When off, a WhatsApp lead behaves exactly as it does today — it just sits waiting for a sales user (or, eventually, the SLA time limit above) like any other lead.",
+                  "Separate switches, below, for WhatsApp, website, email and manually added leads — when one is on, a new lead from that source is priced and quoted by AI immediately, over email AND WhatsApp, instead of waiting for the time limit above. Exactly the same pricing and sending as a WhatsApp lead, whichever source it came from.",
+                  "Skipped (left for a salesperson, like before) if the lead has no pickup, destination or customer, is a duplicate, or its travel date has already passed.",
+                  "A manually added lead that AI quotes takes the person who added it straight to the lead, with its quote, instead of the quote builder — so it never ends up with two quotes.",
+                  "All off by default. When off, a lead from that source behaves exactly as before — it waits for a sales user (or, eventually, the time limit above).",
                 ],
               },
               {
@@ -87,7 +89,12 @@ export default async function AiAutoQuotePage() {
         <AiAutoQuoteForm
           initialEnabled={tenant?.ai_auto_quote_enabled ?? false}
           initialSlaHours={tenant?.ai_auto_quote_sla_hours ?? 24}
-          initialWhatsappEnabled={tenant?.whatsapp_auto_quote_enabled ?? false}
+          initialInstant={{
+            whatsapp: tenant?.whatsapp_auto_quote_enabled ?? false,
+            website: tenant?.website_auto_quote_enabled ?? false,
+            email: tenant?.email_auto_quote_enabled ?? false,
+            manual: tenant?.manual_auto_quote_enabled ?? false,
+          }}
           initialMarkupPercent={tenant?.ai_auto_quote_markup_percent ?? 0}
         />
       </Panel>

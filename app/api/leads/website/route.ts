@@ -1,6 +1,7 @@
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
 import { z } from "zod";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { instantAutoQuoteNewLead } from "@/lib/aiAutoQuote";
 import { recordAudit } from "@/lib/audit";
 import { resolveCustomerId, notifyIfAutoAssigned } from "@/lib/leadIntake";
 import { formatDateAndTime } from "@/lib/formatDate";
@@ -263,6 +264,14 @@ async function handleQuoteSubmission(json: unknown) {
     vehicle_requested: body.vehicleRequested ?? "Not specified",
     notes: body.notes ?? "",
   });
+
+  // Optional instant AI quote (Settings -> AI Assistant -> "Instant quote for
+  // new website leads", off by default) — run after the response is sent,
+  // since pricing + PDF + email takes several seconds and the website's form
+  // submit shouldn't wait on it. Duplicates are skipped inside, too.
+  if (lead.status !== "duplicate") {
+    after(() => instantAutoQuoteNewLead(admin, lead.id, "website"));
+  }
 
   return NextResponse.json({ id: lead.id }, { status: 201 });
 }

@@ -48,6 +48,12 @@ function describe(e: LeadAssignmentEvent): string {
       return `AI priced and sent quote ${e.new_value?.quoteNumber ?? ""} automatically — it sat unquoted past the AI Assistant's time limit${markupNote(e.new_value)}`;
     case "ai_quote_created_whatsapp_lead":
       return `AI priced and sent quote ${e.new_value?.quoteNumber ?? ""} automatically the moment this WhatsApp lead was captured${markupNote(e.new_value)}`;
+    case "ai_quote_created_website_lead":
+      return `AI priced and sent quote ${e.new_value?.quoteNumber ?? ""} automatically the moment this website lead came in${markupNote(e.new_value)}`;
+    case "ai_quote_created_email_lead":
+      return `AI priced and sent quote ${e.new_value?.quoteNumber ?? ""} automatically the moment this email lead came in${markupNote(e.new_value)}`;
+    case "ai_quote_created_manual_lead":
+      return `AI priced and sent quote ${e.new_value?.quoteNumber ?? ""} automatically when ${actor} added this lead${markupNote(e.new_value)}`;
     case "ai_quote_created_manual_assign":
       return `AI priced and sent quote ${e.new_value?.quoteNumber ?? ""} automatically — ${actor} assigned this lead to it${markupNote(e.new_value)}`;
     case "card_payment_override_requested":
@@ -66,6 +72,9 @@ const AI_TRIGGER_LABEL: Record<string, string> = {
   lead_released_sla_breach: "Time limit",
   ai_quote_created_whatsapp_lead: "WhatsApp lead",
   ai_quote_created_manual_assign: "Assigned to AI",
+  ai_quote_created_website_lead: "Website lead",
+  ai_quote_created_email_lead: "Email lead",
+  ai_quote_created_manual_lead: "Manual lead",
 };
 
 /** Small tag distinguishing what kind of event this was, at a glance —

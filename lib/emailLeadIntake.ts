@@ -9,6 +9,7 @@ import { runAiStructuredTask, getAiModelSetting, AI_PROVIDER_REGISTRY, type AiMo
 import { recordAudit } from "./audit";
 import { resolveCustomerId, notifyIfAutoAssigned } from "./leadIntake";
 import { formatDateAndTime } from "./formatDate";
+import { instantAutoQuoteNewLead } from "./aiAutoQuote";
 
 type Admin = SupabaseClient<Database>;
 
@@ -374,6 +375,12 @@ async function processMessage(
     vehicle_requested: "Not specified",
     notes: extraction.notes ?? "",
   });
+
+  // Optional instant AI quote (Settings -> AI Assistant -> "Instant quote for
+  // new email leads", off by default) — same as a WhatsApp lead. Never
+  // throws; a lead it can't quote (no clean pickup/destination, a past
+  // date) just stays for a human like before.
+  await instantAutoQuoteNewLead(admin, lead.id, "email");
 
   return { decision: "lead_created", leadId: lead.id };
 }

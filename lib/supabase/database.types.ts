@@ -22,6 +22,10 @@ export interface Tenant {
   ai_auto_quote_enabled_at: string | null;
   /** Master-Admin-only switch (Settings → AI Assistant) — when true, a lead captured over WhatsApp is priced and quoted by AI immediately at creation (email + WhatsApp), instead of waiting for the SLA sweep above. See 0094_whatsapp_auto_quote.sql. */
   whatsapp_auto_quote_enabled: boolean;
+  /** Same as whatsapp_auto_quote_enabled, for new website / email / manually-added leads — see 0106_instant_auto_quote_sources.sql and instantAutoQuoteNewLead in lib/aiAutoQuote.ts. */
+  website_auto_quote_enabled: boolean;
+  email_auto_quote_enabled: boolean;
+  manual_auto_quote_enabled: boolean;
   /** Every quote AI prices and sends on its own (createAndSendQuote, any trigger) has its selling price increased by this percentage before it's saved/sent — Master-Admin-only (Settings → AI Assistant). Default 0 (no change). See 0101_ai_auto_quote_markup.sql. */
   ai_auto_quote_markup_percent: number;
   /** Master-Admin-only switch (Settings -> Quote Reminders) — when true, the quote-reminders cron emails customers follow-up reminders on unaccepted quotes and payment reminders on accepted-but-unpaid ones. See 0103_quote_reminders.sql and lib/quoteReminders.ts. */

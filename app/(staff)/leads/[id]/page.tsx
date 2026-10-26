@@ -123,6 +123,9 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
             "ai_quote_created_sla",
             "ai_quote_created_whatsapp_lead",
             "ai_quote_created_manual_assign",
+            "ai_quote_created_website_lead",
+            "ai_quote_created_email_lead",
+            "ai_quote_created_manual_lead",
           ])
           .order("created_at", { ascending: false })
       ).data ?? [])

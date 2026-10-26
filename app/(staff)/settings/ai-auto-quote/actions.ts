@@ -5,12 +5,19 @@ import { createClient } from "@/lib/supabase/server";
 import { requireProfile } from "@/lib/auth";
 import { recordAudit } from "@/lib/audit";
 
-export async function updateAiAutoQuoteSettingsAction(
-  enabled: boolean,
-  slaHours: number,
-  whatsappAutoQuoteEnabled: boolean,
-  markupPercent: number,
-) {
+export interface AiAutoQuoteSettingsInput {
+  enabled: boolean;
+  slaHours: number;
+  markupPercent: number;
+  /** Instant quote for a brand-new lead, per source — 0094 (WhatsApp), 0106 (website/email/manual). */
+  whatsappAutoQuoteEnabled: boolean;
+  websiteAutoQuoteEnabled: boolean;
+  emailAutoQuoteEnabled: boolean;
+  manualAutoQuoteEnabled: boolean;
+}
+
+export async function updateAiAutoQuoteSettingsAction(input: AiAutoQuoteSettingsInput) {
+  const { enabled, slaHours, markupPercent, whatsappAutoQuoteEnabled, websiteAutoQuoteEnabled, emailAutoQuoteEnabled, manualAutoQuoteEnabled } = input;
   const actor = await requireProfile();
   // tenants_update's RLS policy (0001_foundation.sql) is is_master_admin()
   // only, so this mirrors that at the app layer rather than introducing a
@@ -48,6 +55,9 @@ export async function updateAiAutoQuoteSettingsAction(
       // once, at the instant a brand-new WhatsApp lead is created, so there's
       // no pre-existing backlog flipping it on could suddenly sweep up.
       whatsapp_auto_quote_enabled: whatsappAutoQuoteEnabled,
+      website_auto_quote_enabled: websiteAutoQuoteEnabled,
+      email_auto_quote_enabled: emailAutoQuoteEnabled,
+      manual_auto_quote_enabled: manualAutoQuoteEnabled,
       ai_auto_quote_markup_percent: markupPercent,
     })
     .eq("id", actor.tenant_id);
@@ -59,7 +69,7 @@ export async function updateAiAutoQuoteSettingsAction(
     action: "ai_auto_quote_settings_updated",
     entityType: "tenant",
     entityId: actor.tenant_id,
-    newValue: { enabled, slaHours: Math.round(slaHours), whatsappAutoQuoteEnabled, markupPercent },
+    newValue: { enabled, slaHours: Math.round(slaHours), markupPercent, whatsappAutoQuoteEnabled, websiteAutoQuoteEnabled, emailAutoQuoteEnabled, manualAutoQuoteEnabled },
   });
 
   revalidatePath("/settings/ai-auto-quote");

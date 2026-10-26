@@ -7,6 +7,8 @@ import { requireProfile } from "@/lib/auth";
 import { hasPermission, PERMISSIONS } from "@/lib/permissions";
 import { recordAudit } from "@/lib/audit";
 import { findDuplicateCustomer, type DuplicateCustomerMatch } from "@/lib/customerDuplicates";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { instantAutoQuoteNewLead } from "@/lib/aiAutoQuote";
 
 export async function createEnquiryAction(
   _prevState: { error: string | null; duplicate?: DuplicateCustomerMatch | null },
@@ -59,6 +61,11 @@ export async function createEnquiryAction(
   }
 
   const pickupDate = String(formData.get("pickupDate") ?? "").trim() || null;
+  const pickupTime = String(formData.get("pickupTime") ?? "").trim() || null;
+  const journeyType = String(formData.get("journeyType") ?? "one_way");
+  const returnDate = journeyType === "return" ? String(formData.get("returnDate") ?? "").trim() || null : null;
+  const returnTime = journeyType === "return" ? String(formData.get("returnTime") ?? "").trim() || null : null;
+  const luggageCount = Number(formData.get("luggageCount") ?? 0) || null;
   const passengerCount = Number(formData.get("passengerCount") ?? 0) || null;
   const specialRequirements = String(formData.get("specialRequirements") ?? "").trim() || null;
 
@@ -79,6 +86,14 @@ export async function createEnquiryAction(
       pickup_text: pickupAddress,
       destination_text: destinationAddress,
       travel_date: pickupDate,
+      // Mirrored onto the lead (not just the enquiry leg below) because the
+      // instant AI quote prices from the lead's own fields, same as every
+      // other lead source — without these a return trip would price one-way.
+      pickup_time: pickupTime,
+      return_trip: journeyType === "return",
+      return_date: returnDate,
+      return_time: returnTime,
+      luggage_count: luggageCount,
       passenger_count: passengerCount,
       notes: specialRequirements,
     })
@@ -108,10 +123,7 @@ export async function createEnquiryAction(
     return { error: enquiryError?.message ?? "Could not create the enquiry." };
   }
 
-  const luggageCount = Number(formData.get("luggageCount") ?? 0) || null;
   const childSeats = Number(formData.get("childSeats") ?? 0) || 0;
-
-  const journeyType = String(formData.get("journeyType") ?? "one_way");
 
   const pickupLat = formData.get("pickupLat") ? Number(formData.get("pickupLat")) : null;
   const pickupLng = formData.get("pickupLng") ? Number(formData.get("pickupLng")) : null;
@@ -129,9 +141,9 @@ export async function createEnquiryAction(
     destination_lat: destinationLat,
     destination_lng: destinationLng,
     pickup_date: pickupDate,
-    pickup_time: String(formData.get("pickupTime") ?? "").trim() || null,
-    return_date: journeyType === "return" ? String(formData.get("returnDate") ?? "").trim() || null : null,
-    return_time: journeyType === "return" ? String(formData.get("returnTime") ?? "").trim() || null : null,
+    pickup_time: pickupTime,
+    return_date: returnDate,
+    return_time: returnTime,
     passenger_count: passengerCount,
     luggage_count: luggageCount,
     vehicle_type_id: String(formData.get("vehicleTypeId") ?? "").trim() || null,
@@ -156,6 +168,17 @@ export async function createEnquiryAction(
     newValue: { customerId, pickupAddress, destinationAddress, enquiryId: enquiry.id },
   });
 
+  // Optional instant AI quote (Settings -> AI Assistant -> "Instant quote for
+  // manually added leads", off by default) — same as a WhatsApp lead. Run
+  // inline, like an assign-to-AI, so staff land on the lead with its quote
+  // already there; if it's off or can't quote this one, they go straight to
+  // the quote builder as before (never both — that would mean two quotes).
+  const instant = await instantAutoQuoteNewLead(createAdminClient(), lead.id, "manual", { actorId: actor.id });
+
   revalidatePath("/leads");
+  if (instant.quoted) {
+    revalidatePath("/quotes");
+    redirect(`/leads/${lead.id}`);
+  }
   redirect(`/quotes/new?enquiryId=${enquiry.id}`);
 }

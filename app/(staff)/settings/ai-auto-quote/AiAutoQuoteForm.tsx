@@ -4,27 +4,60 @@ import { useState, useTransition } from "react";
 import { useToast } from "@/components/ui/Toast";
 import { updateAiAutoQuoteSettingsAction } from "./actions";
 
+type InstantSource = "whatsapp" | "website" | "email" | "manual";
+
+const INSTANT_SOURCES: { key: InstantSource; label: string; text: string }[] = [
+  {
+    key: "whatsapp",
+    label: "WhatsApp leads",
+    text: "The moment a WhatsApp conversation gathers enough to create a lead.",
+  },
+  {
+    key: "website",
+    label: "Website leads",
+    text: "The moment a website quote form is submitted. Contact-form messages with no journey aren't quoted.",
+  },
+  {
+    key: "email",
+    label: "Email leads",
+    text: "The moment the enquiry inbox turns a forwarded email into a lead (checked every 5 minutes).",
+  },
+  {
+    key: "manual",
+    label: "Manually added leads",
+    text: "When staff add a lead by hand — they land on the lead with its AI quote instead of the quote builder.",
+  },
+];
+
 export function AiAutoQuoteForm({
   initialEnabled,
   initialSlaHours,
-  initialWhatsappEnabled,
+  initialInstant,
   initialMarkupPercent,
 }: {
   initialEnabled: boolean;
   initialSlaHours: number;
-  initialWhatsappEnabled: boolean;
+  initialInstant: Record<InstantSource, boolean>;
   initialMarkupPercent: number;
 }) {
   const notify = useToast();
   const [enabled, setEnabled] = useState(initialEnabled);
   const [slaHours, setSlaHours] = useState(String(initialSlaHours));
-  const [whatsappEnabled, setWhatsappEnabled] = useState(initialWhatsappEnabled);
+  const [instant, setInstant] = useState(initialInstant);
   const [markupPercent, setMarkupPercent] = useState(String(initialMarkupPercent));
   const [pending, startTransition] = useTransition();
 
   function save() {
     startTransition(async () => {
-      const result = await updateAiAutoQuoteSettingsAction(enabled, Number(slaHours), whatsappEnabled, Number(markupPercent));
+      const result = await updateAiAutoQuoteSettingsAction({
+        enabled,
+        slaHours: Number(slaHours),
+        markupPercent: Number(markupPercent),
+        whatsappAutoQuoteEnabled: instant.whatsapp,
+        websiteAutoQuoteEnabled: instant.website,
+        emailAutoQuoteEnabled: instant.email,
+        manualAutoQuoteEnabled: instant.manual,
+      });
       if (result?.error) {
         notify(result.error);
         return;
@@ -85,23 +118,29 @@ export function AiAutoQuoteForm({
         />
       </div>
 
-      <div className="border-t pt-5">
-        <label className="flex items-center justify-between gap-4 rounded-xl border p-4">
-          <span>
-            <span className="block text-sm font-bold">Instant quote for new WhatsApp leads</span>
-            <span className="block text-xs text-slate-500">
-              When on, a lead captured over WhatsApp is priced and quoted by AI the moment it&rsquo;s created — email and
-              WhatsApp both — instead of waiting for the time limit above. Off by default; a separate switch from AI
-              Assistant itself.
-            </span>
+      <div className="space-y-2 border-t pt-5">
+        <div>
+          <span className="block text-sm font-bold">Instant quote for new leads</span>
+          <span className="block text-xs text-slate-500">
+            When on for a source, a new lead from it is priced and quoted by AI straight away — email and WhatsApp both —
+            instead of waiting for a salesperson or the time limit above. Each is off by default and separate from AI
+            Assistant itself.
           </span>
-          <input
-            type="checkbox"
-            checked={whatsappEnabled}
-            onChange={(e) => setWhatsappEnabled(e.target.checked)}
-            className="h-5 w-5 shrink-0 accent-primary-500"
-          />
-        </label>
+        </div>
+        {INSTANT_SOURCES.map((s) => (
+          <label key={s.key} className="flex items-center justify-between gap-4 rounded-xl border p-4">
+            <span>
+              <span className="block text-sm font-bold">{s.label}</span>
+              <span className="block text-xs text-slate-500">{s.text}</span>
+            </span>
+            <input
+              type="checkbox"
+              checked={instant[s.key]}
+              onChange={(e) => setInstant((prev) => ({ ...prev, [s.key]: e.target.checked }))}
+              className="h-5 w-5 shrink-0 accent-primary-500"
+            />
+          </label>
+        ))}
       </div>
 
       <button

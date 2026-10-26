@@ -33,7 +33,11 @@ type Admin = SupabaseClient<Database>;
 // - "manual_assign" — a Master Admin/Sales Manager explicitly assigning a
 //   lead to the AI role's profile (assignLeadAction), fired instantly
 //   instead of waiting for the SLA sweep to eventually pick it up.
-// Both of those also try a WhatsApp send alongside the email
+// - "website_lead" / "email_lead" / "manual_lead" — the same instant quote
+//   as "whatsapp_lead", for a brand-new lead from those sources, each on its
+//   own switch (0106_instant_auto_quote_sources.sql) — see
+//   instantAutoQuoteNewLead at the bottom of this file.
+// All of those also try a WhatsApp send alongside the email
 // (alsoSendWhatsApp) — the SLA-breach sweep path deliberately does not,
 // keeping that specific trigger's behaviour exactly as it was.
 
@@ -42,12 +46,15 @@ export const NOT_QUOTABLE_STATUSES = ["converted", "closed", "spam", "duplicate"
 export const LEAD_FOR_SWEEP_COLUMNS =
   "id, tenant_id, brand_id, customer_id, assigned_user_id, source, pickup_text, destination_text, travel_date, pickup_time, return_trip, return_date, return_time, passenger_count, luggage_count, vehicle_requested, notes, created_at, claimed_at";
 
-export type AiQuoteTrigger = "sla_breach" | "whatsapp_lead" | "manual_assign";
+export type AiQuoteTrigger = "sla_breach" | "whatsapp_lead" | "manual_assign" | "website_lead" | "email_lead" | "manual_lead";
 
 const LEAD_AUDIT_ACTION_FOR_TRIGGER: Record<AiQuoteTrigger, string> = {
   sla_breach: "ai_quote_created_sla",
   whatsapp_lead: "ai_quote_created_whatsapp_lead",
   manual_assign: "ai_quote_created_manual_assign",
+  website_lead: "ai_quote_created_website_lead",
+  email_lead: "ai_quote_created_email_lead",
+  manual_lead: "ai_quote_created_manual_lead",
 };
 
 export interface LeadForSweep {
@@ -653,4 +660,56 @@ export async function runAiAutoQuoteSweep(admin: Admin): Promise<SweepResult> {
   }
 
   return result;
+}
+
+export type InstantQuoteSource = "website" | "email" | "manual";
+
+const INSTANT_SOURCE_CONFIG: Record<InstantQuoteSource, { flag: "website_auto_quote_enabled" | "email_auto_quote_enabled" | "manual_auto_quote_enabled"; trigger: AiQuoteTrigger }> = {
+  website: { flag: "website_auto_quote_enabled", trigger: "website_lead" },
+  email: { flag: "email_auto_quote_enabled", trigger: "email_lead" },
+  manual: { flag: "manual_auto_quote_enabled", trigger: "manual_lead" },
+};
+
+/**
+ * Instant AI quote for a brand-new website / email / manually-added lead —
+ * the same thing the 360dialog webhook does for a new WhatsApp lead, gated
+ * on that source's own switch (Settings -> AI Assistant, see
+ * 0106_instant_auto_quote_sources.sql). Same pricing engine, same email +
+ * WhatsApp send (alsoSendWhatsApp), same guards as an assign-to-AI: a lead
+ * missing its pickup, destination, customer or brand, a duplicate/closed
+ * one, or one whose travel date has already passed is left for a human.
+ *
+ * Never throws — the lead itself was already created successfully and a
+ * human can always quote it, so a failure here is logged and reported as
+ * `{ quoted: false }` for the caller to decide what to do (the manual flow
+ * falls back to the quote builder).
+ */
+export async function instantAutoQuoteNewLead(
+  admin: Admin,
+  leadId: string,
+  source: InstantQuoteSource,
+  options: { actorId?: string | null } = {},
+): Promise<{ quoted: boolean; reason?: string }> {
+  const { flag, trigger } = INSTANT_SOURCE_CONFIG[source];
+  try {
+    const { data: lead } = await admin.from("leads").select(`${LEAD_FOR_SWEEP_COLUMNS}, status`).eq("id", leadId).single();
+    if (!lead) return { quoted: false, reason: "Lead not found." };
+
+    const { data: tenant } = await admin.from("tenants").select(flag).eq("id", lead.tenant_id).maybeSingle();
+    if (!(tenant as Record<string, boolean> | null)?.[flag]) return { quoted: false, reason: "Switched off." };
+
+    const l = lead as unknown as LeadForSweep & { status: string };
+    if ((NOT_QUOTABLE_STATUSES as readonly string[]).includes(l.status)) return { quoted: false, reason: `Lead is ${l.status}.` };
+    if (!l.pickup_text || !l.destination_text || !l.customer_id || !l.brand_id) {
+      return { quoted: false, reason: "Missing pickup, destination, customer or brand." };
+    }
+    if (l.travel_date && l.travel_date < new Date().toISOString().slice(0, 10)) return { quoted: false, reason: "Travel date has passed." };
+
+    const aiProfileId = await getAiProfileId(admin, l.tenant_id);
+    await createAndSendQuote(admin, l, aiProfileId, { trigger, alsoSendWhatsApp: true, actorId: options.actorId ?? null });
+    return { quoted: true };
+  } catch (err) {
+    console.error(`instantAutoQuoteNewLead: ${source} auto-quote failed for lead ${leadId}:`, err);
+    return { quoted: false, reason: err instanceof Error ? err.message : "Quote could not be created." };
+  }
 }
