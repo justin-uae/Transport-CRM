@@ -27,6 +27,7 @@ const EMAIL_HEADLINES: Record<EmailTemplateKey, string> = {
   quote_reminder_4: "Shall we go ahead?",
   quote_reminder_5: "One last check-in",
   quote_payment_reminder: "Secure your booking",
+  quote_accepted_customer: "Booking confirmed",
 };
 
 /**

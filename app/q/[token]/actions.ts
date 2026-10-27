@@ -10,6 +10,7 @@ import { resolveDisplayCurrency, convertForDisplay } from "@/lib/localCurrency";
 import { sendTemplatedEmail } from "@/lib/emailTemplates";
 import { sendWhatsAppTemplate, normalizeWhatsAppNumber, WHATSAPP_TEMPLATE_HEADER_IMAGE_URL } from "@/lib/whatsapp360";
 import { formatDateAndTime } from "@/lib/formatDate";
+import { generateQuotePdf } from "@/lib/quotePdf";
 
 interface PayableLeg {
   sequence: number;
@@ -44,7 +45,7 @@ async function loadDecidableQuote(admin: ReturnType<typeof createAdminClient>, t
   const { data: quote } = await admin
     .from("quotes")
     .select(
-      "id, tenant_id, status, quote_number, currency, public_token, created_by, current_version_id, brands(name), enquiries(assigned_user_id, customers(contact_name, company_name, phone, whatsapp)), quote_versions!quotes_current_version_id_fkey(selling_price)",
+      "id, tenant_id, status, quote_number, currency, public_token, created_by, current_version_id, brands(name), customers(email), enquiries(assigned_user_id, customers(contact_name, company_name, phone, whatsapp)), quote_versions!quotes_current_version_id_fkey(selling_price)",
     )
     .eq("public_token", token)
     .single();
@@ -255,6 +256,34 @@ export async function acceptQuoteAction(token: string, acceptedByName: string) {
       link: `${process.env.NEXT_PUBLIC_APP_URL ?? ""}/quotes/${quote.id}`,
     },
   });
+
+  // The customer's own confirmation, with the quote PDF attached. The quote
+  // email deliberately carries neither the price nor the PDF (0108), so
+  // this is the first document they get — with the price, bank details and
+  // reference a bank-transfer payer needs. Best-effort like the rest: a
+  // PDF or mail failure never blocks the acceptance itself.
+  const customerEmail = (quote.customers as unknown as { email: string | null } | null)?.email;
+  if (customerEmail) {
+    const quotePdf = await generateQuotePdf(admin, quote.id).catch((err) => {
+      console.error(`acceptQuoteAction: generateQuotePdf failed for quote ${quote.id}:`, err);
+      return null;
+    });
+    await sendTemplatedEmail(admin, {
+      tenantId: quote.tenant_id,
+      key: "quote_accepted_customer",
+      to: customerEmail,
+      variables: {
+        customer_name: enquiry?.customers?.company_name || enquiry?.customers?.contact_name || "Customer",
+        quote_number: quote.quote_number,
+        brand_name: brand?.name ?? "",
+        currency: quote.currency,
+        selling_price: version ? version.selling_price.toFixed(2) : "",
+        link: `${process.env.NEXT_PUBLIC_APP_URL ?? ""}/q/${quote.public_token}`,
+      },
+      attachments: quotePdf ? [{ filename: `${quote.quote_number}.pdf`, content: quotePdf, contentType: "application/pdf" }] : undefined,
+      senderId: enquiry?.assigned_user_id ?? quote.created_by ?? undefined,
+    });
+  }
 
   // Best-effort, same as every other WhatsApp send — never blocks the
   // customer's own acceptance flow on a missing number or send failure.

@@ -1,14 +1,15 @@
 import { notFound } from "next/navigation";
-import { Bus } from "lucide-react";
+import { Bus, Globe } from "lucide-react";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { amountDueNow } from "@/lib/quotePayments";
 import { formatDateTime, formatDate } from "@/lib/formatDate";
 import { JourneyLegDetail, type JourneyLeg } from "@/components/pages/JourneyLegDetail";
 import { RichText } from "@/components/ui/RichText";
-import { resolveDisplayCurrency, detectVisitorCurrency, convertForDisplay } from "@/lib/localCurrency";
+import { resolveDisplayCurrency, detectVisitorCurrency, convertForDisplay, displayCurrencyChoices } from "@/lib/localCurrency";
 import { vatBreakdown, formatVatRate } from "@/lib/vat";
 import { QuoteDecisionButtons } from "./QuoteDecisionButtons";
 import { PaymentChooser, type BankAccountRow } from "./PaymentChooser";
+import { CurrencySelector } from "./CurrencySelector";
 
 interface BrandSnapshot {
   name: string;
@@ -104,6 +105,7 @@ export default async function PublicQuotePage({
   // quote's currency (the bank details are per currency), so it gets its own
   // unconverted label.
   const [display, localCurrency] = await Promise.all([resolveDisplayCurrency(quote.currency, requestedCurrency), detectVisitorCurrency()]);
+  const currencyChoices = await displayCurrencyChoices(quote.currency, localCurrency);
   const format = (amount: number, currency: string) =>
     new Intl.NumberFormat("en-GB", { style: "currency", currency, maximumFractionDigits: 2 }).format(amount);
   const money = (amount: number) => format(convertForDisplay(amount, display), display.currency);
@@ -147,6 +149,18 @@ export default async function PublicQuotePage({
               <JourneyLegDetail key={i} leg={leg} index={i} total={legs.length} />
             ))}
             <div className="space-y-3 rounded-2xl bg-slate-50 p-5 text-sm">
+              {version && currencyChoices.length > 1 && (
+                <div className="border-b pb-4">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+                    <div className="flex items-center gap-2 font-bold text-slate-800">
+                      <Globe size={16} className="shrink-0 text-primary-600" />
+                      View prices in your currency
+                    </div>
+                    <CurrencySelector current={display.currency} quoteCurrency={quote.currency} localCurrency={localCurrency} choices={currencyChoices} />
+                  </div>
+                  <p className="mt-2 text-xs text-slate-500">Card payments are charged in the currency you choose.</p>
+                </div>
+              )}
               {quote.expiry_at && (
                 <div className="flex flex-wrap justify-between gap-x-3 gap-y-1 border-b py-2">
                   <span className="text-slate-500">Valid until</span>
@@ -185,17 +199,7 @@ export default async function PublicQuotePage({
               {version && display.converted && (
                 <p className="text-xs text-slate-500">
                   Prices shown in {display.currency}, converted from {quoteMoney(version.selling_price)} at today's exchange rate — card payments are charged in{" "}
-                  {display.currency}.{" "}
-                  <a href={`?currency=${quote.currency}`} className="font-bold text-primary-600 hover:underline">
-                    Show in {quote.currency}
-                  </a>
-                </p>
-              )}
-              {version && !display.converted && localCurrency && localCurrency !== quote.currency && (
-                <p className="text-xs text-slate-500">
-                  <a href={`?currency=${localCurrency}`} className="font-bold text-primary-600 hover:underline">
-                    Show prices in {localCurrency}
-                  </a>
+                  {display.currency}.
                 </p>
               )}
             </div>

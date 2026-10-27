@@ -2,6 +2,7 @@ import "server-only";
 import { headers } from "next/headers";
 import geoip from "geoip-country";
 import { getGbpRates } from "./fxRates";
+import { CURRENCIES } from "./currencies";
 
 /**
  * Local-currency pricing on the customer's quote page (app/q/[token]).
@@ -65,6 +66,44 @@ export async function resolveDisplayCurrency(quoteCurrency: string, requested?: 
     return { currency: wanted, rate: to / from, converted: true };
   } catch {
     return unconverted;
+  }
+}
+
+export interface CurrencyChoice {
+  code: string;
+  name: string;
+}
+
+/**
+ * The options for the quote page's currency dropdown: the common currencies
+ * in lib/currencies.ts plus the quote's own and the visitor's local one (if
+ * not already listed), limited to what the exchange-rate source can convert.
+ * If rates are unavailable only the quote's own currency is offered.
+ */
+export async function displayCurrencyChoices(quoteCurrency: string, localCurrency: string | null): Promise<CurrencyChoice[]> {
+  const base = quoteCurrency.toUpperCase();
+  let rates: Record<string, number> = {};
+  try {
+    rates = await getGbpRates();
+  } catch {
+    return [{ code: base, name: currencyName(base) }];
+  }
+  const codes = new Set(CURRENCIES.map((c) => c.code));
+  codes.add(base);
+  if (localCurrency) codes.add(localCurrency.toUpperCase());
+  return [...codes]
+    .filter((code) => code === base || (rates[code] && rates[base]))
+    .map((code) => ({ code, name: currencyName(code) }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+function currencyName(code: string): string {
+  const known = CURRENCIES.find((c) => c.code === code)?.name;
+  if (known) return known;
+  try {
+    return new Intl.DisplayNames(["en"], { type: "currency" }).of(code) ?? code;
+  } catch {
+    return code;
   }
 }
 

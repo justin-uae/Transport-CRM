@@ -26,7 +26,8 @@ export type EmailTemplateKey =
   | "quote_reminder_3"
   | "quote_reminder_4"
   | "quote_reminder_5"
-  | "quote_payment_reminder";
+  | "quote_payment_reminder"
+  | "quote_accepted_customer";
 
 /** Friendly labels + the {{variable}} tokens each template supports — shown as an editing hint in Email Centre -> Templates. */
 export const EMAIL_TEMPLATE_INFO: Record<EmailTemplateKey, { label: string; description: string; variables: string[] }> = {
@@ -160,5 +161,10 @@ export const EMAIL_TEMPLATE_INFO: Record<EmailTemplateKey, { label: string; desc
     label: "Payment reminder",
     description: "Automatic reminder (1, 3 and 5 days after acceptance) to a customer who accepted a quote but hasn't paid yet, with their secure payment link. Settings -> Quote Reminders.",
     variables: ["customer_name", "quote_number", "brand_name", "travel_date", "currency", "amount_due", "link", "stop_link"],
+  },
+  quote_accepted_customer: {
+    label: "Booking confirmed (to customer)",
+    description: "Sent to the customer the moment they accept a quote, with the quote PDF attached (price, bank details and payment reference for bank transfers) and a link to complete payment.",
+    variables: ["customer_name", "quote_number", "brand_name", "currency", "selling_price", "link"],
   },
 };
