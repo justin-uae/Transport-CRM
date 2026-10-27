@@ -71,7 +71,7 @@ export function amountDueNow(version: VersionForDue, alreadyPaid: number, milest
  * bank transfer rather than replacing it — see decideCardPaymentOverrideAction,
  * app/(staff)/card-payment-requests/actions.ts.
  */
-export const STRIPE_PRICE_THRESHOLD = 1000;
+export const STRIPE_PRICE_THRESHOLD = 2000;
 
 export function paymentMethodsForGbpValue(gbpValue: number): { stripe: boolean; bank_transfer: boolean } {
   const stripeEligible = gbpValue < STRIPE_PRICE_THRESHOLD;

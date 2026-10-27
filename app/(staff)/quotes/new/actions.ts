@@ -172,7 +172,7 @@ export async function createQuoteAction(
 
   const forceBankTransfer = formData.get("forceBankTransfer") === "true";
 
-  // Stripe is only offered once the selling price converts to under £1000
+  // Stripe is only offered once the selling price converts to under £2000
   // GBP, regardless of the quote's own currency — convert in the background
   // here rather than showing Stripe based on the raw (possibly non-GBP)
   // number. If the conversion can't be confirmed (rate source unreachable or
