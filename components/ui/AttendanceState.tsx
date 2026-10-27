@@ -55,11 +55,11 @@ export function AttendanceProvider({
   const elapsedLabel =
     now === null || initialState.status === "not_clocked_in" ? "" : formatDuration(computeActiveMs(initialState, now));
 
-  function run(action: () => Promise<void>, successMessage: string) {
+  function run(action: () => Promise<{ error?: string }>, successMessage: string) {
     startTransition(async () => {
       try {
-        await action();
-        notify(successMessage);
+        const result = await action();
+        notify(result.error ?? successMessage);
         router.refresh();
       } catch (err) {
         notify(err instanceof Error ? err.message : "Something went wrong.");

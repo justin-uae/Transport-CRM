@@ -14,14 +14,27 @@ const ACTION_LABEL: Record<AttendanceEventType, string> = {
   clock_out: "clocked out",
 };
 
-async function recordEvent(event: AttendanceEventType) {
+// Status each event moves the user into — used to treat a repeat click
+// (second tab, stale page, double click) as already done instead of an error.
+const RESULTING_STATUS: Record<AttendanceEventType, string> = {
+  clock_in: "working",
+  break_start: "on_break",
+  break_end: "working",
+  clock_out: "clocked_out",
+};
+
+// Returns { error } rather than throwing: a thrown server-action error is
+// replaced by Next's generic "Server Components render" message in
+// production, so the user never saw why the click failed.
+async function recordEvent(event: AttendanceEventType): Promise<{ error?: string }> {
   const actor = await requireProfile();
   const supabase = await createClient();
 
   const todaysEvents = await getEventsSince(supabase, actor.id, startOfTodayIso());
   const state = deriveAttendanceState(todaysEvents);
   if (!legalNextEvents(state.status).includes(event)) {
-    throw new Error(`You can't do that right now (current status: ${state.status.replaceAll("_", " ")}).`);
+    if (state.status === RESULTING_STATUS[event]) return {};
+    return { error: `You can't do that right now (current status: ${state.status.replaceAll("_", " ")}).` };
   }
 
   const { error } = await supabase.from("attendance_events").insert({
@@ -29,7 +42,7 @@ async function recordEvent(event: AttendanceEventType) {
     user_id: actor.id,
     event,
   });
-  if (error) throw new Error(error.message);
+  if (error) return { error: error.message };
 
   await recordAudit({
     tenantId: actor.tenant_id,
@@ -41,20 +54,21 @@ async function recordEvent(event: AttendanceEventType) {
   });
 
   revalidatePath("/attendance");
+  return {};
 }
 
 export async function clockInAction() {
-  await recordEvent("clock_in");
+  return recordEvent("clock_in");
 }
 
 export async function startBreakAction() {
-  await recordEvent("break_start");
+  return recordEvent("break_start");
 }
 
 export async function endBreakAction() {
-  await recordEvent("break_end");
+  return recordEvent("break_end");
 }
 
 export async function clockOutAction() {
-  await recordEvent("clock_out");
+  return recordEvent("clock_out");
 }
