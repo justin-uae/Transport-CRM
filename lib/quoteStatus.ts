@@ -1,4 +1,4 @@
-import type { QuoteStatus } from "./supabase/database.types";
+import type { QuoteEventType, QuoteStatus } from "./supabase/database.types";
 
 /**
  * Single source of truth for how a quote's raw status reads to a human —
@@ -32,4 +32,27 @@ export const QUOTE_STATUS_STYLE: Record<QuoteStatus, string> = {
   cancelled: "bg-slate-100 text-slate-500",
   converted: "bg-emerald-50 text-emerald-700",
   paid: "bg-emerald-50 text-emerald-700",
+};
+
+/** How each quote timeline event reads to staff — quote detail timeline and Email Centre's recent activity. */
+export const QUOTE_EVENT_LABEL: Record<QuoteEventType, string> = {
+  sent: "Quote sent to customer",
+  viewed: "Customer viewed the quote",
+  accepted: "Customer accepted the quote",
+  rejected: "Customer rejected the quote",
+  expired: "Quote expired",
+  cancelled: "Quote cancelled",
+  partially_paid: "Deposit/partial payment received",
+  paid: "Paid in full",
+  reassigned: "Reassigned",
+  card_payment_requested: "Card payment requested",
+  card_payment_approved: "Card payment approved",
+  card_payment_rejected: "Card payment request rejected",
+  reminder_sent: "Reminder email sent",
+  reminders_paused: "Reminders paused",
+  reminders_resumed: "Reminders resumed",
+  reminders_opted_out: "Customer stopped reminders",
+  reminders_opt_out_cleared: "Reminders allowed again for this customer",
+  expiry_changed: "Expiry date changed",
+  price_changed: "Price changed",
 };

@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { hasPermission, PERMISSIONS } from "@/lib/permissions";
 import { EmailCentrePage } from "@/components/pages/EmailCentrePage";
 import { sanitizeEmailHtml } from "@/lib/sanitizeEmailHtml";
+import { buildEmailConversations, type EmailConversation } from "@/lib/emailConversations";
 import type { EmailAccount, EmailMessage } from "@/lib/supabase/database.types";
 
 export default async function Page({ searchParams }: { searchParams: Promise<{ compose?: string; to?: string; subject?: string }> }) {
@@ -19,16 +20,22 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ c
   ]);
 
   let messages: EmailMessage[] = [];
+  let conversations: EmailConversation[] = [];
   if (account) {
     const { data } = await supabase
       .from("email_messages")
       .select("*")
       .eq("email_account_id", account.id)
       .order("occurred_at", { ascending: false })
-      .limit(100);
-    messages = (data ?? []).map((m) =>
-      m.direction === "inbound" && m.body_html ? { ...m, body_html: sanitizeEmailHtml(m.body_html) } : m,
-    );
+      .limit(300);
+    messages = (data ?? []).map((m) => ({
+      ...m,
+      // Defaults for before 0112_email_star_archive.sql is applied.
+      is_starred: m.is_starred ?? false,
+      archived_at: m.archived_at ?? null,
+      body_html: m.direction === "inbound" && m.body_html ? sanitizeEmailHtml(m.body_html) : m.body_html,
+    }));
+    conversations = await buildEmailConversations(supabase, messages, account.email_address);
   }
 
   return (
@@ -37,6 +44,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ c
       canManageTemplates={canManageTemplates}
       account={(account as EmailAccount) ?? null}
       messages={messages}
+      conversations={conversations}
       initialCompose={params.compose ? { to: params.to ?? "", subject: params.subject ?? "" } : null}
       signatureProfile={{
         id: profile.id,

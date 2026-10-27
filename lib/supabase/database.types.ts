@@ -596,6 +596,10 @@ export interface EmailMessage {
   customer_id: string | null;
   supplier_id: string | null;
   quote_id: string | null;
+  /** Starred in Email Centre — see 0112_email_star_archive.sql. */
+  is_starred: boolean;
+  /** Archived in Email Centre (folder is left as-is so the IMAP sync doesn't re-insert it) — see 0112_email_star_archive.sql. */
+  archived_at: string | null;
 }
 
 export type WhatsAppMessageDirection = "inbound" | "outbound";

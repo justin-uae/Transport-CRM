@@ -17,7 +17,7 @@ import { BookingEditHistory, type BookingEditRecord } from "@/components/pages/B
 import { JourneyLegDetail, type JourneyLeg } from "@/components/pages/JourneyLegDetail";
 import { formatDateTime, formatDate } from "@/lib/formatDate";
 import type { QuoteStatus, QuoteEventType, QuoteDecisionType, CustomerPaymentMethod, JobStatus } from "@/lib/supabase/database.types";
-import { QUOTE_STATUS_LABEL, QUOTE_STATUS_STYLE } from "@/lib/quoteStatus";
+import { QUOTE_STATUS_LABEL, QUOTE_STATUS_STYLE, QUOTE_EVENT_LABEL } from "@/lib/quoteStatus";
 import { getAiModelLabel } from "@/lib/aiProviderRegistry";
 import { legRouteDistances } from "@/lib/tripDistance";
 import { SendEmailButton } from "@/components/ui/SendEmailButton";
@@ -98,27 +98,7 @@ interface QuoteDetailRow {
   quote_reminders: QuoteReminderRow[];
 }
 
-const EVENT_LABEL: Record<QuoteEventType, string> = {
-  sent: "Quote sent to customer",
-  viewed: "Customer viewed the quote",
-  accepted: "Customer accepted the quote",
-  rejected: "Customer rejected the quote",
-  expired: "Quote expired",
-  cancelled: "Quote cancelled",
-  partially_paid: "Deposit/partial payment received",
-  paid: "Paid in full",
-  reassigned: "Reassigned",
-  card_payment_requested: "Card payment requested",
-  card_payment_approved: "Card payment approved",
-  card_payment_rejected: "Card payment request rejected",
-  reminder_sent: "Reminder email sent",
-  reminders_paused: "Reminders paused",
-  reminders_resumed: "Reminders resumed",
-  reminders_opted_out: "Customer stopped reminders",
-  reminders_opt_out_cleared: "Reminders allowed again for this customer",
-  expiry_changed: "Expiry date changed",
-  price_changed: "Price changed",
-};
+const EVENT_LABEL = QUOTE_EVENT_LABEL;
 
 /** Pence-accurate — for the VAT breakdown, where whole-unit rounding would make net + VAT not visibly add up. */
 function moneyExact(amount: number, currency: string) {

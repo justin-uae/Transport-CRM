@@ -109,6 +109,53 @@ export async function getEmailAttachmentUrlAction(storagePath: string) {
   return { url: data.signedUrl, error: null };
 }
 
+/**
+ * Conversation-level actions from the Email Centre toolbar — each takes
+ * every message id in the thread. RLS (email_messages_update) already
+ * limits updates to the caller's own mailbox, so a stray id from someone
+ * else's account is simply not updated.
+ */
+async function updateMessages(messageIds: string[], patch: { is_read?: boolean; is_starred?: boolean; archived_at?: string | null }) {
+  if (messageIds.length === 0) return { error: null };
+  await requireProfile();
+  const supabase = await createClient();
+  const { error } = await supabase.from("email_messages").update(patch).in("id", messageIds);
+  if (error) return { error: error.message };
+  revalidatePath("/email");
+  return { error: null };
+}
+
+export async function setConversationReadAction(messageIds: string[], read: boolean) {
+  return updateMessages(messageIds, { is_read: read });
+}
+
+export async function setConversationStarredAction(messageIds: string[], starred: boolean) {
+  return updateMessages(messageIds, { is_starred: starred });
+}
+
+export async function setConversationArchivedAction(messageIds: string[], archived: boolean) {
+  // Archiving also marks it read, so it drops out of the sidebar's unread count (lib/navCounts.ts).
+  return updateMessages(messageIds, archived ? { archived_at: new Date().toISOString(), is_read: true } : { archived_at: null });
+}
+
+/** "Mark all read" — every unread received message in my own mailbox. */
+export async function markAllReadAction() {
+  try {
+    const { supabase, account } = await requireOwnAccount();
+    const { error } = await supabase
+      .from("email_messages")
+      .update({ is_read: true })
+      .eq("email_account_id", account.id)
+      .eq("direction", "inbound")
+      .eq("is_read", false);
+    if (error) return { error: error.message };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "Could not mark messages as read." };
+  }
+  revalidatePath("/email");
+  return { error: null };
+}
+
 export async function markMessageReadAction(messageId: string) {
   await requireProfile();
   const supabase = await createClient();
