@@ -1,5 +1,6 @@
 import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { hasPermission, PERMISSIONS } from "@/lib/permissions";
 import { EmailCentrePage } from "@/components/pages/EmailCentrePage";
 import { sanitizeEmailHtml } from "@/lib/sanitizeEmailHtml";
@@ -22,12 +23,19 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ c
   let messages: EmailMessage[] = [];
   let conversations: EmailConversation[] = [];
   if (account) {
-    const { data } = await supabase
+    // Read with the service-role client, scoped to the account fetched above
+    // (which is only ever the signed-in user's own, by user_id). Through RLS,
+    // email_messages_select runs has_permission() once per row, and for
+    // non-master-admins that's a multi-table join — on a mailbox of several
+    // hundred messages the query hit the statement timeout and the inbox
+    // came back empty.
+    const { data, error } = await createAdminClient()
       .from("email_messages")
       .select("*")
       .eq("email_account_id", account.id)
       .order("occurred_at", { ascending: false })
       .limit(300);
+    if (error) console.error("Email Centre: loading messages failed", error.message);
     messages = (data ?? []).map((m) => ({
       ...m,
       // Defaults for before 0112_email_star_archive.sql is applied.
