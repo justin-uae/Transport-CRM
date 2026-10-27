@@ -28,6 +28,8 @@ export interface Tenant {
   manual_auto_quote_enabled: boolean;
   /** Every quote AI prices and sends on its own (createAndSendQuote, any trigger) has its selling price increased by this percentage before it's saved/sent — Master-Admin-only (Settings → AI Assistant). Default 0 (no change). See 0101_ai_auto_quote_markup.sql. */
   ai_auto_quote_markup_percent: number;
+  /** ISO currency every AI-priced quote is created in (Settings -> AI Assistant). Default USD — 0109_ai_quote_currency.sql. */
+  ai_quote_currency: string;
   /** Master-Admin-only switch (Settings -> Quote Reminders) — when true, the quote-reminders cron emails customers follow-up reminders on unaccepted quotes and payment reminders on accepted-but-unpaid ones. See 0103_quote_reminders.sql and lib/quoteReminders.ts. */
   quote_reminders_enabled: boolean;
   /** When the switch last flipped off -> on — each quote's reminder schedule counts from whichever is later, this or when the quote was sent, so turning it on never fires a burst at every open quote. */

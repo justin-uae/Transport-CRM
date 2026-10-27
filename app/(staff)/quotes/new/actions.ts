@@ -312,7 +312,9 @@ export async function createQuoteAction(
         selling_price: sellingPrice.toFixed(2),
         link: publicLink,
       },
-      attachments: quotePdf ? [{ filename: `${quote.quote_number}.pdf`, content: quotePdf, contentType: "application/pdf" }] : undefined,
+      // No PDF attached on purpose — it shows the price, and the email deliberately
+      // doesn't, so the customer opens the quote page to see it (0108_hide_price_in_quote_emails.sql).
+      // The PDF is still generated and archived on the quote below.
       senderId: actor.id,
     });
     if (emailResult.error) {

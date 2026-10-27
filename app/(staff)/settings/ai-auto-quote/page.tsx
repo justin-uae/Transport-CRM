@@ -14,7 +14,7 @@ export default async function AiAutoQuotePage() {
   const supabase = await createClient();
   const { data: tenant } = await supabase
     .from("tenants")
-    .select("ai_auto_quote_enabled, ai_auto_quote_sla_hours, whatsapp_auto_quote_enabled, website_auto_quote_enabled, email_auto_quote_enabled, manual_auto_quote_enabled, ai_auto_quote_markup_percent")
+    .select("ai_auto_quote_enabled, ai_auto_quote_sla_hours, whatsapp_auto_quote_enabled, website_auto_quote_enabled, email_auto_quote_enabled, manual_auto_quote_enabled, ai_auto_quote_markup_percent, ai_quote_currency")
     .eq("id", profile.tenant_id)
     .single();
 
@@ -96,6 +96,7 @@ export default async function AiAutoQuotePage() {
             manual: tenant?.manual_auto_quote_enabled ?? false,
           }}
           initialMarkupPercent={tenant?.ai_auto_quote_markup_percent ?? 0}
+          initialQuoteCurrency={tenant?.ai_quote_currency ?? "USD"}
         />
       </Panel>
     </div>

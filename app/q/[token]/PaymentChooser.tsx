@@ -28,13 +28,20 @@ export interface BankAccountRow {
 export function PaymentChooser({
   token,
   amountDueLabel,
+  bankAmountDueLabel,
+  checkoutCurrency,
   stripeAvailable,
   bankTransferAvailable,
   bankAccounts,
   reference,
 }: {
   token: string;
+  /** In the currency the page is showing (the customer's local one, usually) — what a card payment is charged in. */
   amountDueLabel: string;
+  /** Same amount in the quote's own currency — bank transfers are always made in that, since the bank details are per currency. */
+  bankAmountDueLabel: string;
+  /** Currency the card checkout charges in — see lib/localCurrency.ts. */
+  checkoutCurrency: string;
   stripeAvailable: boolean;
   bankTransferAvailable: boolean;
   bankAccounts: BankAccountRow[];
@@ -66,7 +73,7 @@ export function PaymentChooser({
   function payOnline() {
     setError(null);
     startTransition(async () => {
-      const result = await createStripeCheckoutAction(token);
+      const result = await createStripeCheckoutAction(token, checkoutCurrency);
       if (result.error || !result.url) {
         setError(result.error ?? "Could not start Stripe checkout.");
         return;
@@ -108,11 +115,12 @@ export function PaymentChooser({
           </div>
           <div className="flex justify-between rounded-xl bg-white p-4 text-sm">
             <span className="text-slate-500">Amount due now</span>
-            <b className="text-primary-600">{amountDueLabel}</b>
+            <b className="text-primary-600">{bankAmountDueLabel}</b>
           </div>
         </div>
         <p className="mt-4 text-center text-xs text-emerald-700">
           Please use <b>{reference}</b> as your payment reference so we can match your transfer quickly.
+          {bankAmountDueLabel !== amountDueLabel && <> Bank transfers are made in the quote's own currency: <b>{bankAmountDueLabel}</b>.</>}
         </p>
       </div>
     );

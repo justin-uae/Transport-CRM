@@ -98,7 +98,7 @@ const PRICING_SCHEMA = {
     currency: {
       type: "string",
       description:
-        "The ISO 4217 currency code (e.g. USD, EUR, GBP, AED, INR, JPY) for the country where this trip actually takes place — work it out from the pickup/destination locations, not the company's own home currency. If you can't confidently tell which country/currency applies from the addresses given, use USD as the safe default — never default to EUR.",
+        "The ISO 4217 currency code. If the instructions name a specific currency to price in, use exactly that. Otherwise: the code (e.g. USD, EUR, GBP, AED, INR, JPY) for the country where this trip actually takes place — work it out from the pickup/destination locations, not the company's own home currency. If you can't confidently tell which country/currency applies from the addresses given, use USD as the safe default — never default to EUR.",
     },
     supplier_estimated_cost: {
       type: "number",
@@ -140,8 +140,14 @@ export async function estimatePricing(
   lead: LeadForSweep,
   brandName: string,
   aiModel: AiModelChoice,
-  options?: { realDistanceKm?: number; realDurationMinutes?: number },
+  options?: {
+    realDistanceKm?: number;
+    realDurationMinutes?: number;
+    /** Price in exactly this ISO currency (Settings -> AI Assistant, 0109) instead of the trip country's own. */
+    currency?: string;
+  },
 ): Promise<PricingEstimate> {
+  const fixedCurrency = options?.currency?.toUpperCase().trim() || null;
   // When both times are known and the trip is a same-day return, the vehicle
   // and driver are realistically committed for the whole gap between drop-off
   // and the return pickup, not just the two drive legs — that's a day-rate
@@ -169,8 +175,10 @@ export async function estimatePricing(
     instructions:
       `You are a pricing analyst for ${brandName}, a coach and transport hire company. A lead has gone unquoted too ` +
       `long, so you're pricing and quoting the trip yourself based on typical market rates for private transport hire. ` +
-      `Give a realistic, fair estimate — never a placeholder or round guess. Price it in the currency of the country ` +
-      `where the trip is taking place, not any other currency. ` +
+      `Give a realistic, fair estimate — never a placeholder or round guess. ` +
+      (fixedCurrency
+        ? `Price it in ${fixedCurrency} — every amount (supplier cost and selling price) must be in ${fixedCurrency}, and the currency field must be "${fixedCurrency}", whatever country the trip is in. `
+        : `Price it in the currency of the country where the trip is taking place, not any other currency. `) +
       `This quote is always full payment upfront, no deposit option — don't mention a deposit or part-payment in customer_notes. ` +
       `If the trip has a return leg on the same day, the vehicle and driver are committed for the whole time between the ` +
       `outbound drop-off and the return pickup, not just the two drive legs — price it as a day-hire/waiting-time job at ` +
@@ -226,6 +234,9 @@ export async function estimatePricing(
   // something that ends up on a real invoice.
   const code = parsed.currency?.toUpperCase().trim();
   parsed.currency = code && CURRENCY_CODE_RE.test(code) ? code : "USD";
+  // A configured quote currency is the last word — the prompt asks for it,
+  // this guarantees the quote is recorded in it.
+  if (fixedCurrency && CURRENCY_CODE_RE.test(fixedCurrency)) parsed.currency = fixedCurrency;
 
   // Defensive floor — never let a malformed/zero response through to a real
   // customer-facing quote. A genuinely bad estimate throws and is retried
@@ -381,12 +392,12 @@ export async function createAndSendQuote(
   const realDistanceKm = legDistance ? (lead.return_trip ? Math.round(legDistance.distanceKm * 2 * 10) / 10 : legDistance.distanceKm) : undefined;
   const realDurationMinutes = legDistance ? (lead.return_trip ? legDistance.durationMinutes * 2 : legDistance.durationMinutes) : undefined;
 
-  // Priced in the currency of the country the trip actually happens in
-  // (the AI works this out from pickup/destination, falling back to USD if
-  // it can't tell), not the brand's own default_currency — a UK-registered
-  // brand quoting a coach hire in Thailand should show THB, not GBP.
   const aiModel = await getAiModelSetting(admin, lead.tenant_id, "pricing_engine");
-  const pricing = await estimatePricing(lead, brand.name, aiModel, { realDistanceKm, realDurationMinutes });
+  // Always priced in the tenant's configured AI quote currency (Settings ->
+  // AI Assistant, default USD, 0109_ai_quote_currency.sql) — the customer
+  // still sees their own local currency on the quote page.
+  const { data: currencyRow } = await admin.from("tenants").select("ai_quote_currency").eq("id", lead.tenant_id).maybeSingle();
+  const pricing = await estimatePricing(lead, brand.name, aiModel, { realDistanceKm, realDurationMinutes, currency: currencyRow?.ai_quote_currency ?? "USD" });
   const currency = pricing.currency;
 
   // Settings -> AI Assistant's "price increase" — applied on top of
@@ -492,7 +503,9 @@ export async function createAndSendQuote(
       selling_price: pricing.selling_price.toFixed(2),
       link: publicLink,
     },
-    attachments: quotePdf ? [{ filename: `${quote.quote_number}.pdf`, content: quotePdf, contentType: "application/pdf" }] : undefined,
+    // No PDF attached on purpose — it shows the price, and the email deliberately
+    // doesn't, so the customer opens the quote page to see it (0108_hide_price_in_quote_emails.sql).
+    // The PDF is still generated and archived on the quote below.
     // Without this, every AI-auto-sent quote falls back to the shared
     // SMTP_FROM sender — even though "Andy I" (aiProfileId) has its own
     // connected mailbox (email_accounts) like any other rep, it just never

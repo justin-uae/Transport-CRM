@@ -16,6 +16,7 @@
     "@supabase/ssr": "0.5.1",
     "@supabase/supabase-js": "2.45.4",
     "clsx": "^2.1.1",
+    "geoip-country": "5.0.202610070241",
     "html-to-text": "^10.0.1",
     "imapflow": "^1.6.5",
     "lucide-react": "^0.451.0",

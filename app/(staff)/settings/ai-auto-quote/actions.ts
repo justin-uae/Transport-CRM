@@ -4,11 +4,14 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { requireProfile } from "@/lib/auth";
 import { recordAudit } from "@/lib/audit";
+import { CURRENCIES } from "@/lib/currencies";
 
 export interface AiAutoQuoteSettingsInput {
   enabled: boolean;
   slaHours: number;
   markupPercent: number;
+  /** ISO currency every AI-priced quote is created in — 0109_ai_quote_currency.sql. */
+  quoteCurrency: string;
   /** Instant quote for a brand-new lead, per source — 0094 (WhatsApp), 0106 (website/email/manual). */
   whatsappAutoQuoteEnabled: boolean;
   websiteAutoQuoteEnabled: boolean;
@@ -17,7 +20,7 @@ export interface AiAutoQuoteSettingsInput {
 }
 
 export async function updateAiAutoQuoteSettingsAction(input: AiAutoQuoteSettingsInput) {
-  const { enabled, slaHours, markupPercent, whatsappAutoQuoteEnabled, websiteAutoQuoteEnabled, emailAutoQuoteEnabled, manualAutoQuoteEnabled } = input;
+  const { enabled, slaHours, markupPercent, quoteCurrency, whatsappAutoQuoteEnabled, websiteAutoQuoteEnabled, emailAutoQuoteEnabled, manualAutoQuoteEnabled } = input;
   const actor = await requireProfile();
   // tenants_update's RLS policy (0001_foundation.sql) is is_master_admin()
   // only, so this mirrors that at the app layer rather than introducing a
@@ -30,6 +33,10 @@ export async function updateAiAutoQuoteSettingsAction(input: AiAutoQuoteSettings
   }
   if (!Number.isFinite(markupPercent) || markupPercent < 0 || markupPercent > 100) {
     return { error: "Enter a price increase between 0 and 100%." };
+  }
+  const currencyCode = quoteCurrency.trim().toUpperCase();
+  if (!CURRENCIES.some((c) => c.code === currencyCode)) {
+    return { error: "Pick a currency for AI quotes." };
   }
   const supabase = await createClient();
 
@@ -59,6 +66,7 @@ export async function updateAiAutoQuoteSettingsAction(input: AiAutoQuoteSettings
       email_auto_quote_enabled: emailAutoQuoteEnabled,
       manual_auto_quote_enabled: manualAutoQuoteEnabled,
       ai_auto_quote_markup_percent: markupPercent,
+      ai_quote_currency: currencyCode,
     })
     .eq("id", actor.tenant_id);
   if (error) return { error: error.message };
@@ -69,7 +77,7 @@ export async function updateAiAutoQuoteSettingsAction(input: AiAutoQuoteSettings
     action: "ai_auto_quote_settings_updated",
     entityType: "tenant",
     entityId: actor.tenant_id,
-    newValue: { enabled, slaHours: Math.round(slaHours), markupPercent, whatsappAutoQuoteEnabled, websiteAutoQuoteEnabled, emailAutoQuoteEnabled, manualAutoQuoteEnabled },
+    newValue: { enabled, slaHours: Math.round(slaHours), markupPercent, quoteCurrency: currencyCode, whatsappAutoQuoteEnabled, websiteAutoQuoteEnabled, emailAutoQuoteEnabled, manualAutoQuoteEnabled },
   });
 
   revalidatePath("/settings/ai-auto-quote");

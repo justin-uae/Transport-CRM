@@ -31,8 +31,17 @@ export async function POST(request: Request) {
     const quoteId = session.metadata?.quoteId;
     if (quoteId && session.payment_status === "paid") {
       const admin = createAdminClient();
-      const currency = (session.currency ?? "eur").toUpperCase();
-      const amount = fromStripeAmount(session.amount_total ?? 0, currency);
+      const chargedCurrency = (session.currency ?? "eur").toUpperCase();
+      const chargedAmount = fromStripeAmount(session.amount_total ?? 0, chargedCurrency);
+      // A card payment taken in the customer's local currency (lib/localCurrency.ts)
+      // is recorded at what it's worth in the quote's own currency, as fixed
+      // when the checkout was created — so the quote's balance stays exact
+      // regardless of the conversion. Older sessions without this metadata
+      // were always charged in the quote's currency already.
+      const quoteCurrencyAmount = Number(session.metadata?.quote_currency_amount);
+      const converted = !!session.metadata?.quote_currency && Number.isFinite(quoteCurrencyAmount) && quoteCurrencyAmount > 0;
+      const currency = converted ? session.metadata!.quote_currency! : chargedCurrency;
+      const amount = converted ? quoteCurrencyAmount : chargedAmount;
       const result = await recordCustomerPayment(admin, {
         quoteId,
         amount,
@@ -52,7 +61,7 @@ export async function POST(request: Request) {
             action: "quote_payment_received_stripe",
             entityType: "quote",
             entityId: quoteId,
-            newValue: { amount, status: result.status },
+            newValue: { amount, currency, status: result.status, chargedAmount, chargedCurrency },
           });
         }
       }

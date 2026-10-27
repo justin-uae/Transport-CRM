@@ -6,6 +6,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { recordAudit } from "@/lib/audit";
 import { getStripeClient, toStripeAmount } from "@/lib/stripe";
 import { amountDueNow } from "@/lib/quotePayments";
+import { resolveDisplayCurrency, convertForDisplay } from "@/lib/localCurrency";
 import { sendTemplatedEmail } from "@/lib/emailTemplates";
 import { sendWhatsAppTemplate, normalizeWhatsAppNumber, WHATSAPP_TEMPLATE_HEADER_IMAGE_URL } from "@/lib/whatsapp360";
 import { formatDateAndTime } from "@/lib/formatDate";
@@ -83,7 +84,16 @@ export async function choosePaymentMethodAction(token: string, method: "stripe" 
   return { error: null };
 }
 
-export async function createStripeCheckoutAction(token: string) {
+/**
+ * Card checkout for whatever is due now. `displayCurrency` is the currency
+ * the quote page was showing (the customer's local one — lib/localCurrency.ts);
+ * the amount is re-converted here server-side from the quote's own figures,
+ * never taken from the browser. The quote-currency amount rides along in the
+ * session metadata so the webhook records the payment in the quote's own
+ * currency and the balance stays exact. If Stripe won't take that currency,
+ * it falls back to charging in the quote's currency.
+ */
+export async function createStripeCheckoutAction(token: string, displayCurrency?: string) {
   const admin = createAdminClient();
   const quote = await loadPayableQuote(admin, token);
   if (!quote || !PAYABLE.has(quote.status)) {
@@ -129,6 +139,7 @@ export async function createStripeCheckoutAction(token: string) {
   // Payment itself (Dashboard → Payments, and on receipts) — previously
   // neither was set beyond a bare quoteId, so a payment showed almost no
   // context about which job it was for.
+  const display = await resolveDisplayCurrency(quote.currency, displayCurrency ?? quote.currency);
   const stripeMetadata = {
     quoteId: quote.id,
     quote_number: quote.quote_number,
@@ -139,9 +150,16 @@ export async function createStripeCheckoutAction(token: string) {
   const description = `Quote ${quote.quote_number} — Sales rep: ${salesRep} — ${itinerary}`.slice(0, 1000);
 
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "";
-  try {
-    const stripe = getStripeClient();
-    const session = await stripe.checkout.sessions.create({
+  const stripe = getStripeClient();
+  // What this payment is worth in the quote's own currency — read back by the webhook.
+  const chargeMetadata = (chargeCurrency: string, chargeAmount: number) => ({
+    quote_currency: quote.currency,
+    quote_currency_amount: due.toFixed(2),
+    charged_currency: chargeCurrency,
+    charged_amount: String(chargeAmount),
+  });
+  const createSession = (chargeCurrency: string, chargeAmount: number) =>
+    stripe.checkout.sessions.create({
       mode: "payment",
       // Pinned to card so payment always confirms synchronously at checkout
       // — leaving this to Stripe's automatic payment methods could enable a
@@ -153,8 +171,8 @@ export async function createStripeCheckoutAction(token: string) {
       line_items: [
         {
           price_data: {
-            currency: quote.currency,
-            unit_amount: toStripeAmount(due, quote.currency),
+            currency: chargeCurrency,
+            unit_amount: toStripeAmount(chargeAmount, chargeCurrency),
             product_data: {
               name: `Quote ${quote.quote_number} — ${paymentLabel}`,
               description: itinerary,
@@ -165,9 +183,20 @@ export async function createStripeCheckoutAction(token: string) {
       ],
       success_url: `${appUrl}/q/${token}?payment=success`,
       cancel_url: `${appUrl}/q/${token}?payment=cancelled`,
-      metadata: stripeMetadata,
-      payment_intent_data: { description, metadata: stripeMetadata },
+      metadata: { ...stripeMetadata, ...chargeMetadata(chargeCurrency, chargeAmount) },
+      payment_intent_data: { description, metadata: { ...stripeMetadata, ...chargeMetadata(chargeCurrency, chargeAmount) } },
     });
+
+  try {
+    if (display.converted) {
+      try {
+        const session = await createSession(display.currency, convertForDisplay(due, display));
+        return { error: null, url: session.url };
+      } catch (err) {
+        console.error(`createStripeCheckoutAction: ${display.currency} checkout failed for ${quote.quote_number}, falling back to ${quote.currency}:`, err);
+      }
+    }
+    const session = await createSession(quote.currency, due);
     return { error: null, url: session.url };
   } catch (err) {
     return { error: err instanceof Error ? err.message : "Could not start the Stripe checkout.", url: null };

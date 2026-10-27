@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { useToast } from "@/components/ui/Toast";
 import { updateAiAutoQuoteSettingsAction } from "./actions";
+import { CURRENCIES } from "@/lib/currencies";
 
 type InstantSource = "whatsapp" | "website" | "email" | "manual";
 
@@ -34,17 +35,20 @@ export function AiAutoQuoteForm({
   initialSlaHours,
   initialInstant,
   initialMarkupPercent,
+  initialQuoteCurrency,
 }: {
   initialEnabled: boolean;
   initialSlaHours: number;
   initialInstant: Record<InstantSource, boolean>;
   initialMarkupPercent: number;
+  initialQuoteCurrency: string;
 }) {
   const notify = useToast();
   const [enabled, setEnabled] = useState(initialEnabled);
   const [slaHours, setSlaHours] = useState(String(initialSlaHours));
   const [instant, setInstant] = useState(initialInstant);
   const [markupPercent, setMarkupPercent] = useState(String(initialMarkupPercent));
+  const [quoteCurrency, setQuoteCurrency] = useState(initialQuoteCurrency);
   const [pending, startTransition] = useTransition();
 
   function save() {
@@ -53,6 +57,7 @@ export function AiAutoQuoteForm({
         enabled,
         slaHours: Number(slaHours),
         markupPercent: Number(markupPercent),
+        quoteCurrency,
         whatsappAutoQuoteEnabled: instant.whatsapp,
         websiteAutoQuoteEnabled: instant.website,
         emailAutoQuoteEnabled: instant.email,
@@ -116,6 +121,28 @@ export function AiAutoQuoteForm({
           disabled={!enabled}
           className="mt-2 w-32 rounded-xl border px-3 py-2.5 text-sm font-semibold disabled:opacity-50"
         />
+      </div>
+
+      <div>
+        <label className="block text-sm font-bold" htmlFor="ai-quote-currency">
+          Currency for AI quotes
+        </label>
+        <p className="mt-1 text-xs text-slate-500">
+          Every quote AI creates — from the time limit, an instant quote, or an assign-to-AI — is priced in this currency. Customers still see
+          their own local currency on the quote page. Default USD.
+        </p>
+        <select
+          id="ai-quote-currency"
+          value={quoteCurrency}
+          onChange={(e) => setQuoteCurrency(e.target.value)}
+          className="mt-2 w-full max-w-xs rounded-xl border px-3 py-2.5 text-sm font-semibold"
+        >
+          {CURRENCIES.map((c) => (
+            <option key={c.code} value={c.code}>
+              {c.code} — {c.name}
+            </option>
+          ))}
+        </select>
       </div>
 
       <div className="space-y-2 border-t pt-5">

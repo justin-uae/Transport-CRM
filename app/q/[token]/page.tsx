@@ -5,6 +5,7 @@ import { amountDueNow } from "@/lib/quotePayments";
 import { formatDateTime, formatDate } from "@/lib/formatDate";
 import { JourneyLegDetail, type JourneyLeg } from "@/components/pages/JourneyLegDetail";
 import { RichText } from "@/components/ui/RichText";
+import { resolveDisplayCurrency, detectVisitorCurrency, convertForDisplay } from "@/lib/localCurrency";
 import { vatBreakdown, formatVatRate } from "@/lib/vat";
 import { QuoteDecisionButtons } from "./QuoteDecisionButtons";
 import { PaymentChooser, type BankAccountRow } from "./PaymentChooser";
@@ -44,8 +45,16 @@ interface MilestoneRow {
 const DECIDABLE = new Set(["sent", "viewed"]);
 const AWAITING_PAYMENT = new Set(["accepted", "partially_paid"]);
 
-export default async function PublicQuotePage({ params }: { params: Promise<{ token: string }> }) {
+export default async function PublicQuotePage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ token: string }>;
+  /** ?currency= — the customer's own pick from the currency switcher below, overriding the IP-detected one. */
+  searchParams: Promise<{ currency?: string }>;
+}) {
   const { token } = await params;
+  const { currency: requestedCurrency } = await searchParams;
   const admin = createAdminClient();
 
   const { data: quote } = await admin
@@ -88,8 +97,17 @@ export default async function PublicQuotePage({ params }: { params: Promise<{ to
   );
   const version = quote.quote_versions as unknown as VersionRow | null;
   const brand = version?.brand_snapshot;
-  const money = (amount: number) =>
-    new Intl.NumberFormat("en-GB", { style: "currency", currency: quote.currency, maximumFractionDigits: 2 }).format(amount);
+  // Every amount on this page is shown in the customer's local currency
+  // (from their IP, or their own pick via ?currency=), converted from the
+  // quote's own currency at today's rate — see lib/localCurrency.ts. Card
+  // checkout charges that same converted amount. Bank transfer stays in the
+  // quote's currency (the bank details are per currency), so it gets its own
+  // unconverted label.
+  const [display, localCurrency] = await Promise.all([resolveDisplayCurrency(quote.currency, requestedCurrency), detectVisitorCurrency()]);
+  const format = (amount: number, currency: string) =>
+    new Intl.NumberFormat("en-GB", { style: "currency", currency, maximumFractionDigits: 2 }).format(amount);
+  const money = (amount: number) => format(convertForDisplay(amount, display), display.currency);
+  const quoteMoney = (amount: number) => format(amount, quote.currency);
 
   const amountPaid = ((quote.customer_payments as unknown as { amount: number }[] | null) ?? []).reduce((sum, p) => sum + Number(p.amount), 0);
   const milestones = [...((quote.quote_payment_milestones as unknown as MilestoneRow[] | null) ?? [])].sort((a, b) => a.sequence - b.sequence);
@@ -164,6 +182,22 @@ export default async function PublicQuotePage({ params }: { params: Promise<{ to
                 <span className="text-slate-500">{version && version.vat_rate > 0 ? "Total incl. VAT" : "Total"}</span>
                 <b className="text-lg text-primary-600">{version ? money(version.selling_price) : "—"}</b>
               </div>
+              {version && display.converted && (
+                <p className="text-xs text-slate-500">
+                  Prices shown in {display.currency}, converted from {quoteMoney(version.selling_price)} at today's exchange rate — card payments are charged in{" "}
+                  {display.currency}.{" "}
+                  <a href={`?currency=${quote.currency}`} className="font-bold text-primary-600 hover:underline">
+                    Show in {quote.currency}
+                  </a>
+                </p>
+              )}
+              {version && !display.converted && localCurrency && localCurrency !== quote.currency && (
+                <p className="text-xs text-slate-500">
+                  <a href={`?currency=${localCurrency}`} className="font-bold text-primary-600 hover:underline">
+                    Show prices in {localCurrency}
+                  </a>
+                </p>
+              )}
             </div>
 
             {milestones.length > 0 && (
@@ -209,6 +243,8 @@ export default async function PublicQuotePage({ params }: { params: Promise<{ to
                 <PaymentChooser
                   token={token}
                   amountDueLabel={money(amountDue)}
+                  bankAmountDueLabel={quoteMoney(amountDue)}
+                  checkoutCurrency={display.currency}
                   stripeAvailable={version.payment_methods.stripe}
                   bankTransferAvailable={version.payment_methods.bank_transfer}
                   bankAccounts={bankAccounts}
