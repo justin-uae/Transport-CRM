@@ -11,18 +11,23 @@ import type { QuoteStatus } from "@/lib/supabase/database.types";
 
 export type LeadSortKey = "travel_desc" | "travel_asc";
 export type LostQuoteSortKey = "decided_desc" | "decided_asc" | "value_desc" | "value_asc";
+export type LostFilterKey = "all" | "expired_leads" | "rejected" | "expired_quotes" | "cancelled";
 
-const LEAD_SORT_OPTIONS = [
-  { value: "travel_desc", label: "Most recently expired" },
-  { value: "travel_asc", label: "Oldest first" },
+const FILTER_OPTIONS: { value: LostFilterKey; label: string }[] = [
+  { value: "all", label: "All lost bookings" },
+  { value: "expired_leads", label: "Expired leads" },
+  { value: "rejected", label: "Rejected quotes" },
+  { value: "expired_quotes", label: "Expired quotes" },
+  { value: "cancelled", label: "Cancelled bookings" },
 ];
 
-const QUOTE_SORT_OPTIONS = [
-  { value: "decided_desc", label: "Most recently lost" },
-  { value: "decided_asc", label: "Oldest first" },
-  { value: "value_desc", label: "Highest value" },
-  { value: "value_asc", label: "Lowest value" },
-];
+// Quote status each filter keeps; "all" keeps every lost status and
+// "expired_leads" hides the quotes section entirely.
+const FILTER_QUOTE_STATUS: Partial<Record<LostFilterKey, QuoteStatus>> = {
+  rejected: "rejected",
+  expired_quotes: "expired",
+  cancelled: "cancelled",
+};
 
 export interface LostBookingQuote {
   id: string;
@@ -62,7 +67,21 @@ function money(amount: number | undefined | null, currency: string) {
   return new Intl.NumberFormat("en-GB", { style: "currency", currency, maximumFractionDigits: 0 }).format(amount);
 }
 
-export function BookingsLostPage({ quotes, expiredLeads }: { quotes: LostBookingQuote[]; expiredLeads: ExpiredLead[] }) {
+export function BookingsLostPage({
+  quotes: allQuotes,
+  expiredLeads,
+  filter,
+}: {
+  quotes: LostBookingQuote[];
+  expiredLeads: ExpiredLead[];
+  filter: LostFilterKey;
+}) {
+  const showLeads = filter === "all" || filter === "expired_leads";
+  const showQuotes = filter !== "expired_leads";
+  const quoteStatus = FILTER_QUOTE_STATUS[filter];
+  const quotes = quoteStatus ? allQuotes.filter((q) => q.status === quoteStatus) : allQuotes;
+  const quotesHeading = (quoteStatus && FILTER_OPTIONS.find((o) => o.value === filter)?.label) || "Lost Quotes";
+
   return (
     <div>
       <PageHead
@@ -73,9 +92,13 @@ export function BookingsLostPage({ quotes, expiredLeads }: { quotes: LostBooking
       />
       <BookingTabs active="lost" />
       <Panel>
+        <div className="mb-5 flex justify-end">
+          <SortSelect options={FILTER_OPTIONS} paramName="show" />
+        </div>
+        {showLeads && (
+        <>
         <div className="flex flex-wrap items-center justify-between gap-2 border-b pb-4">
           <h3 className="text-sm font-black uppercase tracking-wide text-slate-500">Expired Leads</h3>
-          <SortSelect options={LEAD_SORT_OPTIONS} paramName="leadSort" />
         </div>
         <div className="mt-4 space-y-3">
           {expiredLeads.map((l) => (
@@ -106,10 +129,13 @@ export function BookingsLostPage({ quotes, expiredLeads }: { quotes: LostBooking
           ))}
           {expiredLeads.length === 0 && <p className="py-4 text-center text-sm text-slate-500">No expired leads.</p>}
         </div>
+        </>
+        )}
 
-        <div className="mt-6 flex flex-wrap items-center justify-between gap-2 border-b pb-4">
-          <h3 className="text-sm font-black uppercase tracking-wide text-slate-500">Lost Quotes</h3>
-          <SortSelect options={QUOTE_SORT_OPTIONS} paramName="quoteSort" />
+        {showQuotes && (
+        <>
+        <div className={`${showLeads ? "mt-6 " : ""}flex flex-wrap items-center justify-between gap-2 border-b pb-4`}>
+          <h3 className="text-sm font-black uppercase tracking-wide text-slate-500">{quotesHeading}</h3>
         </div>
         <div className="mt-4 space-y-3">
           {quotes.map((q) => {
@@ -171,8 +197,10 @@ export function BookingsLostPage({ quotes, expiredLeads }: { quotes: LostBooking
               </div>
             );
           })}
-          {quotes.length === 0 && <p className="py-4 text-center text-sm text-slate-500">No lost quotes.</p>}
+          {quotes.length === 0 && <p className="py-4 text-center text-sm text-slate-500">No {quotesHeading.toLowerCase()}.</p>}
         </div>
+        </>
+        )}
       </Panel>
     </div>
   );

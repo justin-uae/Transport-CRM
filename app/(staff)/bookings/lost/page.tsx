@@ -8,10 +8,12 @@ import {
   type LostBookingQuote,
   type LeadSortKey,
   type LostQuoteSortKey,
+  type LostFilterKey,
 } from "@/components/pages/BookingsLostPage";
 
 const LEAD_SORT_KEYS: LeadSortKey[] = ["travel_desc", "travel_asc"];
 const QUOTE_SORT_KEYS: LostQuoteSortKey[] = ["decided_desc", "decided_asc", "value_desc", "value_asc"];
+const FILTER_KEYS: LostFilterKey[] = ["all", "expired_leads", "rejected", "expired_quotes", "cancelled"];
 
 function time(value: string | null | undefined): number {
   return value ? new Date(value).getTime() : 0;
@@ -48,7 +50,7 @@ function sortQuotes(quotes: LostBookingQuote[], sort: LostQuoteSortKey): LostBoo
   return sorted;
 }
 
-export default async function Page({ searchParams }: { searchParams: Promise<{ leadSort?: string; quoteSort?: string }> }) {
+export default async function Page({ searchParams }: { searchParams: Promise<{ leadSort?: string; quoteSort?: string; show?: string }> }) {
   const params = await searchParams;
   await requireProfile();
   const supabase = await createClient();
@@ -59,6 +61,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ l
   const quoteSort: LostQuoteSortKey = (QUOTE_SORT_KEYS as string[]).includes(params.quoteSort ?? "")
     ? (params.quoteSort as LostQuoteSortKey)
     : "decided_desc";
+  const filter: LostFilterKey = (FILTER_KEYS as string[]).includes(params.show ?? "") ? (params.show as LostFilterKey) : "all";
 
   const { data: expiredLeads } = await supabase
     .from("leads")
@@ -78,6 +81,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ l
     <BookingsLostPage
       quotes={sortQuotes((quotes ?? []) as unknown as LostBookingQuote[], quoteSort)}
       expiredLeads={sortLeads((expiredLeads ?? []) as unknown as ExpiredLead[], leadSort)}
+      filter={filter}
     />
   );
 }
