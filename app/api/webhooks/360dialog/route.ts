@@ -14,6 +14,7 @@ import {
 } from "@/lib/whatsappAiIntake";
 import { createAndSendQuote, getAiProfileId, LEAD_FOR_SWEEP_COLUMNS, type LeadForSweep } from "@/lib/aiAutoQuote";
 import { getAiModelSetting } from "@/lib/aiProviders";
+import { touchConversationOnInbound } from "@/lib/whatsappConversations";
 
 // Inbound WhatsApp -> lead creation via 360dialog (a WhatsApp Business
 // Solution Provider built directly on Meta's Cloud API — same webhook
@@ -168,6 +169,32 @@ async function logInboundIfNew(
   return true;
 }
 
+/** Every message exchanged with this contact since the intake session began,
+    oldest first, as model turns — inbound -> user, any outbound (AI or a
+    sales user's reply) -> assistant. Excludes the message being answered
+    now (passed to the model separately) and sends WhatsApp rejected. Null
+    on a read error, so the caller falls back to the session's own turns. */
+async function loadSessionTranscript(
+  admin: AdminClient,
+  brand: Brand,
+  waId: string,
+  sinceIso: string,
+  currentWaMessageId: string,
+): Promise<ConversationMessage[] | null> {
+  const { data, error } = await admin
+    .from("whatsapp_messages")
+    .select("direction, body, wa_message_id, delivery_status, created_at")
+    .eq("tenant_id", brand.tenant_id)
+    .eq("wa_id", waId)
+    .gte("created_at", sinceIso)
+    .order("created_at", { ascending: true })
+    .limit(MAX_INTAKE_MESSAGES * 3);
+  if (error || !data) return null;
+  return (data as { direction: string; body: string; wa_message_id: string | null; delivery_status: string | null }[])
+    .filter((m) => m.wa_message_id !== currentWaMessageId && m.delivery_status !== "failed")
+    .map((m) => ({ role: m.direction === "inbound" ? "user" : "assistant", content: m.body }));
+}
+
 /** Matches the "I don't have one" sentinel the AI records for a declined
     field (email or notes, see lib/whatsappAiIntake.ts's system prompt) —
     shared so both fields strip it back to a real null the same way before
@@ -313,6 +340,21 @@ async function handleInboundMessage(admin: AdminClient, brand: Brand, waId: stri
   const isNewMessage = await logInboundIfNew(admin, brand, waId, customerId, inboundText, message.type, message.id);
   if (!isNewMessage) return; // redelivered webhook for a message we've already answered
 
+  // Refreshing the conversation row is also what pops the "take over" alert
+  // for sales users (realtime), and auto-assigns a chat to whoever already
+  // quoted this number. While a sales user has taken the chat over, the AI
+  // stays silent — the message is logged above and the human replies from
+  // the WhatsApp tab.
+  const conversation = await touchConversationOnInbound(admin, {
+    tenantId: brand.tenant_id,
+    brandId: brand.id,
+    customerId,
+    waId,
+    contactName: existingCustomer?.contact_name || contactName,
+    preview: inboundText,
+  });
+  if (conversation?.ai_paused) return;
+
   const aiModel = await getAiModelSetting(admin, brand.tenant_id, "whatsapp_intake");
 
   const { data: lastSession } = await admin
@@ -388,9 +430,15 @@ async function handleInboundMessage(admin: AdminClient, brand: Brand, waId: stri
     return;
   }
 
+  // The model reads the real WhatsApp log for this session, not just its own
+  // stored turns, so anything a sales user said while they had the chat taken
+  // over (and the customer's answers to them) is in context once the chat is
+  // handed back to the AI — it won't re-ask what a human already covered.
+  const transcript = (await loadSessionTranscript(admin, brand, waId, session.created_at, message.id)) ?? history;
+
   let result;
   try {
-    result = await runIntakeTurn(brand.name, history, session.collected ?? {}, inboundText, aiModel);
+    result = await runIntakeTurn(brand.name, transcript, session.collected ?? {}, inboundText, aiModel);
   } catch (err) {
     console.error(`360dialog webhook: AI intake turn failed for ${waId}:`, err);
     const fallback = "Sorry, I'm having trouble replying right now — someone from our team will follow up with you shortly.";

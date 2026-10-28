@@ -35,6 +35,7 @@ import type { JobOfferStatus, JobStatus, JobSupplierInvoice, SupplierPaymentStat
 import type { SupplierOption } from "@/components/pages/DispatchBoard";
 import type { RouteDistance } from "@/lib/tripDistance";
 import { SendEmailButton } from "@/components/ui/SendEmailButton";
+import { WhatsAppLink } from "@/components/ui/WhatsAppLink";
 
 type DispatchLeg = JourneyLeg & { id: string };
 
@@ -50,7 +51,7 @@ export interface JobDetailRow {
     status: QuoteStatus;
     quote_number: string;
     currency: string;
-    customers: { company_name: string | null; contact_name: string; phone: string | null; email: string | null } | null;
+    customers: { company_name: string | null; contact_name: string; phone: string | null; whatsapp: string | null; email: string | null } | null;
     enquiries: { assigned_user_id: string | null; enquiry_legs: DispatchLeg[] } | null;
     quote_versions: { selling_price: number; supplier_estimated_cost: number | null } | null;
     profiles: { full_name: string } | null;
@@ -79,7 +80,7 @@ export interface JobAllocationRow {
   confirmed_at: string | null;
   completed_at: string | null;
   created_at: string;
-  suppliers: { id: string; name: string; region: string | null; phone: string | null; email: string | null } | null;
+  suppliers: { id: string; name: string; region: string | null; phone: string | null; whatsapp: string | null; email: string | null } | null;
   job_allocation_legs: { enquiry_leg_id: string }[];
   job_allocation_offers: {
     id: string;
@@ -357,9 +358,12 @@ function AllocationCard({
       )}
 
       {allocation.suppliers && (
-        <div className="mt-3 rounded-xl bg-emerald-50 px-4 py-3 text-sm font-bold text-emerald-700">
-          Assigned to {allocation.suppliers.name}
-          {allocation.suppliers.phone && ` · ${allocation.suppliers.phone}`}
+        <div className="mt-3 flex flex-wrap items-center gap-2 rounded-xl bg-emerald-50 px-4 py-3 text-sm font-bold text-emerald-700">
+          <span>
+            Assigned to {allocation.suppliers.name}
+            {allocation.suppliers.phone && ` · ${allocation.suppliers.phone}`}
+          </span>
+          <WhatsAppLink number={allocation.suppliers.whatsapp || allocation.suppliers.phone} />
         </div>
       )}
 
@@ -835,7 +839,10 @@ export function DispatchJobDetail({
               </div>
               <div>
                 <dt className="text-xs font-bold uppercase text-slate-400">Customer contact</dt>
-                <dd className="mt-0.5 font-semibold">{customer?.phone || customer?.email || "—"}</dd>
+                <dd className="mt-0.5 flex items-center gap-2 font-semibold">
+                  {customer?.phone || customer?.email || "—"}
+                  <WhatsAppLink number={customer?.whatsapp || customer?.phone} />
+                </dd>
               </div>
               <div>
                 <dt className="text-xs font-bold uppercase text-slate-400">Sales rep</dt>

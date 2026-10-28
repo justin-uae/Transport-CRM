@@ -184,7 +184,8 @@ export const NAV: NavItem[] = [
   { label: "Complaints", href: "/complaints", icon: MessageSquareWarning, group: "operations", anyOf: WORKSPACE },
   { label: "Incidents", href: "/incidents", icon: TriangleAlert, group: "operations", anyOf: WORKSPACE },
   { label: "Email Centre", href: "/email", icon: Mail, group: "communications", anyOf: WORKSPACE },
-  { label: "WhatsApp", href: "/whatsapp", icon: MessageCircle, group: "communications", masterAdminOnly: true },
+  // Sales users see only their own chats (0113_whatsapp_sales_takeover.sql).
+  { label: "WhatsApp", href: "/whatsapp", icon: MessageCircle, group: "communications", anyOf: [PERMISSIONS.ENQUIRIES_CLAIM_OPEN_LEADS] },
   { label: "Calls", href: "/calls", icon: Phone, group: "communications", anyOf: WORKSPACE },
   { label: "Team Chat", href: "/team-chat", icon: MessagesSquare, group: "communications", anyOf: WORKSPACE },
   { label: "Accounting", href: "/accounting", icon: WalletCards, group: "finance", anyOf: [PERMISSIONS.FINANCE_VIEW_INVOICES] },

@@ -17,14 +17,14 @@ export default async function DispatchJobDetailPage({ params }: { params: Promis
     supabase
       .from("jobs")
       .select(
-        "id, status, region, created_at, created_by, quotes(id, status, quote_number, currency, customers(company_name, contact_name, phone, email), enquiries(assigned_user_id, enquiry_legs(id, sequence, journey_type, pickup_address, destination_address, via_points, pickup_date, pickup_time, return_date, return_time, passenger_count, luggage_count, wheelchair_required, child_seats, special_requirements, vehicle_types(name))), quote_versions!quotes_current_version_id_fkey(selling_price, supplier_estimated_cost), profiles!quotes_created_by_fkey(full_name))",
+        "id, status, region, created_at, created_by, quotes(id, status, quote_number, currency, customers(company_name, contact_name, phone, whatsapp, email), enquiries(assigned_user_id, enquiry_legs(id, sequence, journey_type, pickup_address, destination_address, via_points, pickup_date, pickup_time, return_date, return_time, passenger_count, luggage_count, wheelchair_required, child_seats, special_requirements, vehicle_types(name))), quote_versions!quotes_current_version_id_fkey(selling_price, supplier_estimated_cost), profiles!quotes_created_by_fkey(full_name))",
       )
       .eq("id", id)
       .single(),
     supabase
       .from("job_allocations")
       .select(
-        "id, status, assigned_supplier_id, vehicle_notes, agreed_cost, currency, supplier_payment_status, manual_invoice_note, manual_invoice_url, offered_at, confirmed_at, completed_at, created_at, suppliers(id, name, region, phone, email), job_allocation_legs(enquiry_leg_id), job_allocation_offers(id, status, offered_at, responded_at, suppliers(id, name, region)), job_supplier_invoices(*), supplier_payments(id, amount, currency, bank_reference, paid_at)",
+        "id, status, assigned_supplier_id, vehicle_notes, agreed_cost, currency, supplier_payment_status, manual_invoice_note, manual_invoice_url, offered_at, confirmed_at, completed_at, created_at, suppliers(id, name, region, phone, whatsapp, email), job_allocation_legs(enquiry_leg_id), job_allocation_offers(id, status, offered_at, responded_at, suppliers(id, name, region)), job_supplier_invoices(*), supplier_payments(id, amount, currency, bank_reference, paid_at)",
       )
       .eq("job_id", id)
       .order("created_at", { ascending: true }),

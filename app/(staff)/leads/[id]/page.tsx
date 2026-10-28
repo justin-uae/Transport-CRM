@@ -17,7 +17,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
   const { data: lead } = await supabase
     .from("leads")
     .select(
-      "id, source, status, priority, pickup_text, destination_text, travel_date, pickup_time, return_trip, return_date, return_time, passenger_count, luggage_count, is_complex_booking, vehicle_requested, notes, assigned_user_id, created_at, customer_id, customers(id, company_name, contact_name, phone, email), profiles(full_name), brands(name)",
+      "id, source, status, priority, pickup_text, destination_text, travel_date, pickup_time, return_trip, return_date, return_time, passenger_count, luggage_count, is_complex_booking, vehicle_requested, notes, assigned_user_id, created_at, customer_id, customers(id, company_name, contact_name, phone, whatsapp, email), profiles(full_name), brands(name)",
     )
     .eq("id", id)
     .maybeSingle();

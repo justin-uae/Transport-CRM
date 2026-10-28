@@ -16,6 +16,7 @@ import { ConfirmDetailModal } from "@/components/ui/ConfirmDetailModal";
 import { FormattedText } from "@/components/ui/FormattedText";
 import { NewLeadMenu } from "@/components/ui/NewLeadMenu";
 import { PageGuide } from "@/components/ui/PageGuide";
+import { WhatsAppLink } from "@/components/ui/WhatsAppLink";
 import { LeadsDiagram } from "@/components/ui/guide-diagrams/LeadsDiagram";
 import { claimLeadAction, createEnquiryFromLeadAction, releaseLeadAction, assignLeadAction } from "@/app/(staff)/leads/actions";
 import { formatDate, formatTimeOnly } from "@/lib/formatDate";
@@ -51,7 +52,7 @@ export interface LeadRow {
   notes: string | null;
   assigned_user_id: string | null;
   created_at: string;
-  customers: { company_name: string | null; contact_name: string; phone: string | null; email: string | null } | null;
+  customers: { company_name: string | null; contact_name: string; phone: string | null; whatsapp: string | null; email: string | null } | null;
   profiles: { full_name: string } | null;
   brands: { name: string } | null;
   /** True when lib/aiAutoQuote.ts quoted this lead itself — it has no assigned_user_id by that point (released to the pool first), so without this the Owner column would misread it as still unclaimed. */
@@ -604,7 +605,15 @@ export function LeadsPage({
                 <span className="font-bold text-primary-600">Open pool</span>
               ),
             },
-            { label: "Customer phone", value: detailLead.customers?.phone ?? "—" },
+            {
+              label: "Customer phone",
+              value: (
+                <span className="inline-flex items-center gap-2">
+                  {detailLead.customers?.phone ?? "—"}
+                  <WhatsAppLink number={detailLead.customers?.whatsapp || detailLead.customers?.phone} />
+                </span>
+              ),
+            },
             {
               label: "Customer email",
               value: detailLead.customers?.email ?? <span className="text-amber-600">No email on file</span>,

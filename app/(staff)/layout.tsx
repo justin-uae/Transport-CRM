@@ -30,7 +30,7 @@ export default async function StaffLayout({
   const profile = await requireProfile();
   const supabase = await createClient();
 
-  const [{ data: role }, { brands, activeBrandId }, granted, todaysAttendanceEvents, impersonation] = await Promise.all([
+  const [{ data: role }, { brands, activeBrandId }, granted, todaysAttendanceEvents, impersonation, { data: tenantSettings }] = await Promise.all([
     profile.role_id
       ? supabase.from("roles").select("name").eq("id", profile.role_id).single()
       : Promise.resolve({ data: null }),
@@ -38,6 +38,7 @@ export default async function StaffLayout({
     getGrantedPermissions(profile),
     getEventsSince(supabase, profile.id, startOfTodayIso()),
     getImpersonationBanner(),
+    supabase.from("tenants").select("whatsapp_takeover_enabled").eq("id", profile.tenant_id).maybeSingle(),
   ]);
 
   // Icon components in NAV can't cross the server->client prop boundary
@@ -51,6 +52,11 @@ export default async function StaffLayout({
   const canCreateQuote = granted.has(PERMISSIONS.QUOTES_CREATE);
   const canAddLead = granted.has(PERMISSIONS.ENQUIRIES_ADD);
   const initialAttendance = deriveAttendanceState(todaysAttendanceEvents);
+  // WhatsApp "take over" popups go to sales users only (Master Admin already sees every chat).
+  const whatsappAlertsTenantId =
+    !profile.is_master_admin && tenantSettings?.whatsapp_takeover_enabled && granted.has(PERMISSIONS.ENQUIRIES_CLAIM_OPEN_LEADS)
+      ? profile.tenant_id
+      : null;
   // Sales Users must be clocked in to use the system; being on a break still counts as clocked in.
   const requiresClockIn =
     !profile.is_master_admin &&
@@ -71,6 +77,7 @@ export default async function StaffLayout({
       locked={requiresClockIn}
       impersonation={impersonation}
       navCounts={navCounts}
+      whatsappAlertsTenantId={whatsappAlertsTenantId}
     >
       {children}
     </StaffShell>

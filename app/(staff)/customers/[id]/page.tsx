@@ -8,6 +8,7 @@ import { Panel } from "@/components/ui/Panel";
 import { SectionTitle } from "@/components/ui/SectionTitle";
 import { FormattedText } from "@/components/ui/FormattedText";
 import { SendEmailButton } from "@/components/ui/SendEmailButton";
+import { WhatsAppLink } from "@/components/ui/WhatsAppLink";
 import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { formatDateTime } from "@/lib/formatDate";
@@ -174,9 +175,9 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
           <SectionTitle title="Contact details" sub="How this customer was reached and billed" />
           <div className="mt-4 space-y-2 text-sm">
             <Row label="Email" value={customer.email} />
-            <Row label="Phone" value={customer.phone} />
-            <Row label="Mobile" value={customer.mobile} />
-            <Row label="WhatsApp" value={customer.whatsapp} />
+            <Row label="Phone" value={customer.phone} whatsApp />
+            <Row label="Mobile" value={customer.mobile} whatsApp />
+            <Row label="WhatsApp" value={customer.whatsapp} whatsApp />
             <Row label="Country" value={customer.country} />
             <Row label="Preferred language" value={customer.preferred_language} />
             <Row label="VAT number" value={customer.vat_number} />
@@ -237,11 +238,14 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
   );
 }
 
-function Row({ label, value }: { label: string; value: string | null }) {
+function Row({ label, value, whatsApp = false }: { label: string; value: string | null; whatsApp?: boolean }) {
   return (
     <div className="flex items-center justify-between gap-3 border-b py-1.5 last:border-0">
       <span className="shrink-0 text-slate-500">{label}</span>
-      <span className="truncate whitespace-nowrap text-right font-semibold">{value ?? "—"}</span>
+      <span className="flex min-w-0 items-center gap-2">
+        <span className="truncate whitespace-nowrap text-right font-semibold">{value ?? "—"}</span>
+        {whatsApp && <WhatsAppLink number={value} />}
+      </span>
     </div>
   );
 }

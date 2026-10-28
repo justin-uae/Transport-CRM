@@ -15,6 +15,7 @@ import { CURRENCIES } from "@/lib/currencies";
 import { STRIPE_PRICE_THRESHOLD, paymentMethodsForGbpValue } from "@/lib/quoteMoney";
 import { grossFromNet } from "@/lib/vat";
 import { createQuoteAction } from "./actions";
+import { WhatsAppLink } from "@/components/ui/WhatsAppLink";
 
 const STEPS = ["Enquiry", "Pricing", "Review & Send"];
 const DEPOSIT_CHOICES = [25, 50, 75] as const;
@@ -43,6 +44,7 @@ interface CustomerInfo {
   contactName: string;
   email: string | null;
   phone: string | null;
+  whatsapp: string | null;
   country: string | null;
 }
 
@@ -63,7 +65,10 @@ function CustomerSummary({ customer }: { customer: CustomerInfo }) {
       </div>
       <div>
         <dt className="text-xs font-bold uppercase text-slate-400">Phone</dt>
-        <dd className="mt-0.5 font-semibold">{customer.phone ?? "—"}</dd>
+        <dd className="mt-0.5 flex items-center gap-2 font-semibold">
+          {customer.phone ?? "—"}
+          <WhatsAppLink number={customer.whatsapp || customer.phone} />
+        </dd>
       </div>
       {customer.country && (
         <div className="sm:col-span-2">

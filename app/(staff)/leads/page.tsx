@@ -44,7 +44,7 @@ export default async function Page({
   let listQuery = supabase
     .from("leads")
     .select(
-      "id, source, status, priority, pickup_text, destination_text, travel_date, pickup_time, return_trip, return_date, return_time, passenger_count, luggage_count, is_complex_booking, vehicle_requested, notes, assigned_user_id, created_at, customers(company_name, contact_name, phone, email), profiles(full_name), brands(name), enquiries(quotes(ai_generated))",
+      "id, source, status, priority, pickup_text, destination_text, travel_date, pickup_time, return_trip, return_date, return_time, passenger_count, luggage_count, is_complex_booking, vehicle_requested, notes, assigned_user_id, created_at, customers(company_name, contact_name, phone, whatsapp, email), profiles(full_name), brands(name), enquiries(quotes(ai_generated))",
       { count: "exact" },
     );
 

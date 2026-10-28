@@ -40,6 +40,14 @@ export interface Tenant {
   default_lead_inbox_brand_id: string | null;
   /** Master-Admin-only per-feature AI provider/model picks (Settings -> AI Models, see 0098_ai_model_settings.sql and lib/aiProviders.ts) — keyed by AiFeatureKey ("whatsapp_intake" | "pricing_engine" | "email_intake" | "complex_booking"), each value an {provider, model}. A missing key falls back to OpenAI/gpt-5.5 in code. */
   ai_model_settings: Record<string, { provider: string; model: string }>;
+  /** Settings -> WhatsApp Takeover (Master Admin): during these hours/days, in this timezone, new WhatsApp messages on unowned chats pop up for sales users to take over. See 0113_whatsapp_sales_takeover.sql. */
+  whatsapp_takeover_enabled: boolean;
+  /** "HH:MM[:SS]" local time in whatsapp_takeover_timezone; end before start means an overnight window. */
+  whatsapp_takeover_start: string;
+  whatsapp_takeover_end: string;
+  /** ISO weekdays, 1 = Monday ... 7 = Sunday. */
+  whatsapp_takeover_days: number[];
+  whatsapp_takeover_timezone: string;
   /** IMAP polling cursor for the shared lead-intake inbox — everything before this timestamp has already been swept. */
   email_lead_inbox_synced_since: string;
   created_at: string;
@@ -615,6 +623,30 @@ export interface WhatsAppMessage {
   body: string;
   sent_by: string | null;
   created_at: string;
+}
+
+/** One WhatsApp contact's chat — who owns it and whether the AI is paused. See 0113_whatsapp_sales_takeover.sql. */
+export interface WhatsAppConversation {
+  id: string;
+  tenant_id: string;
+  brand_id: string | null;
+  customer_id: string | null;
+  wa_id: string;
+  contact_name: string | null;
+  owner_id: string | null;
+  /** How the owner got it: a popup takeover, auto-assigned because they quoted this number, or set by Master Admin. */
+  owner_source: "takeover" | "quoted" | "admin" | null;
+  owned_at: string | null;
+  /** True while a human has the chat — the 360dialog webhook doesn't run the AI. */
+  ai_paused: boolean;
+  last_inbound_at: string | null;
+  last_inbound_preview: string | null;
+  /** Latest message either way — kept current by a trigger on whatsapp_messages. */
+  last_message_at: string | null;
+  last_message_preview: string | null;
+  last_message_direction: WhatsAppMessageDirection | null;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface QuoteDecision {
@@ -1281,6 +1313,7 @@ export interface Database {
       email_messages: Table<EmailMessage>;
       email_lead_intake_log: Table<EmailLeadIntakeLog>;
       whatsapp_messages: Table<WhatsAppMessage>;
+      whatsapp_conversations: Table<WhatsAppConversation>;
       commission_plans: Table<CommissionPlan>;
       commissions: Table<Commission>;
       attendance_events: Table<AttendanceEvent>;
@@ -1300,6 +1333,9 @@ export interface Database {
       is_master_admin: { Args: Record<string, never>; Returns: boolean };
       has_permission: { Args: { permission_key: string }; Returns: boolean };
       can_view_assignment: { Args: { p_assigned_user_id: string | null }; Returns: boolean };
+      is_whatsapp_agent: { Args: { p_profile_id: string }; Returns: boolean };
+      whatsapp_takeover_open: { Args: { p_tenant_id: string }; Returns: boolean };
+      whatsapp_quote_owner: { Args: { p_tenant_id: string; p_wa_id: string }; Returns: string | null };
       claim_lead: { Args: { p_lead_id: string }; Returns: Lead };
       release_lead: { Args: { p_lead_id: string }; Returns: Lead };
       accept_job_allocation_offer: { Args: { p_allocation_id: string }; Returns: JobAllocation };

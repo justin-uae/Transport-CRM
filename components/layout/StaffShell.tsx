@@ -7,6 +7,7 @@ import { ToastProvider } from "../ui/Toast";
 import { AttendanceProvider } from "../ui/AttendanceState";
 import { ClockInGate } from "./ClockInGate";
 import { ImpersonationBanner } from "./ImpersonationBanner";
+import { WhatsAppTakeoverAlerts } from "./WhatsAppTakeoverAlerts";
 import type { Brand } from "@/lib/supabase/database.types";
 import type { AttendanceState } from "@/lib/attendanceState";
 
@@ -23,6 +24,7 @@ export function StaffShell({
   locked,
   impersonation,
   navCounts,
+  whatsappAlertsTenantId,
   children,
 }: {
   userName: string;
@@ -38,6 +40,8 @@ export function StaffShell({
   impersonation: { targetName: string; adminName: string } | null;
   /** Sidebar badge numbers keyed by nav href — see lib/navCounts.ts. */
   navCounts: Record<string, number>;
+  /** Set for sales users when WhatsApp takeover is switched on — mounts the new-message popup. */
+  whatsappAlertsTenantId: string | null;
   children: React.ReactNode;
 }) {
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -72,6 +76,7 @@ export function StaffShell({
               {children}
             </div>
           </main>
+          {whatsappAlertsTenantId && !locked && <WhatsAppTakeoverAlerts tenantId={whatsappAlertsTenantId} />}
         </div>
       </AttendanceProvider>
     </ToastProvider>

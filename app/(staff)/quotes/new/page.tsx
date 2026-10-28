@@ -72,7 +72,7 @@ export default async function NewQuotePage({
   const { data: enquiry } = await supabase
     .from("enquiries")
     .select(
-      "id, brand_id, customer_id, customers(company_name, contact_name, email, phone, country), enquiry_legs(sequence, journey_type, pickup_address, destination_address, via_points, pickup_date, pickup_time, return_date, return_time, passenger_count, luggage_count, wheelchair_required, child_seats, special_requirements, vehicle_types(name)), brands(default_currency)",
+      "id, brand_id, customer_id, customers(company_name, contact_name, email, phone, whatsapp, country), enquiry_legs(sequence, journey_type, pickup_address, destination_address, via_points, pickup_date, pickup_time, return_date, return_time, passenger_count, luggage_count, wheelchair_required, child_seats, special_requirements, vehicle_types(name)), brands(default_currency)",
     )
     .eq("id", enquiryId)
     .single();
@@ -90,6 +90,7 @@ export default async function NewQuotePage({
     contact_name: string;
     email: string | null;
     phone: string | null;
+    whatsapp: string | null;
     country: string | null;
   } | null;
   const brand = enquiry.brands as unknown as { default_currency: string } | null;
@@ -104,6 +105,7 @@ export default async function NewQuotePage({
           contactName: customer?.contact_name ?? "—",
           email: customer?.email ?? null,
           phone: customer?.phone ?? null,
+          whatsapp: customer?.whatsapp ?? null,
           country: customer?.country ?? null,
         }}
         legs={legs}

@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import Link from "next/link";
+import { WhatsAppLink } from "@/components/ui/WhatsAppLink";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, AlertTriangle } from "lucide-react";
 import { PageHead } from "@/components/ui/PageHead";
@@ -293,7 +294,10 @@ export function SupplierJobDetail({
             {job.customer_phone && (
               <div>
                 <dt className="text-xs font-bold uppercase text-slate-400">Phone</dt>
-                <dd className="mt-0.5 font-semibold">{job.customer_phone}</dd>
+                <dd className="mt-0.5 flex items-center gap-2 font-semibold">
+                  {job.customer_phone}
+                  <WhatsAppLink number={job.customer_phone} />
+                </dd>
               </div>
             )}
           </dl>

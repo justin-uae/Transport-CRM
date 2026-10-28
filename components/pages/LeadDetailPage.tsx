@@ -31,6 +31,7 @@ import { SOURCE_LABEL } from "@/lib/leadSource";
 import type { LeadSource, LeadStatus } from "@/lib/supabase/database.types";
 import type { RouteDistance, RouteSegment, TripDistance } from "@/lib/tripDistance";
 import { SendEmailButton } from "@/components/ui/SendEmailButton";
+import { WhatsAppLink } from "@/components/ui/WhatsAppLink";
 import { formatDuration } from "@/lib/formatDuration";
 
 const STATUS_LABEL: Record<LeadStatus, string> = {
@@ -92,7 +93,7 @@ export interface LeadDetail {
   assigned_user_id: string | null;
   created_at: string;
   customer_id: string | null;
-  customers: { id: string; company_name: string | null; contact_name: string; phone: string | null; email: string | null } | null;
+  customers: { id: string; company_name: string | null; contact_name: string; phone: string | null; whatsapp: string | null; email: string | null } | null;
   profiles: { full_name: string } | null;
   brands: { name: string } | null;
 }
@@ -575,7 +576,17 @@ export function LeadDetailPage({
                   label="Email"
                   value={lead.customers.email ? lead.customers.email : <span className="text-amber-600">No email on file</span>}
                 />
-                <Row label="Phone" value={lead.customers.phone} />
+                <Row
+                  label="Phone"
+                  value={
+                    lead.customers.phone || lead.customers.whatsapp ? (
+                      <span className="inline-flex items-center gap-2">
+                        {lead.customers.phone || lead.customers.whatsapp}
+                        <WhatsAppLink number={lead.customers.whatsapp || lead.customers.phone} />
+                      </span>
+                    ) : null
+                  }
+                />
                 <Link
                   href={`/customers/${lead.customers.id}`}
                   className="mt-3 inline-block rounded-xl border px-4 py-2 text-sm font-bold text-primary-600 hover:bg-primary-50"

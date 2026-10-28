@@ -9,6 +9,7 @@ import { CustomersDiagram } from "@/components/ui/guide-diagrams/CustomersDiagra
 import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { NewCustomerForm } from "./NewCustomerForm";
+import { WhatsAppLink } from "@/components/ui/WhatsAppLink";
 
 const PAGE_SIZE = 25;
 
@@ -28,7 +29,7 @@ export default async function CustomersPage({
 
   let query = supabase
     .from("customers")
-    .select("id, company_name, contact_name, email, phone, country, created_at, profiles(full_name)", {
+    .select("id, company_name, contact_name, email, phone, whatsapp, country, created_at, profiles(full_name)", {
       count: "exact",
     });
   if (q) {
@@ -105,7 +106,10 @@ export default async function CustomersPage({
                     </Link>
                   </td>
                   <td className="whitespace-nowrap">
-                    <Link href={`/customers/${c.id}`} className="block">{c.phone ?? "—"}</Link>
+                    <div className="flex items-center gap-2">
+                      <Link href={`/customers/${c.id}`} className="block">{c.phone ?? "—"}</Link>
+                      <WhatsAppLink number={c.whatsapp || c.phone} />
+                    </div>
                   </td>
                   <td className="whitespace-nowrap">
                     <Link href={`/customers/${c.id}`} className="block">{c.country ?? "—"}</Link>

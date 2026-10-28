@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Users, ShieldCheck, Building2, History, Bot, Cpu, BellRing } from "lucide-react";
+import { Users, ShieldCheck, Building2, History, Bot, Cpu, BellRing, MessageCircle } from "lucide-react";
 import { Panel } from "@/components/ui/Panel";
 import { PageHead } from "@/components/ui/PageHead";
 import { PageGuide } from "@/components/ui/PageGuide";
@@ -32,6 +32,12 @@ const MASTER_ADMIN_CARDS = [
     href: "/settings/quote-reminders",
     icon: BellRing,
     text: "Automatically email customers who haven't accepted or paid a quote yet, and see how many bookings it brings back.",
+  },
+  {
+    label: "WhatsApp Takeover",
+    href: "/settings/whatsapp-takeover",
+    icon: MessageCircle,
+    text: "Set the hours when sales users get a popup for new WhatsApp messages and can take chats over from the AI.",
   },
 ];
 
