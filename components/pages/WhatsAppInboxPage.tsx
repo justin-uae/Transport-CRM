@@ -15,16 +15,11 @@ import {
   takeOverWhatsAppChatAction,
   handBackToAiAction,
   assignWhatsAppChatAction,
+  loadWhatsAppChatsAction,
+  loadWhatsAppThreadAction,
 } from "@/app/(staff)/whatsapp/actions";
 import type { WhatsAppMessageDirection } from "@/lib/supabase/database.types";
-import {
-  CONVERSATION_LIST_COLUMNS,
-  CONVERSATION_PAGE_SIZE,
-  conversationSearchFilter,
-  toConversationSummary,
-  type ConversationListRow,
-  type ConversationSummary,
-} from "@/lib/whatsappInbox";
+import { conversationSearchFilter, toConversationSummary, type ConversationSummary } from "@/lib/whatsappInbox";
 
 export type { ConversationSummary };
 
@@ -99,47 +94,32 @@ export function WhatsAppInboxPage({
   const [searchResults, setSearchResults] = useState<ConversationSummary[] | null>(null);
   const ownerNameMap = useRef(new Map(Object.entries(ownerNames)));
 
-  function listQuery() {
-    const supabase = createClient();
-    let q = supabase
-      .from("whatsapp_conversations")
-      .select(CONVERSATION_LIST_COLUMNS)
-      .not("last_message_at", "is", null)
-      .order("last_message_at", { ascending: false });
-    if (!isMasterAdmin) q = q.eq("owner_id", currentUserId);
-    return q;
-  }
-
   async function loadMore() {
     setLoadingMore(true);
     const oldest = conversations[conversations.length - 1]?.lastAt;
-    let q = listQuery().limit(CONVERSATION_PAGE_SIZE);
-    if (oldest) q = q.lt("last_message_at", oldest);
-    const { data, error } = await q;
+    const { rows, hasMore: more, error } = await loadWhatsAppChatsAction({ before: oldest ?? null });
     setLoadingMore(false);
     if (error) {
-      notify(error.message);
+      notify(error);
       return;
     }
-    const rows = (data ?? []) as unknown as ConversationListRow[];
     setConversations((prev) => {
       const seen = new Set(prev.map((c) => c.waId));
       return [...prev, ...rows.filter((r) => !seen.has(r.wa_id)).map((r) => toConversationSummary(r, ownerNameMap.current))];
     });
-    setHasMore(rows.length === CONVERSATION_PAGE_SIZE);
+    setHasMore(more);
   }
 
   // Search runs against every chat, not just the loaded pages.
   useEffect(() => {
-    const filter = conversationSearchFilter(query);
-    if (!filter) {
+    if (!conversationSearchFilter(query)) {
       setSearchResults(null);
       return;
     }
     let cancelled = false;
     const timer = setTimeout(async () => {
-      const { data } = await listQuery().or(filter).limit(100);
-      if (!cancelled) setSearchResults(((data ?? []) as unknown as ConversationListRow[]).map((r) => toConversationSummary(r, ownerNameMap.current)));
+      const { rows } = await loadWhatsAppChatsAction({ search: query });
+      if (!cancelled) setSearchResults(rows.map((r) => toConversationSummary(r, ownerNameMap.current)));
     }, 300);
     return () => {
       cancelled = true;
@@ -162,26 +142,9 @@ export function WhatsAppInboxPage({
     if (waId === selectedWaId) return;
     setSelectedWaId(waId);
     setThreadLoading(true);
-    const supabase = createClient();
-    const { data } = await supabase
-      .from("whatsapp_messages")
-      .select("id, direction, message_type, body, created_at, delivery_status, delivery_error")
-      .eq("wa_id", waId)
-      .order("created_at", { ascending: false })
-      .limit(300);
-    setThread(
-      (data ?? [])
-        .map((r) => ({
-          id: r.id,
-          direction: r.direction,
-          messageType: r.message_type,
-          body: r.body,
-          createdAt: r.created_at,
-          deliveryStatus: r.delivery_status,
-          deliveryError: r.delivery_error,
-        }))
-        .reverse(),
-    );
+    const { messages, error } = await loadWhatsAppThreadAction(waId);
+    if (error) notify(error);
+    setThread(messages);
     setThreadLoading(false);
   }
 

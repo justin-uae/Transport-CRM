@@ -1,5 +1,7 @@
 import "server-only";
 import type { createAdminClient } from "@/lib/supabase/admin";
+import { CONVERSATION_LIST_COLUMNS, conversationSearchFilter, type ConversationListRow } from "@/lib/whatsappInbox";
+import type { WhatsAppMessageRow } from "@/components/pages/WhatsAppInboxPage";
 
 type AdminClient = ReturnType<typeof createAdminClient>;
 
@@ -81,4 +83,73 @@ export async function touchConversationOnInbound(
     .select("id, tenant_id, wa_id, owner_id, owner_source, ai_paused")
     .maybeSingle();
   return (assigned as WhatsAppConversationRow | null) ?? conversation;
+}
+
+/** Who is looking at the WhatsApp inbox — Master Admin sees every chat, a sales user only the ones they own. */
+export interface InboxViewer {
+  tenantId: string;
+  profileId: string;
+  isMasterAdmin: boolean;
+}
+
+/**
+ * A page of the WhatsApp chat list, newest first. Read with the service-role
+ * client and scoped explicitly (tenant, and owner for sales users) — the same
+ * rules as the whatsapp_conversations RLS policy, without per-row policy
+ * evaluation, and with the error logged instead of an empty list.
+ */
+export async function listInboxConversations(
+  admin: AdminClient,
+  viewer: InboxViewer,
+  opts: { limit: number; before?: string | null; search?: string | null; waId?: string | null },
+): Promise<{ rows: ConversationListRow[]; error: string | null }> {
+  let q = admin
+    .from("whatsapp_conversations")
+    .select(CONVERSATION_LIST_COLUMNS)
+    .eq("tenant_id", viewer.tenantId)
+    .not("last_message_at", "is", null)
+    .order("last_message_at", { ascending: false })
+    .limit(opts.limit);
+  if (!viewer.isMasterAdmin) q = q.eq("owner_id", viewer.profileId);
+  if (opts.before) q = q.lt("last_message_at", opts.before);
+  if (opts.waId) q = q.eq("wa_id", opts.waId);
+  const filter = opts.search ? conversationSearchFilter(opts.search) : null;
+  if (filter) q = q.or(filter);
+  const { data, error } = await q;
+  if (error) {
+    console.error("WhatsApp inbox: loading chats failed", error.message);
+    return { rows: [], error: error.message };
+  }
+  return { rows: (data ?? []) as unknown as ConversationListRow[], error: null };
+}
+
+/** The newest 300 messages of one chat, oldest first. Callers check the viewer may open this chat. */
+export async function loadInboxThread(
+  admin: AdminClient,
+  tenantId: string,
+  waId: string,
+): Promise<{ messages: WhatsAppMessageRow[]; error: string | null }> {
+  const { data, error } = await admin
+    .from("whatsapp_messages")
+    .select("id, direction, message_type, body, created_at, delivery_status, delivery_error")
+    .eq("tenant_id", tenantId)
+    .eq("wa_id", waId)
+    .order("created_at", { ascending: false })
+    .limit(300);
+  if (error) {
+    console.error("WhatsApp inbox: loading messages failed", error.message);
+    return { messages: [], error: error.message };
+  }
+  const messages = (data ?? [])
+    .map((r) => ({
+      id: r.id as string,
+      direction: r.direction as WhatsAppMessageRow["direction"],
+      messageType: r.message_type as string,
+      body: r.body as string,
+      createdAt: r.created_at as string,
+      deliveryStatus: r.delivery_status as WhatsAppMessageRow["deliveryStatus"],
+      deliveryError: r.delivery_error as string | null,
+    }))
+    .reverse();
+  return { messages, error: null };
 }

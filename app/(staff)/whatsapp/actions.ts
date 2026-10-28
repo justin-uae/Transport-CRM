@@ -6,6 +6,9 @@ import { requireProfile } from "@/lib/auth";
 import { recordAudit } from "@/lib/audit";
 import { sendWhatsAppText } from "@/lib/whatsapp360";
 import type { WhatsAppConversation } from "@/lib/supabase/database.types";
+import { listInboxConversations, loadInboxThread } from "@/lib/whatsappConversations";
+import { CONVERSATION_PAGE_SIZE, type ConversationListRow } from "@/lib/whatsappInbox";
+import type { WhatsAppMessageRow } from "@/components/pages/WhatsAppInboxPage";
 
 type Actor = Awaited<ReturnType<typeof requireProfile>>;
 type Admin = ReturnType<typeof createAdminClient>;
@@ -18,6 +21,34 @@ async function loadConversation(admin: Admin, tenantId: string, waId: string): P
 async function isAgent(admin: Admin, actor: Actor): Promise<boolean> {
   const { data } = await admin.rpc("is_whatsapp_agent", { p_profile_id: actor.id });
   return Boolean(data);
+}
+
+/** "Load older chats" (pass the oldest loaded chat time as `before`) and the search box (`search`, up to 100 matches). */
+export async function loadWhatsAppChatsAction(opts: {
+  before?: string | null;
+  search?: string | null;
+}): Promise<{ rows: ConversationListRow[]; hasMore: boolean; error: string | null }> {
+  const actor = await requireProfile();
+  const admin = createAdminClient();
+  if (!actor.is_master_admin && !(await isAgent(admin, actor))) return { rows: [], hasMore: false, error: "No access to WhatsApp." };
+  const limit = opts.search ? 100 : CONVERSATION_PAGE_SIZE;
+  const { rows, error } = await listInboxConversations(
+    admin,
+    { tenantId: actor.tenant_id, profileId: actor.id, isMasterAdmin: actor.is_master_admin },
+    { limit, before: opts.before, search: opts.search },
+  );
+  return { rows, hasMore: rows.length === limit, error };
+}
+
+/** Messages for the chat being opened — Master Admin any chat, a sales user only one they own. */
+export async function loadWhatsAppThreadAction(waId: string): Promise<{ messages: WhatsAppMessageRow[]; error: string | null }> {
+  const actor = await requireProfile();
+  const admin = createAdminClient();
+  if (!actor.is_master_admin) {
+    const conversation = await loadConversation(admin, actor.tenant_id, waId);
+    if (conversation?.owner_id !== actor.id) return { messages: [], error: "This chat belongs to someone else." };
+  }
+  return loadInboxThread(admin, actor.tenant_id, waId);
 }
 
 /**
