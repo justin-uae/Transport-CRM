@@ -42,6 +42,9 @@ interface QuoteMilestoneRow {
 interface VersionRow {
   vehicle_description: string | null;
   selling_price: number;
+  /** Special Deal (0114_special_deals.sql) — the struck-through "was" price and its % off. */
+  original_price: number | null;
+  discount_percent: number | null;
   vat_rate: number;
   deposit_percentage: number | null;
   deposit_fixed_amount: number | null;
@@ -136,7 +139,7 @@ export async function generateQuotePdf(
       "id, quote_number, status, currency, expiry_at, created_at, brand_id, tenant_id, " +
         "customers(company_name, contact_name, email, phone), " +
         "enquiries(enquiry_legs(sequence, journey_type, pickup_address, destination_address, via_points, pickup_date, pickup_time, return_date, return_time, passenger_count, luggage_count, wheelchair_required, child_seats, special_requirements, vehicle_types(name))), " +
-        "quote_versions!quotes_current_version_id_fkey(vehicle_description, selling_price, vat_rate, deposit_percentage, deposit_fixed_amount, payment_methods, customer_notes, terms_snapshot, brand_snapshot, quote_line_items(description, amount)), " +
+        "quote_versions!quotes_current_version_id_fkey(vehicle_description, selling_price, original_price, discount_percent, vat_rate, deposit_percentage, deposit_fixed_amount, payment_methods, customer_notes, terms_snapshot, brand_snapshot, quote_line_items(description, amount)), " +
         "quote_payment_milestones(sequence, label, amount, due_date)",
     )
     .eq("id", quoteId)
@@ -337,6 +340,23 @@ export async function generateQuotePdf(
       contentWidth,
     );
     doc.moveDown(0.6);
+  }
+
+  if (version.original_price != null && version.discount_percent != null) {
+    ensureSpace(doc, 64);
+    const dealTop = doc.y;
+    doc
+      .font(FONT_BOLD)
+      .fontSize(11)
+      .fillColor("#047857")
+      .text(`Today’s Special Deal — ${Number(version.discount_percent)}% off`, PAGE_MARGIN, dealTop);
+    doc
+      .font(FONT_REGULAR)
+      .fontSize(11)
+      .fillColor(MUTED)
+      .text(`Was ${money(Number(version.original_price), quote.currency)}`, PAGE_MARGIN, dealTop + 15, { strike: true });
+    doc.fillColor(INK);
+    doc.y = dealTop + 34;
   }
 
   ensureSpace(doc, 44);

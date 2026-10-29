@@ -55,4 +55,6 @@ export const QUOTE_EVENT_LABEL: Record<QuoteEventType, string> = {
   reminders_opt_out_cleared: "Reminders allowed again for this customer",
   expiry_changed: "Expiry date changed",
   price_changed: "Price changed",
+  special_deal: "Today’s Special Deal applied",
+  special_deal_auto: "Automatic discount (customer said too expensive)",
 };

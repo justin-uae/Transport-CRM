@@ -48,6 +48,9 @@ export interface Tenant {
   /** ISO weekdays, 1 = Monday ... 7 = Sunday. */
   whatsapp_takeover_days: number[];
   whatsapp_takeover_timezone: string;
+  /** Special Deals (0114_special_deals.sql) — automatic discount when a customer rejects a quote as "Too expensive". */
+  special_deal_auto_enabled: boolean;
+  special_deal_auto_percent: number;
   /** IMAP polling cursor for the shared lead-intake inbox — everything before this timestamp has already been swept. */
   email_lead_inbox_synced_since: string;
   created_at: string;
@@ -324,7 +327,9 @@ export type QuoteEventType =
   | "reminders_opted_out"
   | "reminders_opt_out_cleared"
   | "expiry_changed"
-  | "price_changed";
+  | "price_changed"
+  | "special_deal"
+  | "special_deal_auto";
 
 export interface Customer {
   id: string;
@@ -498,6 +503,10 @@ export interface QuoteVersion {
   supplier_estimated_cost: number | null;
   /** The total the customer pays, INCLUDING VAT when vat_rate > 0. */
   selling_price: number;
+  /** Special Deal (0114_special_deals.sql) — the struck-through pre-deal price, total % off, and where it came from. */
+  original_price: number | null;
+  discount_percent: number | null;
+  discount_source: "special_deal" | "too_expensive_auto" | null;
   /** VAT % applied on top of the pre-VAT price (0 = none). Net/VAT split is derived — lib/vat.ts, 0105_quote_vat.sql. */
   vat_rate: number;
   currency: string;

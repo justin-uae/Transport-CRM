@@ -26,6 +26,9 @@ interface LineItemRow {
 interface VersionRow {
   vehicle_description: string | null;
   selling_price: number;
+  /** Set when a Special Deal is applied (0114_special_deals.sql) — the struck-through "was" price. */
+  original_price: number | null;
+  discount_percent: number | null;
   vat_rate: number;
   deposit_percentage: number | null;
   deposit_fixed_amount: number | null;
@@ -61,7 +64,7 @@ export default async function PublicQuotePage({
   const { data: quote } = await admin
     .from("quotes")
     .select(
-      "id, quote_number, status, currency, expiry_at, brand_id, tenant_id, invoice_number, invoiced_at, payment_method_chosen, customers(company_name, contact_name), enquiries(enquiry_legs(sequence, journey_type, pickup_address, destination_address, via_points, pickup_date, pickup_time, return_date, return_time, passenger_count, luggage_count, wheelchair_required, child_seats, special_requirements, vehicle_types(name))), quote_versions!quotes_current_version_id_fkey(vehicle_description, selling_price, vat_rate, deposit_percentage, deposit_fixed_amount, payment_methods, customer_notes, terms_snapshot, brand_snapshot, quote_line_items(description, amount, category)), customer_payments(amount), quote_payment_milestones(sequence, label, amount, due_date)",
+      "id, quote_number, status, currency, expiry_at, brand_id, tenant_id, invoice_number, invoiced_at, payment_method_chosen, customers(company_name, contact_name), enquiries(enquiry_legs(sequence, journey_type, pickup_address, destination_address, via_points, pickup_date, pickup_time, return_date, return_time, passenger_count, luggage_count, wheelchair_required, child_seats, special_requirements, vehicle_types(name))), quote_versions!quotes_current_version_id_fkey(vehicle_description, selling_price, original_price, discount_percent, vat_rate, deposit_percentage, deposit_fixed_amount, payment_methods, customer_notes, terms_snapshot, brand_snapshot, quote_line_items(description, amount, category)), customer_payments(amount), quote_payment_milestones(sequence, label, amount, due_date)",
     )
     .eq("public_token", token)
     .single();
@@ -192,9 +195,20 @@ export default async function PublicQuotePage({
                   </div>
                 );
               })()}
+              {version?.original_price != null && version.discount_percent != null && (
+                <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-emerald-50 px-3 py-2.5 text-emerald-700">
+                  <span className="font-black">Today&apos;s Special Deal</span>
+                  <span className="rounded-full bg-emerald-600 px-2.5 py-0.5 text-xs font-black text-white">{Number(version.discount_percent)}% off</span>
+                </div>
+              )}
               <div className="flex justify-between py-2">
                 <span className="text-slate-500">{version && version.vat_rate > 0 ? "Total incl. VAT" : "Total"}</span>
-                <b className="text-lg text-primary-600">{version ? money(version.selling_price) : "—"}</b>
+                <span className="text-right">
+                  {version?.original_price != null && (
+                    <span className="mr-2 text-sm font-semibold text-slate-400 line-through">{money(Number(version.original_price))}</span>
+                  )}
+                  <b className="text-lg text-primary-600">{version ? money(version.selling_price) : "—"}</b>
+                </span>
               </div>
               {version && display.converted && (
                 <p className="text-xs text-slate-500">

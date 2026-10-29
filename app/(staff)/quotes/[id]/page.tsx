@@ -24,6 +24,8 @@ import { SendEmailButton } from "@/components/ui/SendEmailButton";
 import { QuoteRemindersPanel, type QuoteReminderRow } from "@/components/pages/QuoteRemindersPanel";
 import { QuoteExpiryEditor } from "@/components/pages/QuoteExpiryEditor";
 import { EditQuotePriceButton } from "@/components/pages/EditQuotePriceButton";
+import { SpecialDealButton } from "@/components/pages/SpecialDealButton";
+import { SPECIAL_DEAL_STATUSES } from "@/lib/quoteSpecialDeal";
 import { EXPIRY_EDITABLE_STATUSES } from "@/lib/quoteExpiry";
 import { vatBreakdown, formatVatRate } from "@/lib/vat";
 import { WhatsAppLink } from "@/components/ui/WhatsAppLink";
@@ -41,6 +43,10 @@ interface VersionRow {
   vehicle_description: string | null;
   supplier_estimated_cost: number | null;
   selling_price: number;
+  /** Special Deal (0114_special_deals.sql) — the struck-through pre-deal price. */
+  original_price: number | null;
+  discount_percent: number | null;
+  discount_source: "special_deal" | "too_expensive_auto" | null;
   vat_rate: number;
   currency: string;
   deposit_percentage: number | null;
@@ -131,7 +137,7 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
   const { data: quoteRaw, error: quoteError } = await supabase
     .from("quotes")
     .select(
-      "id, quote_number, status, currency, expiry_at, invoice_number, invoiced_at, public_token, created_at, sent_at, viewed_at, decided_at, cancellation_reason, cancelled_by, cancelled_by_profile:profiles!quotes_cancelled_by_fkey(full_name), created_by, created_by_profile:profiles!quotes_created_by_fkey(full_name), ai_generated, ai_model, customers(id, company_name, contact_name, phone, whatsapp, email, reminders_opted_out_at), enquiries(id, lead_id, assigned_user_id, enquiry_legs(id, sequence, journey_type, pickup_address, destination_address, via_points, pickup_date, pickup_time, return_date, return_time, passenger_count, luggage_count, wheelchair_required, child_seats, special_requirements, vehicle_types(name))), quote_versions!quote_versions_quote_id_fkey(id, version_number, vehicle_description, supplier_estimated_cost, selling_price, vat_rate, currency, deposit_percentage, deposit_fixed_amount, payment_methods, customer_notes, terms_snapshot, created_at, quote_line_items(id, description, amount, category)), quote_events(event, detail, created_at), quote_decisions(decision, reason, free_text, decided_at), customer_payments(id, amount, method, paid_at), quote_payment_milestones(id, sequence, label, amount, due_date), reminders_paused_at, reminders_pause_reason, quote_reminders(kind, step, sent_at, error)",
+      "id, quote_number, status, currency, expiry_at, invoice_number, invoiced_at, public_token, created_at, sent_at, viewed_at, decided_at, cancellation_reason, cancelled_by, cancelled_by_profile:profiles!quotes_cancelled_by_fkey(full_name), created_by, created_by_profile:profiles!quotes_created_by_fkey(full_name), ai_generated, ai_model, customers(id, company_name, contact_name, phone, whatsapp, email, reminders_opted_out_at), enquiries(id, lead_id, assigned_user_id, enquiry_legs(id, sequence, journey_type, pickup_address, destination_address, via_points, pickup_date, pickup_time, return_date, return_time, passenger_count, luggage_count, wheelchair_required, child_seats, special_requirements, vehicle_types(name))), quote_versions!quote_versions_quote_id_fkey(id, version_number, vehicle_description, supplier_estimated_cost, selling_price, original_price, discount_percent, discount_source, vat_rate, currency, deposit_percentage, deposit_fixed_amount, payment_methods, customer_notes, terms_snapshot, created_at, quote_line_items(id, description, amount, category)), quote_events(event, detail, created_at), quote_decisions(decision, reason, free_text, decided_at), customer_payments(id, amount, method, paid_at), quote_payment_milestones(id, sequence, label, amount, due_date), reminders_paused_at, reminders_pause_reason, quote_reminders(kind, step, sent_at, error)",
     )
     .eq("id", id)
     .single();
@@ -256,7 +262,19 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
               </div>
               <div>
                 <dt className="text-xs font-bold uppercase text-slate-400">{currentVersion?.vat_rate ? "Selling price incl. VAT" : "Selling price"}</dt>
-                <dd className="mt-0.5 text-base font-black text-primary-600">{money(currentVersion?.selling_price, quote.currency)}</dd>
+                <dd className="mt-0.5 text-base font-black text-primary-600">
+                  {currentVersion?.original_price != null && (
+                    <span className="mr-2 text-sm font-semibold text-slate-400 line-through">{money(currentVersion.original_price, quote.currency)}</span>
+                  )}
+                  {money(currentVersion?.selling_price, quote.currency)}
+                </dd>
+                {currentVersion?.discount_percent != null && (
+                  <dd className="mt-1">
+                    <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-bold text-emerald-700">
+                      {currentVersion.discount_source === "too_expensive_auto" ? "Automatic deal" : "Today's Special Deal"} · {Number(currentVersion.discount_percent)}% off
+                    </span>
+                  </dd>
+                )}
                 {currentVersion && currentVersion.vat_rate > 0 && (() => {
                   const { net, vat } = vatBreakdown(currentVersion.selling_price, currentVersion.vat_rate);
                   return (
@@ -476,7 +494,12 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
                             <span className="ml-2 rounded-full bg-primary-50 px-2 py-0.5 text-xs font-bold text-primary-700">Current</span>
                           )}
                         </td>
-                        <td className="whitespace-nowrap py-2">{money(v.selling_price, v.currency)}</td>
+                        <td className="whitespace-nowrap py-2">
+                          {money(v.selling_price, v.currency)}
+                          {v.discount_percent != null && (
+                            <span className="ml-2 rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-bold text-emerald-700">{Number(v.discount_percent)}% off</span>
+                          )}
+                        </td>
                         <td className="whitespace-nowrap py-2 text-slate-500">{v.vat_rate > 0 ? formatVatRate(v.vat_rate) : "—"}</td>
                         <td className="whitespace-nowrap py-2 text-slate-500">{money(v.supplier_estimated_cost, v.currency)}</td>
                         <td className="min-w-[11rem] py-2 text-slate-500">{formatDateTime(v.created_at)}</td>
@@ -534,6 +557,19 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
                     currency={quote.currency}
                     sellingPrice={currentVersion.selling_price}
                     vatRate={currentVersion.vat_rate}
+                    supplierEstimatedCost={currentVersion.supplier_estimated_cost}
+                  />
+                )}
+              {currentVersion &&
+                SPECIAL_DEAL_STATUSES.includes(quote.status) &&
+                // Same people as Edit Price — mirrors applySpecialDealAction.
+                (actor.is_master_admin || canEditQuotes || canCreateQuote || canSendQuotes) && (
+                  <SpecialDealButton
+                    quoteId={quote.id}
+                    status={quote.status}
+                    currency={quote.currency}
+                    sellingPrice={currentVersion.selling_price}
+                    originalPrice={currentVersion.original_price}
                     supplierEstimatedCost={currentVersion.supplier_estimated_cost}
                   />
                 )}

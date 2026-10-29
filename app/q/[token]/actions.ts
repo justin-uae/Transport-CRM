@@ -11,6 +11,7 @@ import { sendTemplatedEmail } from "@/lib/emailTemplates";
 import { sendWhatsAppTemplate, normalizeWhatsAppNumber, WHATSAPP_TEMPLATE_HEADER_IMAGE_URL } from "@/lib/whatsapp360";
 import { formatDateAndTime } from "@/lib/formatDate";
 import { generateQuotePdf } from "@/lib/quotePdf";
+import { offerAutoDiscountAfterRejection } from "@/lib/quoteRepricing";
 
 interface PayableLeg {
   sequence: number;
@@ -340,6 +341,16 @@ export async function rejectQuoteAction(token: string, reason: string | null) {
     reason,
   });
 
+  // "Too expensive" -> the automatic special deal, if Master Admin has it
+  // switched on (Settings -> Special Deals): same quote re-opened at a
+  // discount and re-sent, so the customer sees the new price straight away.
+  const autoDeal = reason?.startsWith("Too expensive")
+    ? await offerAutoDiscountAfterRejection(admin, quote.id).catch((err) => {
+        console.error(`rejectQuoteAction: automatic discount failed for ${quote.quote_number}:`, err);
+        return null;
+      })
+    : null;
+
   const enquiry = quote.enquiries as unknown as {
     assigned_user_id: string | null;
     customers: { contact_name: string; company_name: string | null } | null;
@@ -354,11 +365,11 @@ export async function rejectQuoteAction(token: string, reason: string | null) {
       customer_name: enquiry?.customers?.company_name || enquiry?.customers?.contact_name || "Customer",
       quote_number: quote.quote_number,
       brand_name: brand?.name ?? "",
-      reason: reason ?? "No reason given",
+      reason: (reason ?? "No reason given") + (autoDeal?.note ? ` — ${autoDeal.note}` : ""),
       link: `${process.env.NEXT_PUBLIC_APP_URL ?? ""}/quotes/${quote.id}`,
     },
   });
 
   revalidatePath(`/q/${token}`);
-  return { error: null };
+  return { error: null, specialDealPercent: autoDeal?.offered ? autoDeal.percent : null };
 }

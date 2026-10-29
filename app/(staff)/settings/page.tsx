@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Users, ShieldCheck, Building2, History, Bot, Cpu, BellRing, MessageCircle } from "lucide-react";
+import { Users, ShieldCheck, Building2, History, Bot, Cpu, BellRing, MessageCircle, Tag } from "lucide-react";
 import { Panel } from "@/components/ui/Panel";
 import { PageHead } from "@/components/ui/PageHead";
 import { PageGuide } from "@/components/ui/PageGuide";
@@ -38,6 +38,12 @@ const MASTER_ADMIN_CARDS = [
     href: "/settings/whatsapp-takeover",
     icon: MessageCircle,
     text: "Set the hours when sales users get a popup for new WhatsApp messages and can take chats over from the AI.",
+  },
+  {
+    label: "Special Deals",
+    href: "/settings/special-deals",
+    icon: Tag,
+    text: "Automatically re-send a quote at a discount when the customer rejects it as too expensive.",
   },
 ];
 
