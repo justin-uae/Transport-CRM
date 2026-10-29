@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useTransition } from "react";
-import { Send, CheckCircle2, Timer, FileText, RefreshCw } from "lucide-react";
+import { Send, CheckCircle2, Timer, FileText, RefreshCw, Tag } from "lucide-react";
 import { AiBadge } from "@/components/ui/AiBadge";
 import { OverdueBadge } from "@/components/ui/OverdueBadge";
 import Link from "next/link";
@@ -72,7 +72,13 @@ export interface QuoteRow {
     leads: { source: keyof typeof SOURCE_LABEL } | null;
     enquiry_legs: { pickup_address: string; destination_address: string; pickup_date: string | null; pickup_time: string | null }[];
   } | null;
-  quote_versions: { selling_price: number } | null;
+  /** original_price/discount_* are set when a Special Deal is on the quote (0114_special_deals.sql). */
+  quote_versions: {
+    selling_price: number;
+    original_price?: number | null;
+    discount_percent?: number | null;
+    discount_source?: "special_deal" | "too_expensive_auto" | null;
+  } | null;
   profiles: { full_name: string } | null;
   ai_generated: boolean;
   ai_model: { provider: string; model: string } | null;
@@ -526,6 +532,15 @@ export function QuotesPage({
                   </div>
                   <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
                     {q.ai_generated && <AiBadge model={q.ai_model} />}
+                    {q.quote_versions?.discount_percent != null && (
+                      <span
+                        className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-bold text-emerald-700 ring-1 ring-emerald-200"
+                        title={q.quote_versions.discount_source === "too_expensive_auto" ? "Discount sent automatically after the customer said too expensive" : "Today’s Special Deal applied by staff"}
+                      >
+                        <Tag size={12} />
+                        {Number(q.quote_versions.discount_percent)}% off{q.quote_versions.discount_source === "too_expensive_auto" ? " · Auto" : ""}
+                      </span>
+                    )}
                     {isOverdue(q) && <OverdueBadge />}
                     <span className={"rounded-full px-2.5 py-1 text-xs font-bold " + QUOTE_STATUS_STYLE[q.status]}>
                       {QUOTE_STATUS_LABEL[q.status]}
@@ -549,6 +564,9 @@ export function QuotesPage({
                     <JourneyCell pickup={leg?.pickup_address} destination={leg?.destination_address} maxWidth="100%" />
                   </Field>
                   <Field label="Value" className="sm:text-right">
+                    {q.quote_versions?.original_price != null && (
+                      <span className="mr-1.5 text-xs font-semibold text-slate-400 line-through">{money(q.quote_versions.original_price, q.currency)}</span>
+                    )}
                     <span className="text-base font-black text-slate-900">{money(q.quote_versions?.selling_price, q.currency)}</span>
                   </Field>
 
