@@ -40,6 +40,8 @@ export function NewEnquiryForm({
 
   const [customerMode, setCustomerMode] = useState<"existing" | "new">(customers.length > 0 ? "existing" : "new");
   const [existingCustomerId, setExistingCustomerId] = useState("");
+  // Picked from the combobox — may be a server-search match outside the preloaded `customers`.
+  const [pickedCustomer, setPickedCustomer] = useState<CustomerOption | null>(null);
   const [newCustomer, setNewCustomer] = useState({ contactName: "", companyName: "", email: "", phone: "" });
 
   const [journey, setJourney] = useState({
@@ -66,7 +68,7 @@ export function NewEnquiryForm({
     internalNotes: "",
   });
 
-  const selectedCustomer = customers.find((c) => c.id === existingCustomerId);
+  const selectedCustomer = customers.find((c) => c.id === existingCustomerId) ?? (pickedCustomer?.id === existingCustomerId ? pickedCustomer : undefined);
 
   function submit(confirmDuplicate = false) {
     setError(null);
@@ -161,7 +163,14 @@ export function NewEnquiryForm({
             </div>
             {customerMode === "existing" ? (
               <div className="mt-4">
-                <CustomerCombobox customers={customers} value={existingCustomerId} onChange={setExistingCustomerId} />
+                <CustomerCombobox
+                  customers={customers}
+                  value={existingCustomerId}
+                  onChange={(id, customer) => {
+                    setExistingCustomerId(id);
+                    setPickedCustomer(customer);
+                  }}
+                />
               </div>
             ) : (
               <div className="mt-4 grid gap-4 sm:grid-cols-2">

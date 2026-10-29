@@ -141,3 +141,28 @@ export async function updateCustomerAction(customerId: string, input: UpdateCust
   revalidatePath(`/customers/${customerId}`);
   return { error: null };
 }
+
+/**
+ * Existing-customer search for CustomerCombobox (New Lead, Complex Booking).
+ * Searches every customer in the database — the pages only preload the first
+ * page of customers, and PostgREST caps a single read at 1,000 rows, so a
+ * purely in-browser filter silently missed everyone past that point.
+ * Read through the viewer's own client, so RLS decides who they can see.
+ */
+export async function searchCustomersAction(query: string) {
+  await requireProfile();
+  const clean = query.replace(/[,()*%\\]/g, " ").trim();
+  if (clean.length < 2) return { customers: [] };
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("customers")
+    .select("id, company_name, contact_name, email, phone")
+    .or(["contact_name", "company_name", "email", "phone"].map((col) => `${col}.ilike.*${clean}*`).join(","))
+    .order("contact_name")
+    .limit(25);
+  if (error) {
+    console.error("searchCustomersAction failed", error.message);
+    return { customers: [] };
+  }
+  return { customers: data ?? [] };
+}

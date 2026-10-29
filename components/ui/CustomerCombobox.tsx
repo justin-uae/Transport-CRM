@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { searchCustomersAction } from "@/app/(staff)/customers/actions";
 
 export interface CustomerOption {
   id: string;
@@ -19,6 +20,10 @@ function contactLine(c: CustomerOption) {
  * company, email and phone as you type instead of a plain <select> forcing
  * a scroll through every customer alphabetically. Every result shows name,
  * email and phone so near-duplicate customers stay disambiguated.
+ *
+ * `customers` is only the preloaded first page (a single read is capped at
+ * 1,000 rows), so typing also searches the whole customers table on the
+ * server and merges those matches in.
  */
 export function CustomerCombobox({
   customers,
@@ -28,24 +33,52 @@ export function CustomerCombobox({
 }: {
   customers: CustomerOption[];
   value: string;
-  onChange: (id: string) => void;
+  /** The picked customer is passed too — it may have come from the server search, not `customers`. */
+  onChange: (id: string, customer: CustomerOption | null) => void;
   placeholder?: string;
 }) {
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  const selected = customers.find((c) => c.id === value) ?? null;
+  const [picked, setPicked] = useState<CustomerOption | null>(null);
+  const [remote, setRemote] = useState<CustomerOption[]>([]);
+  const [searching, setSearching] = useState(false);
+
+  const selected = customers.find((c) => c.id === value) ?? (picked?.id === value ? picked : null);
+
+  useEffect(() => {
+    const q = query.trim();
+    if (q.length < 2) {
+      setRemote([]);
+      setSearching(false);
+      return;
+    }
+    let cancelled = false;
+    setSearching(true);
+    const timer = setTimeout(async () => {
+      const { customers: found } = await searchCustomersAction(q);
+      if (!cancelled) {
+        setRemote(found);
+        setSearching(false);
+      }
+    }, 250);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [query]);
 
   const results = useMemo(() => {
     const q = query.trim().toLowerCase();
-    const pool = !q
+    const local = !q
       ? customers
       : customers.filter((c) =>
           [c.company_name, c.contact_name, c.email, c.phone].some((field) => (field ?? "").toLowerCase().includes(q)),
         );
-    return pool.slice(0, 25);
-  }, [customers, query]);
+    const seen = new Set(local.map((c) => c.id));
+    return [...local, ...remote.filter((c) => !seen.has(c.id))].slice(0, 25);
+  }, [customers, query, remote]);
 
   useEffect(() => {
     if (!open) return;
@@ -93,14 +126,15 @@ export function CustomerCombobox({
       {open && customers.length > 0 && (
         <div className="absolute z-20 mt-1 max-h-64 w-full overflow-y-auto rounded-xl border bg-white shadow-lg">
           {results.length === 0 ? (
-            <div className="px-3 py-3 text-sm text-slate-400">No matching customers</div>
+            <div className="px-3 py-3 text-sm text-slate-400">{searching ? "Searching…" : "No matching customers"}</div>
           ) : (
             results.map((c) => (
               <button
                 key={c.id}
                 type="button"
                 onClick={() => {
-                  onChange(c.id);
+                  setPicked(c);
+                  onChange(c.id, c);
                   setOpen(false);
                   setQuery("");
                 }}
