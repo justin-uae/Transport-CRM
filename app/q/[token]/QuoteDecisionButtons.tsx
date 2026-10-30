@@ -61,7 +61,7 @@ export function QuoteDecisionButtons({ token }: { token: string }) {
           <button
             onClick={confirmAccept}
             disabled={pending}
-            className="rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-bold text-white disabled:opacity-60"
+            className="rounded-xl bg-emerald-700 px-4 py-2.5 text-sm font-bold text-white disabled:opacity-60"
           >
             {pending ? "Submitting…" : "Confirm acceptance"}
           </button>
@@ -116,18 +116,18 @@ export function QuoteDecisionButtons({ token }: { token: string }) {
         </div>
       )}
       {error && <p className="mb-3 text-sm font-semibold text-red-600">{error}</p>}
-      <div className="flex flex-col gap-3 sm:flex-row">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <button
           onClick={() => setAccepting(true)}
           disabled={pending}
-          className="flex-1 rounded-xl bg-emerald-600 px-5 py-3 text-sm font-black text-white disabled:opacity-60"
+          className="h-14 rounded-2xl bg-emerald-700 px-5 text-base font-black text-white transition hover:bg-emerald-800 disabled:opacity-60"
         >
           Accept Quote
         </button>
         <button
           onClick={() => setRejecting(true)}
           disabled={pending}
-          className="flex-1 rounded-xl border px-5 py-3 text-sm font-black disabled:opacity-60"
+          className="h-14 rounded-2xl border-[1.5px] border-slate-300 bg-white px-5 text-base font-black text-slate-900 transition hover:border-slate-400 disabled:opacity-60"
         >
           Reject Quote
         </button>

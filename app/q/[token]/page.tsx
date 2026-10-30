@@ -1,10 +1,11 @@
 import { notFound } from "next/navigation";
-import { Bus, Globe } from "lucide-react";
+import { Bus, Clock } from "lucide-react";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { amountDueNow } from "@/lib/quotePayments";
-import { formatDateTime, formatDate } from "@/lib/formatDate";
-import { JourneyLegDetail, type JourneyLeg } from "@/components/pages/JourneyLegDetail";
+import { formatDateTime, formatDate, formatDateAndTime, formatTimeOnly } from "@/lib/formatDate";
+import type { JourneyLeg } from "@/components/pages/JourneyLegDetail";
 import { RichText } from "@/components/ui/RichText";
+import { FormattedText } from "@/components/ui/FormattedText";
 import { resolveDisplayCurrency, detectVisitorCurrency, convertForDisplay, displayCurrencyChoices } from "@/lib/localCurrency";
 import { vatBreakdown, formatVatRate } from "@/lib/vat";
 import { QuoteDecisionButtons } from "./QuoteDecisionButtons";
@@ -119,133 +120,113 @@ export default async function PublicQuotePage({
   const amountDue = version ? amountDueNow(version, amountPaid, milestones) : 0;
   let milestoneCumulative = 0;
 
+  const hasBreakdown = !!version && ((version.quote_line_items?.length ?? 0) > 0 || version.vat_rate > 0);
+  const terms = version?.terms_snapshot?.trim() || tenant?.terms_and_conditions?.trim();
+
   return (
-    <div className="grid min-h-screen place-items-center bg-appbg px-4 py-10">
-      <div className="w-full max-w-2xl">
+    <div className="min-h-screen bg-slate-100 px-4 py-8 sm:py-10">
+      <div className="mx-auto w-full max-w-2xl">
         <div className="mb-6 flex items-center justify-center gap-3">
           <div
-            className="grid h-12 w-12 place-items-center rounded-2xl text-white"
+            className="grid h-11 w-11 place-items-center rounded-2xl text-white"
             style={{ backgroundColor: brand?.primary_color ?? "#f97316" }}
           >
-            <Bus size={26} />
+            <Bus size={24} />
           </div>
-          <div className="text-lg font-black text-slate-900">{brand?.name ?? "Your quote"}</div>
+          <div className="text-base font-black uppercase tracking-wide text-slate-900 sm:text-lg">{brand?.name ?? "Your quote"}</div>
         </div>
 
-        <div className="rounded-3xl border border-slate-200 bg-white p-8 shadow-sm">
-          <div className="flex items-center justify-between">
-            <div>
-              <div className="text-xs font-black uppercase tracking-[.18em] text-primary-500">Quote {quote.quote_number}</div>
-              <h1 className="mt-1 text-2xl font-black">{customer?.company_name || customer?.contact_name}</h1>
+        {/* Boarding-pass layout: journey on top, a perforated tear line, then
+            the "stub" with the price and the customer's next step. No
+            overflow-hidden on the card — the currency dropdown overhangs it. */}
+        <article className="relative rounded-[28px] bg-white shadow-[0_1px_2px_rgba(15,23,42,.06),0_12px_32px_rgba(15,23,42,.06)]">
+          <header className="flex items-center justify-between gap-4 rounded-t-[28px] bg-slate-900 px-6 py-5 text-white sm:px-8">
+            <div className="min-w-0">
+              <div className="text-xs font-bold uppercase tracking-[.18em] text-orange-300">Quote {quote.quote_number}</div>
+              <h1 className="mt-1 break-words text-xl font-black leading-tight sm:text-2xl">{customer?.company_name || customer?.contact_name}</h1>
             </div>
-            <span className="rounded-full bg-slate-100 px-3 py-1.5 text-xs font-bold capitalize">{status.replaceAll("_", " ")}</span>
-          </div>
+            <span className="flex shrink-0 items-center gap-2 rounded-full bg-white/10 px-3 py-1.5 text-xs font-bold capitalize">
+              <span className={`h-2 w-2 rounded-full ${STATUS_DOT[status] ?? "bg-slate-400"}`} />
+              {status.replaceAll("_", " ")}
+            </span>
+          </header>
 
-          <div className="mt-4 border-t border-dashed pt-4 text-sm">
-            <div className="text-xs font-bold uppercase text-slate-400">From</div>
-            <div className="mt-1 font-bold">{company?.legal_name || brand?.name}</div>
-            {company?.registered_address && <div className="whitespace-pre-line text-slate-500">{company.registered_address}</div>}
-          </div>
-
-          <div className="mt-6 space-y-3">
+          <div className="space-y-8 px-6 py-7 sm:px-8">
             {legs.map((leg, i) => (
-              <JourneyLegDetail key={i} leg={leg} index={i} total={legs.length} />
+              <LegPass key={i} leg={leg} index={i} total={legs.length} />
             ))}
-            <div className="space-y-3 rounded-2xl bg-slate-50 p-5 text-sm">
-              {version && currencyChoices.length > 1 && (
-                <div className="border-b pb-4">
-                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
-                    <div className="flex items-center gap-2 font-bold text-slate-800">
-                      <Globe size={16} className="shrink-0 text-primary-600" />
-                      View prices in your currency
-                    </div>
-                    <CurrencySelector current={display.currency} quoteCurrency={quote.currency} localCurrency={localCurrency} choices={currencyChoices} />
-                  </div>
-                  <p className="mt-2 text-xs text-slate-500">Card payments are charged in the currency you choose.</p>
-                </div>
-              )}
-              {quote.expiry_at && (
-                <div className="flex flex-wrap justify-between gap-x-3 gap-y-1 border-b py-2">
-                  <span className="text-slate-500">Valid until</span>
-                  <b>{formatDateTime(quote.expiry_at)}</b>
-                </div>
-              )}
-              {version?.quote_line_items && version.quote_line_items.length > 0 && (
-                <div className="space-y-1 border-b py-2">
-                  {version.quote_line_items.map((li, i) => (
-                    <div key={i} className="flex justify-between text-slate-500">
-                      <span>{li.description}</span>
-                      <span>{money(li.amount)}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-              {version && version.vat_rate > 0 && (() => {
-                const { net, vat } = vatBreakdown(version.selling_price, version.vat_rate);
-                return (
-                  <div className="space-y-1 border-b py-2">
-                    <div className="flex justify-between text-slate-500">
-                      <span>Subtotal (excl. VAT)</span>
-                      <span>{money(net)}</span>
-                    </div>
-                    <div className="flex justify-between text-slate-500">
-                      <span>VAT ({formatVatRate(version.vat_rate)})</span>
-                      <span>{money(vat)}</span>
-                    </div>
-                  </div>
-                );
-              })()}
-              {version?.original_price != null && version.discount_percent != null && (
-                <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-emerald-50 px-3 py-2.5 text-emerald-700">
-                  <span className="font-black">Today&apos;s Special Deal</span>
-                  <span className="rounded-full bg-emerald-600 px-2.5 py-0.5 text-xs font-black text-white">{Number(version.discount_percent)}% off</span>
-                </div>
-              )}
-              <div className="flex justify-between py-2">
-                <span className="text-slate-500">{version && version.vat_rate > 0 ? "Total incl. VAT" : "Total"}</span>
-                <span className="text-right">
-                  {version?.original_price != null && (
-                    <span className="mr-2 text-sm font-semibold text-slate-400 line-through">{money(Number(version.original_price))}</span>
-                  )}
-                  <b className="text-lg text-primary-600">{version ? money(version.selling_price) : "—"}</b>
-                </span>
-              </div>
-              {version && display.converted && (
-                <p className="text-xs text-slate-500">
-                  Prices shown in {display.currency}, converted from {quoteMoney(version.selling_price)} at today's exchange rate — card payments are charged in{" "}
-                  {display.currency}.
-                </p>
-              )}
-            </div>
+          </div>
 
-            {milestones.length > 0 && (
-              <div className="space-y-2 rounded-2xl border p-4 text-sm">
-                <div className="text-xs font-bold uppercase tracking-wide text-slate-400">Payment schedule</div>
-                {milestones.map((m) => {
-                  milestoneCumulative += m.amount;
-                  const covered = milestoneCumulative <= amountPaid + 0.01;
-                  return (
-                    <div key={m.sequence} className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-b py-1.5 last:border-0">
-                      <span className={covered ? "text-slate-400 line-through" : "text-slate-600"}>
-                        {m.label}
-                        {m.due_date ? ` · due ${formatDate(m.due_date)}` : ""}
-                      </span>
-                      <b className={covered ? "text-slate-400" : ""}>{money(m.amount)}</b>
-                    </div>
-                  );
-                })}
+          {/* Clipped so only the inner half of each notch shows — a bite out of the card edge. */}
+          <div className="relative h-8 overflow-hidden" aria-hidden="true">
+            <div className="absolute -left-4 top-0 h-8 w-8 rounded-full bg-slate-100 shadow-[inset_-1px_0_2px_rgba(15,23,42,.06)]" />
+            <div className="absolute -right-4 top-0 h-8 w-8 rounded-full bg-slate-100 shadow-[inset_1px_0_2px_rgba(15,23,42,.06)]" />
+            <div className="absolute inset-x-7 top-[15px] border-t-2 border-dashed border-slate-200" />
+          </div>
+
+          <div className="space-y-5 px-6 pb-8 pt-3 sm:px-8">
+            {version?.original_price != null && version.discount_percent != null && (
+              <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-emerald-50 px-4 py-2.5 text-emerald-700">
+                <span className="font-black">Today&apos;s Special Deal</span>
+                <span className="rounded-full bg-emerald-600 px-2.5 py-0.5 text-xs font-black text-white">{Number(version.discount_percent)}% off</span>
               </div>
             )}
-          </div>
 
-          {version?.customer_notes && <RichText text={version.customer_notes} className="mt-4 text-sm text-slate-600" />}
-          {(version?.terms_snapshot?.trim() || tenant?.terms_and_conditions?.trim()) && (
-            <p className="mt-4 whitespace-pre-line text-xs text-slate-400">
-              {version?.terms_snapshot?.trim() || tenant?.terms_and_conditions}
-            </p>
-          )}
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+              <div>
+                <div className="text-[11px] font-bold uppercase tracking-[.14em] text-slate-500">
+                  {version && version.vat_rate > 0 ? "Total price incl. VAT" : "Total price"}
+                </div>
+                {version?.original_price != null && (
+                  <div className="mt-1 text-base font-semibold text-slate-400 line-through">{money(Number(version.original_price))}</div>
+                )}
+                <div className="text-4xl font-black tracking-tight text-slate-900 sm:text-[44px]">{version ? money(version.selling_price) : "—"}</div>
+              </div>
+              {version && currencyChoices.length > 1 && (
+                <CurrencySelector current={display.currency} quoteCurrency={quote.currency} localCurrency={localCurrency} choices={currencyChoices} />
+              )}
+            </div>
 
-          <div className="mt-6">
+            {hasBreakdown && version && (
+              <div className="space-y-1.5 rounded-2xl bg-slate-50 px-4 py-3 text-sm">
+                {version.quote_line_items?.map((li, i) => (
+                  <div key={i} className="flex justify-between gap-3 text-slate-600">
+                    <span>{li.description}</span>
+                    <span className="shrink-0">{money(li.amount)}</span>
+                  </div>
+                ))}
+                {version.vat_rate > 0 && (() => {
+                  const { net, vat } = vatBreakdown(version.selling_price, version.vat_rate);
+                  return (
+                    <>
+                      <div className="flex justify-between gap-3 text-slate-600">
+                        <span>Subtotal (excl. VAT)</span>
+                        <span>{money(net)}</span>
+                      </div>
+                      <div className="flex justify-between gap-3 text-slate-600">
+                        <span>VAT ({formatVatRate(version.vat_rate)})</span>
+                        <span>{money(vat)}</span>
+                      </div>
+                    </>
+                  );
+                })()}
+              </div>
+            )}
+
+            {version && display.converted && (
+              <p className="text-xs text-slate-500">
+                Prices shown in {display.currency}, converted from {quoteMoney(version.selling_price)} at today's exchange rate — card payments are charged in{" "}
+                {display.currency}.
+              </p>
+            )}
+
+            {quote.expiry_at && DECIDABLE.has(status) && (
+              <div className="flex items-center gap-2 rounded-xl bg-orange-50 px-4 py-2.5 text-sm font-semibold text-orange-800">
+                <Clock size={16} className="shrink-0" />
+                Price held until {formatDateTime(quote.expiry_at)}
+              </div>
+            )}
+
             {DECIDABLE.has(status) ? (
               <QuoteDecisionButtons token={token} />
             ) : AWAITING_PAYMENT.has(status) && version ? (
@@ -285,10 +266,156 @@ export default async function PublicQuotePage({
                 This quote is no longer available for a decision (status: {status}).
               </div>
             )}
+
+            {milestones.length > 0 && (
+              <div className="space-y-2 rounded-2xl border border-slate-200 p-4 text-sm">
+                <div className="text-[11px] font-bold uppercase tracking-[.14em] text-slate-500">Payment schedule</div>
+                {milestones.map((m) => {
+                  milestoneCumulative += m.amount;
+                  const covered = milestoneCumulative <= amountPaid + 0.01;
+                  return (
+                    <div key={m.sequence} className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-b border-slate-100 py-1.5 last:border-0">
+                      <span className={covered ? "text-slate-400 line-through" : "text-slate-600"}>
+                        {m.label}
+                        {m.due_date ? ` · due ${formatDate(m.due_date)}` : ""}
+                      </span>
+                      <b className={covered ? "text-slate-400" : ""}>{money(m.amount)}</b>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {version?.customer_notes && <RichText text={version.customer_notes} className="text-sm text-slate-600" />}
+
+            {terms && (
+              <details className="group">
+                <summary className="cursor-pointer list-none text-sm font-bold text-primary-600 hover:underline [&::-webkit-details-marker]:hidden">
+                  <span className="group-open:hidden">View Terms</span>
+                  <span className="hidden group-open:inline">Hide Terms</span>
+                </summary>
+                <p className="mt-3 whitespace-pre-line text-xs leading-relaxed text-slate-500">{terms}</p>
+              </details>
+            )}
           </div>
+        </article>
+
+        <div className="mt-6 text-center text-sm leading-relaxed text-slate-500">
+          <b className="text-slate-700">{company?.legal_name || brand?.name}</b>
+          {company?.registered_address && <div className="whitespace-pre-line">{company.registered_address}</div>}
         </div>
       </div>
     </div>
+  );
+}
+
+const STATUS_DOT: Record<string, string> = {
+  sent: "bg-sky-400",
+  viewed: "bg-sky-400",
+  accepted: "bg-emerald-400",
+  partially_paid: "bg-amber-400",
+  paid: "bg-emerald-400",
+  rejected: "bg-red-400",
+};
+
+/** "The Protea Hotel, Arthur's Road, Sea Point" → bold place name plus the rest of the address underneath. */
+function splitAddress(address: string) {
+  const comma = address.indexOf(",");
+  return comma > 0 ? { place: address.slice(0, comma).trim(), rest: address.slice(comma + 1).trim() } : { place: address, rest: "" };
+}
+
+/** One journey leg as the top half of the boarding pass: pickup → destination, then the detail tiles. */
+function LegPass({ leg, index, total }: { leg: JourneyLeg; index: number; total: number }) {
+  const pickup = splitAddress(leg.pickup_address);
+  const destination = splitAddress(leg.destination_address);
+  const tiles: { label: string; value: string }[] = [];
+  if (leg.pickup_date) tiles.push({ label: "Date", value: formatDate(leg.pickup_date) });
+  if (leg.pickup_time) tiles.push({ label: "Pickup time", value: formatTimeOnly(leg.pickup_time) });
+  tiles.push({ label: "Passengers", value: leg.passenger_count != null ? String(leg.passenger_count) : "—" });
+  if (leg.journey_type === "return" && (leg.return_date || leg.return_time)) {
+    tiles.push({ label: "Return", value: leg.return_date ? formatDateAndTime(leg.return_date, leg.return_time) : formatTimeOnly(leg.return_time!) });
+  }
+  if (leg.vehicle_types?.name) tiles.push({ label: "Vehicle", value: leg.vehicle_types.name });
+  if (leg.luggage_count) tiles.push({ label: "Luggage", value: `${leg.luggage_count} bags` });
+  if (leg.wheelchair_required) tiles.push({ label: "Accessibility", value: "Wheelchair access" });
+  if (leg.child_seats > 0) tiles.push({ label: "Child seats", value: String(leg.child_seats) });
+
+  return (
+    <section className={index > 0 ? "border-t border-slate-100 pt-8" : ""}>
+      {total > 1 && (
+        <div className="mb-4 text-[11px] font-black uppercase tracking-[.14em] text-primary-600">
+          Journey {index + 1} of {total} · {leg.journey_type.replaceAll("_", " ")}
+        </div>
+      )}
+
+      {/* Phones: a vertical route — pickup dot, dashed line with the bus, destination dot. */}
+      <div className="grid grid-cols-[1.5rem_minmax(0,1fr)] gap-x-3 sm:hidden">
+        <div className="flex flex-col items-center pt-1" aria-hidden="true">
+          <span className="h-3.5 w-3.5 shrink-0 rounded-full border-[3px] border-emerald-600 bg-white" />
+          <span className="my-1 w-0 flex-1 border-l-2 border-dashed border-slate-300" />
+          <Bus size={18} className="shrink-0 text-primary-600" />
+          <span className="my-1 w-0 flex-1 border-l-2 border-dashed border-slate-300" />
+          <span className="h-3.5 w-3.5 shrink-0 rounded-full bg-slate-900" />
+        </div>
+        <div className="space-y-6">
+          <div className="min-w-0">
+            <div className="text-[11px] font-bold uppercase tracking-[.14em] text-slate-500">Pickup</div>
+            <div className="mt-1 break-words text-lg font-black leading-snug">{pickup.place}</div>
+            {pickup.rest && <div className="mt-0.5 text-sm text-slate-500">{pickup.rest}</div>}
+          </div>
+          <div className="min-w-0">
+            <div className="text-[11px] font-bold uppercase tracking-[.14em] text-slate-500">Destination</div>
+            <div className="mt-1 break-words text-lg font-black leading-snug">{destination.place}</div>
+            {destination.rest && <div className="mt-0.5 text-sm text-slate-500">{destination.rest}</div>}
+          </div>
+        </div>
+      </div>
+
+      {/* sm and up: pickup and destination side by side, bus line between. */}
+      <div className="hidden sm:grid sm:grid-cols-[minmax(0,1fr)_7rem_minmax(0,1fr)] sm:items-start sm:gap-3">
+        <div className="min-w-0">
+          <div className="text-[11px] font-bold uppercase tracking-[.14em] text-slate-500">Pickup</div>
+          <div className="mt-1.5 break-words text-lg font-black leading-snug sm:text-xl">{pickup.place}</div>
+          {pickup.rest && <div className="mt-1 text-sm text-slate-500">{pickup.rest}</div>}
+        </div>
+        <div className="flex items-center gap-1.5 text-primary-600 sm:pt-6" aria-hidden="true">
+          <span className="flex-1 border-t-2 border-dashed border-slate-300" />
+          <Bus size={24} className="shrink-0" />
+          <span className="flex-1 border-t-2 border-dashed border-slate-300" />
+        </div>
+        <div className="min-w-0 sm:text-right">
+          <div className="text-[11px] font-bold uppercase tracking-[.14em] text-slate-500">Destination</div>
+          <div className="mt-1.5 break-words text-lg font-black leading-snug sm:text-xl">{destination.place}</div>
+          {destination.rest && <div className="mt-1 text-sm text-slate-500">{destination.rest}</div>}
+        </div>
+      </div>
+
+      {leg.via_points.length > 0 && (
+        <div className="mt-4 text-sm text-slate-600">
+          <span className="font-bold text-slate-500">Via </span>
+          {leg.via_points.join(" → ")}
+        </div>
+      )}
+
+      {/* Phones: one list, label left / value right. sm and up: separate tiles. */}
+      <dl className="mt-6 divide-y divide-slate-200/70 rounded-2xl bg-slate-50 sm:grid sm:grid-cols-3 sm:gap-3 sm:divide-y-0 sm:bg-transparent">
+        {tiles.map((t) => (
+          <div key={t.label} className="flex min-w-0 items-baseline justify-between gap-4 px-4 py-3 sm:block sm:rounded-2xl sm:bg-slate-50">
+            <dt className="shrink-0 text-[11px] font-bold uppercase tracking-[.12em] text-slate-500">{t.label}</dt>
+            <dd className="min-w-0 break-words text-right text-[15px] font-bold text-slate-900 sm:mt-1 sm:text-left">{t.value}</dd>
+          </div>
+        ))}
+      </dl>
+
+      {leg.special_requirements && (
+        <div className="mt-5">
+          <div className="text-[11px] font-bold uppercase tracking-[.14em] text-slate-500">Special requirements</div>
+          <div className="mt-2 text-sm font-semibold text-slate-700">
+            <FormattedText text={leg.special_requirements} />
+          </div>
+        </div>
+      )}
+    </section>
   );
 }
 
