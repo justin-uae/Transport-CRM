@@ -20,7 +20,6 @@ export function QuoteDecisionButtons({ token }: { token: string }) {
   const [rejecting, setRejecting] = useState(false);
   const [reason, setReason] = useState(REJECT_REASONS[0]!);
   const [freeText, setFreeText] = useState("");
-  const [dealOffered, setDealOffered] = useState<number | null>(null);
 
   function confirmAccept() {
     setError(null);
@@ -35,12 +34,6 @@ export function QuoteDecisionButtons({ token }: { token: string }) {
     startTransition(async () => {
       const result = await rejectQuoteAction(token, freeText ? `${reason}: ${freeText}` : reason);
       if (result?.error) setError(result.error);
-      // An automatic special deal re-opened the quote at a lower price — back
-      // to Accept/Reject, with the new price shown above.
-      else if (result?.specialDealPercent) {
-        setRejecting(false);
-        setDealOffered(result.specialDealPercent);
-      }
     });
   }
 
@@ -109,12 +102,6 @@ export function QuoteDecisionButtons({ token }: { token: string }) {
 
   return (
     <div>
-      {dealOffered && (
-        <div className="mb-4 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-center text-sm">
-          <p className="font-black text-emerald-700">We hear you — here&apos;s {dealOffered}% off.</p>
-          <p className="mt-1 text-emerald-700">The new price is shown above. Accept it below to secure this deal.</p>
-        </div>
-      )}
       {error && <p className="mb-3 text-sm font-semibold text-red-600">{error}</p>}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <button

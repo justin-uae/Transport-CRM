@@ -490,6 +490,8 @@ export interface Quote {
   reminders_pause_reason: string | null;
   /** Last "Resume" — customer replies before this don't re-pause it. */
   reminders_resumed_at: string | null;
+  /** When the scheduled automatic "Too expensive" discount goes out — null when none is pending. See 0115_special_deal_delay.sql. */
+  special_deal_auto_due_at: string | null;
   created_at: string;
   updated_at: string;
 }

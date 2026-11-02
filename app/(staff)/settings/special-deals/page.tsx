@@ -40,8 +40,8 @@ export default async function SpecialDealsSettingsPage() {
                 heading: "Automatic discount for \"Too expensive\"",
                 bullets: true,
                 body: [
-                  "When this is on and a customer rejects a quote with the reason \"Too expensive\", the same quote is re-opened straight away at the percentage set here, and emailed to them.",
-                  "The customer sees the new price right away on the page where they clicked Reject.",
+                  "When this is on and a customer rejects a quote with the reason \"Too expensive\", the same quote is re-opened 30 minutes later at the percentage set here, and emailed to them.",
+                  "The wait is on purpose, so the offer reads like the team reconsidered rather than an instant automatic reply. If staff re-open, re-quote or discount the quote themselves within those 30 minutes, the automatic one isn't sent.",
                   "It stays the same quote with the same owner. The Timeline shows the rejection and the automatic discount.",
                   "It happens once per quote, and never if the new price would be below the supplier cost.",
                 ],

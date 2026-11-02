@@ -25,6 +25,7 @@ import { QuoteRemindersPanel, type QuoteReminderRow } from "@/components/pages/Q
 import { QuoteExpiryEditor } from "@/components/pages/QuoteExpiryEditor";
 import { EditQuotePriceButton } from "@/components/pages/EditQuotePriceButton";
 import { SpecialDealButton } from "@/components/pages/SpecialDealButton";
+import { ReopenQuoteButton } from "@/components/pages/ReopenQuoteButton";
 import { SPECIAL_DEAL_STATUSES } from "@/lib/quoteSpecialDeal";
 import { EXPIRY_EDITABLE_STATUSES } from "@/lib/quoteExpiry";
 import { vatBreakdown, formatVatRate } from "@/lib/vat";
@@ -130,7 +131,7 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
     hasPermission(actor, PERMISSIONS.QUOTES_SEND),
     hasPermission(actor, PERMISSIONS.QUOTES_CHANGE_EXPIRY),
     hasPermission(actor, PERMISSIONS.QUOTES_EDIT),
-    supabase.from("tenants").select("quote_reminders_enabled, quote_reminders_enabled_at").eq("id", actor.tenant_id).single(),
+    supabase.from("tenants").select("quote_reminders_enabled, quote_reminders_enabled_at, quote_validity_days").eq("id", actor.tenant_id).single(),
   ]);
   const assignableUsers = canAssign ? await getAssignableSalesUsers(supabase) : [];
 
@@ -526,6 +527,21 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
               </div>
             </dl>
             <div className="mt-4">
+              {quote.status === "expired" &&
+                // Same people as Edit Price, plus anyone who can change expiry dates — mirrors reopenExpiredQuoteAction.
+                (actor.is_master_admin || canChangeExpiry || canEditQuotes || canCreateQuote || canSendQuotes) && (
+                  <div className="mb-3 rounded-xl border border-red-100 bg-red-50 p-3">
+                    <p className="mb-2.5 text-sm text-red-700">
+                      This quote expired before the customer decided. Re-open it to edit it and send it again.
+                    </p>
+                    <ReopenQuoteButton
+                      quoteId={quote.id}
+                      quoteNumber={quote.quote_number}
+                      customerLabel={customer?.company_name || customer?.contact_name || "—"}
+                      validityDays={tenantSettings?.quote_validity_days ?? 30}
+                    />
+                  </div>
+                )}
               <QuoteDetailActions
                 quote={{
                   id: quote.id,

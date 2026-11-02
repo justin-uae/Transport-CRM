@@ -38,7 +38,7 @@ export function SpecialDealSettingsForm({ initial }: { initial: SpecialDealSetti
           <div className="font-bold text-slate-900">{saved.autoEnabled ? `On — ${saved.autoPercent}% off` : "Automatic discount is switched off"}</div>
           <p className="mt-0.5 text-slate-600">
             {saved.autoEnabled
-              ? `A customer who rejects a quote as "Too expensive" gets it back straight away at ${saved.autoPercent}% off.`
+              ? `A customer who rejects a quote as "Too expensive" gets it back 30 minutes later at ${saved.autoPercent}% off.`
               : `Customers who reject a quote as "Too expensive" get nothing automatic. Staff can still use the Today's Special Deal button on any quote.`}
           </p>
         </div>
@@ -48,8 +48,8 @@ export function SpecialDealSettingsForm({ initial }: { initial: SpecialDealSetti
       <div className="grid gap-3 sm:grid-cols-3">
         {[
           { icon: ThumbsDown, title: "Customer rejects the quote", text: 'and picks "Too expensive" as the reason.' },
-          { icon: Tag, title: "The price drops automatically", text: "by the percentage below, on the same quote." },
-          { icon: Mail, title: "The customer gets the deal", text: "on screen straight away, and by email." },
+          { icon: Tag, title: "30 minutes later, the price drops", text: "by the percentage below, on the same quote." },
+          { icon: Mail, title: "The customer gets the deal", text: "by email, from the quote owner." },
         ].map((step, i) => (
           <div key={step.title} className="flex gap-3 rounded-2xl border border-slate-200 bg-white p-4">
             <div className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-emerald-50 text-emerald-600">

@@ -3,6 +3,7 @@ import { ImapFlow } from "imapflow";
 import { simpleParser } from "mailparser";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { decryptSecret } from "@/lib/crypto";
+import { runDueAutoDiscounts } from "@/lib/quoteRepricing";
 import type { EmailAccount, EmailAttachmentMeta } from "@/lib/supabase/database.types";
 
 // Render Cron Job hits this on a schedule (render.yaml) — every active
@@ -141,5 +142,13 @@ export async function POST(req: NextRequest) {
     }),
   );
 
-  return NextResponse.json({ synced: results.length, results });
+  // Piggybacks on this 5-minute cron so the delayed "Too expensive" discount
+  // goes out on time without needing its own Render Cron Job (see
+  // app/api/cron/special-deals). Never lets a failure there fail the sync.
+  const specialDeals = await runDueAutoDiscounts(admin).catch((err) => {
+    console.error("email-sync: special deal sweep failed:", err);
+    return null;
+  });
+
+  return NextResponse.json({ synced: results.length, results, specialDeals });
 }

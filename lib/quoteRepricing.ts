@@ -282,13 +282,98 @@ async function sendQuoteEmailAsOwner(admin: AdminClient, quoteId: string, ownerI
   return result;
 }
 
+/** How long after a "Too expensive" rejection the automatic discount goes out. */
+export const AUTO_DISCOUNT_DELAY_MINUTES = 30;
+
 /**
  * Called right after a customer rejects a quote with "Too expensive". If
- * Master Admin has switched it on (Settings -> Special Deals), the same
- * quote — same number, same owner — gets a new version at the set discount,
- * is re-opened and re-sent, and the Timeline shows it. Only once per quote,
- * and never below the supplier cost. Returns what happened, for the staff
- * "quote rejected" email and the customer's page.
+ * Master Admin has switched the automatic discount on (Settings -> Special
+ * Deals) and it hasn't been offered on this quote before, books it for
+ * AUTO_DISCOUNT_DELAY_MINUTES from now (quotes.special_deal_auto_due_at,
+ * 0115_special_deal_delay.sql) — not sent instantly, so it doesn't read as
+ * an automatic reply. runDueAutoDiscounts sends it when the time comes.
+ */
+export async function scheduleAutoDiscountAfterRejection(
+  admin: AdminClient,
+  quoteId: string,
+): Promise<{ scheduled: boolean; note: string | null }> {
+  const { data: quote } = await admin.from("quotes").select("id, tenant_id").eq("id", quoteId).single();
+  if (!quote) return { scheduled: false, note: null };
+
+  const { data: tenant } = await admin
+    .from("tenants")
+    .select("special_deal_auto_enabled, special_deal_auto_percent")
+    .eq("id", quote.tenant_id)
+    .single();
+  if (!tenant?.special_deal_auto_enabled) return { scheduled: false, note: null };
+
+  const { data: earlier } = await admin
+    .from("quote_versions")
+    .select("id")
+    .eq("quote_id", quoteId)
+    .eq("discount_source", "too_expensive_auto")
+    .limit(1)
+    .maybeSingle();
+  if (earlier) return { scheduled: false, note: "The automatic discount was already offered once on this quote, so it won't be sent again." };
+
+  const dueAt = new Date(Date.now() + AUTO_DISCOUNT_DELAY_MINUTES * 60 * 1000);
+  await admin.from("quotes").update({ special_deal_auto_due_at: dueAt.toISOString() }).eq("id", quoteId);
+  const percent = Number(tenant.special_deal_auto_percent);
+  const note = `An automatic ${percent}% discount will be sent to the customer in ${AUTO_DISCOUNT_DELAY_MINUTES} minutes, unless the quote is re-opened, re-quoted or discounted before then.`;
+  await admin.from("quote_events").insert({ quote_id: quoteId, event: "special_deal_auto", detail: `Scheduled — ${note}` });
+  return { scheduled: true, note };
+}
+
+/**
+ * Cron sweep (app/api/cron/special-deals, also run from email-sync every 5
+ * minutes): sends every automatic discount whose 30 minutes are up. Each due
+ * quote is claimed by clearing its due time first, so overlapping runs can't
+ * send it twice. Skipped — with a Timeline note — if staff already moved the
+ * quote on (re-opened it, gave their own deal, or it's no longer rejected).
+ */
+export async function runDueAutoDiscounts(admin: AdminClient): Promise<{ sent: number; skipped: number }> {
+  const { data: due } = await admin
+    .from("quotes")
+    .select("id, status, quote_number")
+    .lte("special_deal_auto_due_at", new Date().toISOString())
+    .limit(50);
+
+  let sent = 0;
+  let skipped = 0;
+  for (const q of due ?? []) {
+    const { data: claimed } = await admin
+      .from("quotes")
+      .update({ special_deal_auto_due_at: null })
+      .eq("id", q.id)
+      .not("special_deal_auto_due_at", "is", null)
+      .select("id");
+    if (!claimed?.length) continue;
+
+    if (q.status !== "rejected") {
+      skipped++;
+      await admin.from("quote_events").insert({
+        quote_id: q.id,
+        event: "special_deal_auto",
+        detail: "Scheduled automatic discount not sent — staff had already moved the quote on.",
+      });
+      continue;
+    }
+    const result = await offerAutoDiscountAfterRejection(admin, q.id).catch((err) => {
+      console.error(`runDueAutoDiscounts: ${q.quote_number}:`, err);
+      return { offered: false as const, note: null };
+    });
+    if (result.offered) sent++;
+    else skipped++;
+  }
+  return { sent, skipped };
+}
+
+/**
+ * Sends the automatic "Too expensive" discount — runDueAutoDiscounts calls
+ * this once its 30-minute delay is up. The same quote — same number, same
+ * owner — gets a new version at the set discount, is re-opened and re-sent,
+ * and the Timeline shows it. Only once per quote, and never below the
+ * supplier cost.
  */
 export async function offerAutoDiscountAfterRejection(
   admin: AdminClient,
