@@ -7,7 +7,7 @@ export interface TripDistance {
 
 /**
  * Real driving distance/duration between two addresses via Google's
- * Distance Matrix API — grounds the AI price estimate (lib/aiPriceEstimate.ts,
+ * Routes API — grounds the AI price estimate (lib/aiPriceEstimate.ts,
  * lib/aiAutoQuote.ts) in an actual number instead of asking the model to
  * guess both the geography AND the price from two address strings alone,
  * which is what made repeated estimates for the same unchanged trip swing
@@ -68,20 +68,35 @@ export async function estimateTripDistance(pickup: string | null, destination: s
   const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
   if (!apiKey || !pickup?.trim() || !destination?.trim()) return null;
 
+  // Routes API (computeRoutes), not the legacy Distance Matrix API, which
+  // Google no longer enables on new Cloud projects. The key's project needs
+  // "Routes API" enabled.
   try {
-    const url =
-      `https://maps.googleapis.com/maps/api/distancematrix/json?origins=${encodeURIComponent(pickup)}` +
-      `&destinations=${encodeURIComponent(destination)}&mode=driving&key=${encodeURIComponent(apiKey)}`;
-    const res = await fetch(url);
-    if (!res.ok) return null;
-    const data = (await res.json()) as {
-      rows?: { elements?: { status: string; distance?: { value: number }; duration?: { value: number } }[] }[];
-    };
-    const element = data.rows?.[0]?.elements?.[0];
-    if (!element || element.status !== "OK" || !element.distance || !element.duration) return null;
+    const res = await fetch("https://routes.googleapis.com/directions/v2:computeRoutes", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Goog-Api-Key": apiKey,
+        "X-Goog-FieldMask": "routes.distanceMeters,routes.duration",
+      },
+      body: JSON.stringify({
+        origin: { address: pickup },
+        destination: { address: destination },
+        travelMode: "DRIVE",
+      }),
+    });
+    if (!res.ok) {
+      console.error("estimateTripDistance: Routes API returned", res.status, (await res.text()).slice(0, 300));
+      return null;
+    }
+    const data = (await res.json()) as { routes?: { distanceMeters?: number; duration?: string }[] };
+    const route = data.routes?.[0];
+    // duration comes back as seconds in a string, e.g. "1843s".
+    const seconds = route?.duration ? parseFloat(route.duration) : NaN;
+    if (!route?.distanceMeters || !Number.isFinite(seconds)) return null;
     return {
-      distanceKm: Math.round((element.distance.value / 1000) * 10) / 10,
-      durationMinutes: Math.round(element.duration.value / 60),
+      distanceKm: Math.round((route.distanceMeters / 1000) * 10) / 10,
+      durationMinutes: Math.round(seconds / 60),
     };
   } catch (err) {
     console.error("estimateTripDistance failed:", err);
