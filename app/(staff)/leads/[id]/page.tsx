@@ -24,6 +24,10 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
 
   if (!lead) notFound();
 
+  // Separate, error-tolerant read — routing_note comes from 0116, and the
+  // lead page must keep working if that migration isn't applied yet.
+  const { data: routing } = await supabase.from("leads").select("routing_note").eq("id", id).maybeSingle();
+
   const { data: enquiry } = await supabase
     .from("enquiries")
     .select(
@@ -142,6 +146,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
       enquiryId={enquiry?.id ?? null}
       quote={quote}
       sourceDocument={sourceDocument}
+      routingNote={routing?.routing_note ?? null}
       edits={(editsRaw ?? []) as unknown as LeadEditRecord[]}
       assignmentEvents={assignmentEvents as unknown as LeadAssignmentEvent[]}
       currentUserId={profile.id}

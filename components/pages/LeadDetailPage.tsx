@@ -125,6 +125,7 @@ export function LeadDetailPage({
   enquiryId,
   quote,
   sourceDocument,
+  routingNote = null,
   edits,
   assignmentEvents,
   currentUserId,
@@ -147,6 +148,8 @@ export function LeadDetailPage({
   enquiryId: string | null;
   quote: LeadDetailQuote | null;
   sourceDocument: LeadSourceDocument | null;
+  /** Why automatic routing assigned this lead or left it in the open pool (leads.routing_note, 0116). */
+  routingNote?: string | null;
   edits: LeadEditRecord[];
   assignmentEvents: LeadAssignmentEvent[];
   currentUserId: string;
@@ -466,6 +469,7 @@ export function LeadDetailPage({
                   }
                 />
               )}
+              {routingNote && <Row label="Auto-routing" value={<span className="text-sm font-normal text-slate-600">{routingNote}</span>} />}
               <div className="border-b py-2 last:border-0">
                 <div className="text-slate-500">{isGeneralEnquiry ? "Message" : "Notes"}</div>
                 <div className="mt-1 font-bold">

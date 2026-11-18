@@ -45,7 +45,31 @@ export interface UserListRow {
   signature_emergency_email: string | null;
   signature_website: string | null;
   signature_logo_url: string | null;
-  user_regions: { id: string; region: string; lat: number | null; lng: number | null }[];
+  user_regions: { id: string; region: string; lat: number | null; lng: number | null; geo?: RegionGeo | null }[];
+}
+
+/** How a region is matched by lead routing (0116) — see lib/geoLocate.ts regionGeoFields. */
+export interface RegionGeo {
+  id: string;
+  geo_type: "country" | "admin_area" | "locality" | null;
+  country_code: string | null;
+  admin_area: string | null;
+  radius_km: number;
+  geo_checked_at: string | null;
+}
+
+function regionMatchLabel(geo: RegionGeo | null | undefined): { text: string; title: string } | null {
+  if (!geo || !geo.geo_checked_at) return null;
+  switch (geo.geo_type) {
+    case "country":
+      return { text: `Whole country${geo.country_code ? ` · ${geo.country_code}` : ""}`, title: "Gets leads picked up or dropped off anywhere in this country" };
+    case "admin_area":
+      return { text: "Whole area", title: `Gets leads anywhere in ${geo.admin_area ?? "this area"}` };
+    case "locality":
+      return { text: `Within ${Number(geo.radius_km)} km`, title: `Gets leads within ${Number(geo.radius_km)} km of this place` };
+    default:
+      return { text: "Word match", title: "Google couldn't place this region, so only leads whose address contains this word are matched" };
+  }
 }
 
 /**
@@ -170,6 +194,17 @@ function RegionEditor({
               <span className="min-w-0 flex-1 truncate text-sm text-slate-600" title={r.region}>
                 {r.region}
               </span>
+              {(() => {
+                const label = regionMatchLabel(r.geo);
+                return label ? (
+                  <span
+                    title={label.title}
+                    className={`shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-bold ${label.text === "Word match" ? "bg-amber-50 text-amber-700" : "bg-slate-100 text-slate-500"}`}
+                  >
+                    {label.text}
+                  </span>
+                ) : null;
+              })()}
               {canManage && (
                 <button
                   type="button"

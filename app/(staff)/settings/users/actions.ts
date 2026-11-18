@@ -14,6 +14,7 @@ import { recordAudit } from "@/lib/audit";
 import { encryptSecret } from "@/lib/crypto";
 import { renderAndSendTemplate } from "@/lib/emailTemplates";
 import type { ProfileStatus, EmailSecurity } from "@/lib/supabase/database.types";
+import { regionGeoFields } from "@/lib/geoLocate";
 
 type AdminClient = ReturnType<typeof createAdminClient>;
 
@@ -122,7 +123,8 @@ export async function inviteUserAction(
   revalidateTag(brandsUserTag(invited.user.id), { expire: 0 });
 
   if (regions.length > 0) {
-    await admin.from("user_regions").insert(regions.map((region) => ({ user_id: invited.user.id, region })));
+    const geo = await Promise.all(regions.map((region) => regionGeoFields(region)));
+    await admin.from("user_regions").insert(regions.map((region, i) => ({ user_id: invited.user.id, region, ...geo[i] })));
   }
 
   await recordAudit({
@@ -247,9 +249,12 @@ export async function addUserRegionAction(
     return { error: "User not found." };
   }
 
+  // Classify it for geography-based routing (0116) — fails open to a plain
+  // word-match region if Google can't place it.
+  const geo = await regionGeoFields(trimmed, coords);
   const { error } = await supabase
     .from("user_regions")
-    .insert({ user_id: userId, region: trimmed, lat: coords?.lat ?? null, lng: coords?.lng ?? null });
+    .insert({ user_id: userId, region: trimmed, lat: coords?.lat ?? null, lng: coords?.lng ?? null, ...geo });
   if (error) {
     return { error: error.message.includes("duplicate") ? "That region is already assigned." : error.message };
   }

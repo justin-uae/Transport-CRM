@@ -10,6 +10,7 @@ import { recordAudit } from "./audit";
 import { resolveCustomerId, notifyIfAutoAssigned } from "./leadIntake";
 import { formatDateAndTime } from "./formatDate";
 import { instantAutoQuoteNewLead } from "./aiAutoQuote";
+import { leadGeoFields } from "@/lib/geoLocate";
 
 type Admin = SupabaseClient<Database>;
 
@@ -331,6 +332,7 @@ async function processMessage(
       customer_id: customerId,
       pickup_text: extraction.pickup,
       destination_text: extraction.destination,
+      ...(await leadGeoFields(extraction.pickup, extraction.destination)),
       travel_date: /^\d{4}-\d{2}-\d{2}$/.test(extraction.travel_date ?? "") ? extraction.travel_date : null,
       pickup_time: asPgTime(extraction.pickup_time),
       return_trip: extraction.return_trip,

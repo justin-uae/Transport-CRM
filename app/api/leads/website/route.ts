@@ -5,6 +5,7 @@ import { instantAutoQuoteNewLead } from "@/lib/aiAutoQuote";
 import { recordAudit } from "@/lib/audit";
 import { resolveCustomerId, notifyIfAutoAssigned } from "@/lib/leadIntake";
 import { formatDateAndTime } from "@/lib/formatDate";
+import { leadGeoFields } from "@/lib/geoLocate";
 
 // Public website intake (Part 22). Authenticated by a per-brand shared
 // secret (brands.webhook_secret) rather than a Supabase session — the
@@ -220,6 +221,7 @@ async function handleQuoteSubmission(json: unknown) {
       customer_id: customerId,
       pickup_text: body.pickup,
       destination_text: body.destination,
+      ...(await leadGeoFields(body.pickup, body.destination)),
       travel_date: body.travelDate ?? null,
       pickup_time: body.pickupTime ?? null,
       return_trip: isReturnTrip(body),

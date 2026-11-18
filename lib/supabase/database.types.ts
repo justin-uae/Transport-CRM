@@ -197,13 +197,18 @@ export interface UserBrand {
   brand_id: string;
 }
 
-/** A user can cover several regions — matched against lead pickup/destination text for routing. lat/lng are set when the region was added via the map picker; null for older rows added as plain text. */
+/** A user can cover several regions — matched against lead pickup/destination for routing. lat/lng are set when the region was added via the map picker (or classified as a locality); null for older rows added as plain text. geo_* (0116): Google classification — country / admin_area / locality (radius_km) — null geo_type means routing falls back to a word match on `region`. */
 export interface UserRegion {
   id: string;
   user_id: string;
   region: string;
   lat: number | null;
   lng: number | null;
+  geo_type: "country" | "admin_area" | "locality" | null;
+  country_code: string | null;
+  admin_area: string | null;
+  radius_km: number;
+  geo_checked_at: string | null;
   created_at: string;
 }
 
@@ -376,6 +381,17 @@ export interface Lead {
   priority: LeadPriority;
   pickup_text: string | null;
   destination_text: string | null;
+  /** 0116 — geography of each endpoint (lib/geoLocate.ts), used by route_lead(). */
+  pickup_country_code: string | null;
+  pickup_admin_area: string | null;
+  pickup_lat: number | null;
+  pickup_lng: number | null;
+  destination_country_code: string | null;
+  destination_admin_area: string | null;
+  destination_lat: number | null;
+  destination_lng: number | null;
+  /** 0116 — why route_lead() assigned the lead or left it in the open pool. */
+  routing_note: string | null;
   travel_date: string | null;
   pickup_time: string | null;
   return_trip: boolean;

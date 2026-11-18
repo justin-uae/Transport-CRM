@@ -8,7 +8,8 @@ import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { hasPermission, PERMISSIONS } from "@/lib/permissions";
 import { InviteUserForm } from "./InviteUserForm";
-import { UserRow, UserCard, type UserListRow } from "./UserRow";
+import { UserRow, UserCard, type UserListRow, type RegionGeo } from "./UserRow";
+import { classifyPendingRegions } from "@/lib/regionGeoBackfill";
 import type { AllocatedRegion } from "./RegionMapModal";
 import type { EmailAccountStatus } from "./EmailAccountForm";
 
@@ -56,7 +57,31 @@ export default async function UsersPage({ searchParams }: { searchParams: Promis
   // render a silent, misleading "No users yet." Surface it instead.
   if (usersError) console.error("settings/users: users query failed:", usersError.message);
   if (regionsError) console.error("settings/users: user_regions query failed:", regionsError.message);
-  const users = (data ?? []) as unknown as UserListRow[];
+  // Routing geography (0116) — fetched separately so the page still works if
+  // that migration isn't applied yet. Regions never classified (added before
+  // geography routing) are classified now, once, by a user manager.
+  const { data: geoRows, error: geoError } = await supabase
+    .from("user_regions")
+    .select("id, geo_type, country_code, admin_area, radius_km, geo_checked_at");
+  const geoById = new Map<string, RegionGeo>();
+  if (!geoError && geoRows) {
+    const pending = geoRows.filter((r) => !r.geo_checked_at).map((r) => r.id);
+    if (canManage && pending.length > 0) {
+      const classified = await classifyPendingRegions(pending);
+      if (classified.length > 0) {
+        const { data: refreshed } = await supabase
+          .from("user_regions")
+          .select("id, geo_type, country_code, admin_area, radius_km, geo_checked_at")
+          .in("id", classified);
+        for (const r of refreshed ?? []) geoById.set(r.id, r as RegionGeo);
+      }
+    }
+    for (const r of geoRows) if (!geoById.has(r.id)) geoById.set(r.id, r as RegionGeo);
+  }
+  const users = ((data ?? []) as unknown as UserListRow[]).map((u) => ({
+    ...u,
+    user_regions: u.user_regions.map((r) => ({ ...r, geo: geoById.get(r.id) ?? null })),
+  }));
   const mailboxByUserId = new Map(
     ((mailboxes ?? []) as unknown as (EmailAccountStatus & { user_id: string })[]).map((m) => [m.user_id, m]),
   );
@@ -103,7 +128,7 @@ export default async function UsersPage({ searchParams }: { searchParams: Promis
                 {
                   heading: "Assigning a region",
                   body: [
-                    "The + next to a user's regions opens a map — search a place or click anywhere on it, and see every colleague's coverage as coloured pins before adding a new one. Regions are matched against a lead's pickup/destination text to help route it, so keep them as real place names (a city or neighbourhood, not a vague area).",
+                    "The + next to a user's regions opens a map — search a place or click anywhere on it, and see every colleague's coverage as coloured pins before adding a new one. New leads are routed by real geography: a country region (\"China\") gets every lead picked up or dropped off anywhere in that country, a state/area region (\"Scotland\") every lead in that area, and a city or place region every lead within 50 km of it. If several people match, the most specific region wins (a London person beats a United Kingdom person for a London lead); if it's still a tie, the lead goes to the open pool. Each region shows how it's matched — \"Word match\" means Google couldn't place it (e.g. \"Caribbean\"), so only leads whose address contains that word are matched.",
                   ],
                 },
               ]}

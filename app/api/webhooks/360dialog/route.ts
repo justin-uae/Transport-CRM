@@ -15,6 +15,7 @@ import {
 import { createAndSendQuote, getAiProfileId, LEAD_FOR_SWEEP_COLUMNS, type LeadForSweep } from "@/lib/aiAutoQuote";
 import { getAiModelSetting } from "@/lib/aiProviders";
 import { touchConversationOnInbound } from "@/lib/whatsappConversations";
+import { leadGeoFields } from "@/lib/geoLocate";
 
 // Inbound WhatsApp -> lead creation via 360dialog (a WhatsApp Business
 // Solution Provider built directly on Meta's Cloud API — same webhook
@@ -243,6 +244,7 @@ async function createLeadFromSession(admin: AdminClient, brand: Brand, waId: str
       customer_id: customerId,
       pickup_text: collected.pickup,
       destination_text: collected.destination,
+      ...(await leadGeoFields(collected.pickup, collected.destination)),
       passenger_count: collected.passenger_count,
       travel_date: travelDate,
       notes,
